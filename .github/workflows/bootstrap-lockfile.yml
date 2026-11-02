@@ -1,0 +1,33 @@
+# TEMPORARY: regenerates package-lock.json for the M0 branch (the authoring
+# environment has no npm registry access). Removed in the next commit.
+name: Bootstrap lockfile
+
+on:
+  push:
+    branches: [chore/m0-foundation]
+    paths: [package.json, .github/workflows/bootstrap-lockfile.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: rm -f package-lock.json && npm install --no-audit --no-fund
+      - run: npm audit fix --no-fund || true
+      - name: Audit report
+        run: npm audit || true
+      - name: Commit package-lock.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json package.json
+          git commit -m "chore: regenerate package-lock.json (vitest 4, audit fix)"
+          git push
