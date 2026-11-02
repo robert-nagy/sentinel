@@ -25,9 +25,18 @@ export const MIN_GIT_VERSION: Version = [2, 25, 0];
 
 type Version = readonly [number, number, number];
 
-/** Extracts the first `x.y.z` (or `x.y`) version found in `text`. */
+/** Longest tool output prefix scanned for a version (version banners are short). */
+const MAX_VERSION_INPUT = 256;
+
+/**
+ * Extracts the first `x.y.z` (or `x.y`) version found in `text`. Quantifiers are
+ * bounded and input is truncated so untrusted tool output cannot trigger
+ * catastrophic regex backtracking (ReDoS).
+ */
 export function parseVersion(text: string): Version | undefined {
-  const match = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(text);
+  const match = /(?<!\d)(\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?/.exec(
+    text.slice(0, MAX_VERSION_INPUT),
+  );
   if (!match) return undefined;
   return [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
 }

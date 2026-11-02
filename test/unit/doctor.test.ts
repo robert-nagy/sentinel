@@ -51,6 +51,14 @@ describe('version helpers', () => {
     expect(parseVersion('no version here')).toBeUndefined();
   });
 
+  it('handles pathological input quickly (no ReDoS)', () => {
+    const hostile = '9'.repeat(100_000);
+    const start = performance.now();
+    expect(parseVersion(hostile)).toBeUndefined();
+    expect(parseVersion(`${hostile}.1.2`)).toBeUndefined();
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
   it('compares versions', () => {
     expect(compareVersions([2, 25, 0], [2, 25, 0])).toBe(0);
     expect(compareVersions([2, 24, 9], [2, 25, 0])).toBeLessThan(0);
