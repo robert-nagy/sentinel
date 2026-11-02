@@ -40,6 +40,21 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Use an npm with trusted publishing support
         run: npm install --global npm@^11.5.1
+      - name: Let npm fall through to OIDC when there is no NPM_TOKEN
+        # setup-node's registry-url writes `_authToken=${NODE_AUTH_TOKEN}` into
+        # .npmrc. With no NPM_TOKEN secret that line expands to an empty token,
+        # which npm can mistake for configured credentials and then skip the
+        # trusted-publishing (OIDC) login, failing with ENEEDAUTH. Remove the line
+        # unless a token was actually provided.
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
+            echo "No NPM_TOKEN: publishing with OIDC trusted publishing"
+          else
+            echo "NPM_TOKEN present: publishing with token"
+          fi
       - run: npm ci
       - run: npm run check
       - uses: changesets/action@v1
@@ -52,3 +67,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
+      - name: Show npm's own error on failure
+        # changesets/action hides npm's stderr. Surface the auth-related lines
+        # (npm redacts secrets in its logs).
+        if: failure()
+        run: grep -h -iE 'oidc|trusted|exchange|ENEEDAUTH|E40[134]' ~/.npm/_logs/*.log | head -40 || true
