@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.tgz
+.worktrees/
+.sentinel/state/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
