@@ -20,7 +20,11 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - run: npm install --global npm@11
       - run: rm -f package-lock.json && npm install --no-audit --no-fund
+      - name: Show npm debug log on failure
+        if: failure()
+        run: tail -n 80 ~/.npm/_logs/*-debug-0.log
       - run: npm audit fix --no-fund || true
       - name: Audit report
         run: npm audit || true
