@@ -1,0 +1,82 @@
+{
+  "name": "@robert-nagy/sentinel",
+  "version": "0.0.0",
+  "description": "Agentic PDLC/SDLC governance for AI coding tools: skills, guardrails and deterministic tooling for Claude Code, Cursor, VS Code/Copilot, OpenCode and more.",
+  "keywords": [
+    "sdlc",
+    "pdlc",
+    "agents",
+    "agent-skills",
+    "claude-code",
+    "cursor",
+    "copilot",
+    "opencode",
+    "mcp",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "Robert Nagy",
+  "homepage": "https://github.com/robert-nagy/sentinel#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robert-nagy/sentinel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/robert-nagy/sentinel/issues"
+  },
+  "type": "module",
+  "bin": {
+    "sentinel": "dist/bin/sentinel.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "npm run build && changeset publish",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^14.0.0"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7",
+    "@eslint/js": "^9.36.0",
+    "@types/node": "^22.15.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.36.0",
+    "prettier": "^3.6.2",
+    "tsup": "^8.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.44.0",
+    "vitest": "^3.2.4"
+  }
+}
