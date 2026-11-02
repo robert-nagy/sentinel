@@ -18,20 +18,35 @@ export interface DoctorReport {
   readonly checks: readonly CheckResult[];
 }
 
-/** Runs every environment check in order and aggregates the results. */
-export async function runDoctor(ctx: DoctorContext): Promise<DoctorReport> {
-  const checks: CheckResult[] = [checkNode(ctx)];
-
+/** git checks, in order. The repository check needs a working git. */
+async function gitChecks(ctx: DoctorContext): Promise<CheckResult[]> {
   const git = await checkGit(ctx);
-  checks.push(git);
-  if (git.status !== 'fail') {
-    checks.push(await checkGitRepository(ctx));
+  const results = [git];
+  if (git.status === 'pass' || git.status === 'warn') {
+    results.push(await checkGitRepository(ctx));
   }
+  return results;
+}
 
+/** GitHub CLI checks, in order. The auth check needs an installed gh. */
+async function ghChecks(ctx: DoctorContext): Promise<CheckResult[]> {
   const gh = await checkGh(ctx);
-  checks.push(gh, await checkGhAuth(ctx, gh.status === 'pass'));
+  return [gh, await checkGhAuth(ctx, gh.status === 'pass')];
+}
 
-  checks.push(await checkWindowsLongPaths(ctx));
+/**
+ * Runs every environment check and aggregates the results. The git and gh
+ * groups are independent, so they run concurrently: process start-up is slow on
+ * Windows and `gh auth status` talks to the network. The report order is fixed
+ * regardless of which group finishes first.
+ */
+export async function runDoctor(ctx: DoctorContext): Promise<DoctorReport> {
+  const [git, gh, longPaths] = await Promise.all([
+    gitChecks(ctx),
+    ghChecks(ctx),
+    checkWindowsLongPaths(ctx),
+  ]);
+  const checks = [checkNode(ctx), ...git, ...gh, longPaths];
 
   return { ok: checks.every((c) => c.status !== 'fail'), checks };
 }

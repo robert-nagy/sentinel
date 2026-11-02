@@ -9,7 +9,13 @@ describe('runCommand', () => {
       '-e',
       'process.stdout.write("out"); process.stderr.write("err"); process.exit(3)',
     ]);
-    expect(result).toEqual({ exitCode: 3, stdout: 'out', stderr: 'err', notFound: false });
+    expect(result).toEqual({
+      exitCode: 3,
+      stdout: 'out',
+      stderr: 'err',
+      notFound: false,
+      timedOut: false,
+    });
   });
 
   it('passes arguments verbatim without shell interpretation', async () => {
@@ -22,6 +28,21 @@ describe('runCommand', () => {
     const result = await runCommand('sentinel-definitely-not-a-real-binary', ['--version']);
     expect(result.notFound).toBe(true);
     expect(result.exitCode).toBeNull();
+  });
+
+  it('kills a process that exceeds the timeout and reports timedOut', async () => {
+    const start = performance.now();
+    const result = await runCommand(node, ['-e', 'setTimeout(() => {}, 60_000)'], {
+      timeoutMs: 300,
+    });
+    expect(result.timedOut).toBe(true);
+    expect(result.notFound).toBe(false);
+    expect(performance.now() - start).toBeLessThan(10_000);
+  });
+
+  it('does not flag fast commands as timed out', async () => {
+    const result = await runCommand(node, ['-e', '0'], { timeoutMs: 10_000 });
+    expect(result).toMatchObject({ exitCode: 0, timedOut: false });
   });
 
   it('honours the working directory', async () => {
