@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  CHECK_TIMEOUT_MS,
   compareVersions,
   formatDoctorReport,
   parseVersion,
@@ -8,14 +9,34 @@ import {
 } from '../../src/core/doctor/index.js';
 import type { CommandResult, CommandRunner } from '../../src/core/exec.js';
 
-const ok = (stdout = ''): CommandResult => ({ exitCode: 0, stdout, stderr: '', notFound: false });
+const ok = (stdout = ''): CommandResult => ({
+  exitCode: 0,
+  stdout,
+  stderr: '',
+  notFound: false,
+  timedOut: false,
+});
 const failed = (stderr = 'error'): CommandResult => ({
   exitCode: 1,
   stdout: '',
   stderr,
   notFound: false,
+  timedOut: false,
 });
-const missing: CommandResult = { exitCode: null, stdout: '', stderr: 'ENOENT', notFound: true };
+const missing: CommandResult = {
+  exitCode: null,
+  stdout: '',
+  stderr: 'ENOENT',
+  notFound: true,
+  timedOut: false,
+};
+const timedOut: CommandResult = {
+  exitCode: null,
+  stdout: '',
+  stderr: '',
+  notFound: false,
+  timedOut: true,
+};
 
 /** Fake runner keyed by "command arg1 arg2"; unknown commands are "not found". */
 function fakeRunner(responses: Record<string, CommandResult>): CommandRunner {
@@ -129,6 +150,60 @@ describe('runDoctor', () => {
 
     const run = fakeRunner({ ...healthy, 'git config --get core.longpaths': failed('') });
     expect((await statusOf(context({ platform: 'win32', run })))['git-longpaths']).toBe('warn');
+  });
+});
+
+describe('runDoctor timeouts and concurrency', () => {
+  it('reports a gh auth timeout as a warning, not as "not authenticated"', async () => {
+    const run = fakeRunner({ ...healthy, 'gh auth status': timedOut });
+    const report = await runDoctor(context({ run }));
+    const auth = report.checks.find((c) => c.id === 'gh-auth');
+    expect(report.ok).toBe(true);
+    expect(auth?.status).toBe('warn');
+    expect(auth?.message).toContain('did not respond');
+    expect(auth?.message).not.toContain('not authenticated');
+  });
+
+  it('turns a timed-out git into a warning instead of crashing the report', async () => {
+    const run = fakeRunner({ ...healthy, 'git --version': timedOut });
+    const report = await runDoctor(context({ run }));
+    expect(report.checks.find((c) => c.id === 'git')?.status).toBe('warn');
+    expect(report.ok).toBe(true);
+  });
+
+  it('bounds every external command with the check timeout', async () => {
+    const run = vi.fn<CommandRunner>(() =>
+      Promise.resolve(ok('git version 2.47.1 gh version 2.89.0')),
+    );
+    await runDoctor(context({ run, platform: 'win32' }));
+    expect(run).toHaveBeenCalled();
+    for (const call of run.mock.calls) {
+      expect(call[2]).toMatchObject({ timeoutMs: CHECK_TIMEOUT_MS, cwd: '/repo' });
+    }
+  });
+
+  it('runs the git and gh groups concurrently but keeps the report order stable', async () => {
+    const started: string[] = [];
+    const run: CommandRunner = async (command, args) => {
+      started.push([command, ...args].join(' '));
+      // Make git slower than gh so a sequential runner would finish git first.
+      await new Promise((resolve) => setTimeout(resolve, command === 'git' ? 30 : 1));
+      return healthy[[command, ...args].join(' ')] ?? missing;
+    };
+    const report = await runDoctor(context({ run, platform: 'win32' }));
+
+    // gh was started before the (slow) git checks had finished.
+    expect(started.indexOf('gh --version')).toBeLessThan(
+      started.indexOf('git rev-parse --is-inside-work-tree'),
+    );
+    expect(report.checks.map((c) => c.id)).toEqual([
+      'node',
+      'git',
+      'git-repo',
+      'gh',
+      'gh-auth',
+      'git-longpaths',
+    ]);
   });
 });
 

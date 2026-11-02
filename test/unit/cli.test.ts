@@ -4,7 +4,13 @@ import type { CommandResult } from '../../src/core/exec.js';
 import { ExitCode } from '../../src/core/exit-codes.js';
 import { VERSION } from '../../src/version.js';
 
-const ok = (stdout = ''): CommandResult => ({ exitCode: 0, stdout, stderr: '', notFound: false });
+const ok = (stdout = ''): CommandResult => ({
+  exitCode: 0,
+  stdout,
+  stderr: '',
+  notFound: false,
+  timedOut: false,
+});
 
 function harness(nodeVersion = '22.11.0') {
   const out: string[] = [];
@@ -20,7 +26,13 @@ function harness(nodeVersion = '22.11.0') {
         'gh auth status': ok(),
       };
       return Promise.resolve(
-        responses[key] ?? { exitCode: null, stdout: '', stderr: '', notFound: true },
+        responses[key] ?? {
+          exitCode: null,
+          stdout: '',
+          stderr: '',
+          notFound: true,
+          timedOut: false,
+        },
       );
     },
     stdout: (text) => out.push(text),

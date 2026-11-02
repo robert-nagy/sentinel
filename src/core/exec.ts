@@ -7,6 +7,8 @@ export interface CommandResult {
   readonly stderr: string;
   /** True when the executable could not be found on PATH. */
   readonly notFound: boolean;
+  /** True when the process was killed because it exceeded `timeoutMs`. */
+  readonly timedOut: boolean;
 }
 
 export interface CommandOptions {
@@ -17,8 +19,9 @@ export interface CommandOptions {
 
 /**
  * Runs an executable with arguments and resolves with its output. Never rejects:
- * failures are reported through `exitCode` / `notFound` so callers can turn them
- * into diagnostics. Injectable so core logic can be unit-tested without spawning.
+ * failures are reported through `exitCode` / `notFound` / `timedOut` so callers can
+ * turn them into diagnostics. Injectable so core logic can be unit-tested without
+ * spawning.
  */
 export type CommandRunner = (
   command: string,
@@ -37,11 +40,13 @@ export const runCommand: CommandRunner = (command, args, options = {}) =>
   new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
+    let timedOut = false;
     let settled = false;
-    const finish = (result: CommandResult): void => {
+    const finish = (result: Omit<CommandResult, 'timedOut'>): void => {
       if (!settled) {
         settled = true;
-        resolve(result);
+        clearTimeout(timer);
+        resolve({ ...result, timedOut });
       }
     };
 
@@ -49,9 +54,15 @@ export const runCommand: CommandRunner = (command, args, options = {}) =>
       cwd: options.cwd,
       shell: false,
       windowsHide: true,
-      timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       env: process.env,
     });
+
+    // Our own timer (rather than spawn's `timeout` option) so a timeout is
+    // reported explicitly and behaves identically on every platform.
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');

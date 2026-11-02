@@ -9,7 +9,10 @@ const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.ur
   version: string;
 };
 
-const sentinel = (...args: string[]) => runCommand(process.execPath, [bin, ...args], { cwd: root });
+// Generous limit: spawning git/gh is slow on Windows CI runners. Must stay below
+// the vitest e2e testTimeout so a hang fails with a clear message.
+const sentinel = (...args: string[]) =>
+  runCommand(process.execPath, [bin, ...args], { cwd: root, timeoutMs: 45_000 });
 
 describe('built CLI (dist)', () => {
   beforeAll(() => {
@@ -28,6 +31,7 @@ describe('built CLI (dist)', () => {
 
   it('doctor --json reports on the real environment', async () => {
     const result = await sentinel('doctor', '--json');
+    expect(result.timedOut, `doctor timed out; stderr: ${result.stderr}`).toBe(false);
     const report = JSON.parse(result.stdout) as {
       ok: boolean;
       checks: { id: string; status: string }[];

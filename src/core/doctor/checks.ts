@@ -25,6 +25,19 @@ export const MIN_GIT_VERSION: Version = [2, 25, 0];
 
 type Version = readonly [number, number, number];
 
+/**
+ * Upper bound for any single external command. Without it one hung process (for
+ * example `gh auth status` waiting on the network) would stall the whole report.
+ */
+export const CHECK_TIMEOUT_MS = 10_000;
+
+function exec(ctx: DoctorContext, command: string, args: readonly string[]) {
+  return ctx.run(command, args, { cwd: ctx.cwd, timeoutMs: CHECK_TIMEOUT_MS });
+}
+
+const timeoutMessage = (what: string): string =>
+  `${what} did not respond within ${CHECK_TIMEOUT_MS / 1000}s`;
+
 /** Longest tool output prefix scanned for a version (version banners are short). */
 const MAX_VERSION_INPUT = 256;
 
@@ -74,7 +87,15 @@ export function checkNode(ctx: DoctorContext): CheckResult {
 
 export async function checkGit(ctx: DoctorContext): Promise<CheckResult> {
   const base = { id: 'git', title: 'git' } as const;
-  const result = await ctx.run('git', ['--version'], { cwd: ctx.cwd });
+  const result = await exec(ctx, 'git', ['--version']);
+  if (result.timedOut) {
+    return {
+      ...base,
+      status: 'warn',
+      message: timeoutMessage('git'),
+      hint: 'Re-run `sentinel doctor`.',
+    };
+  }
   if (result.notFound || result.exitCode !== 0) {
     return {
       ...base,
@@ -104,7 +125,15 @@ export async function checkGit(ctx: DoctorContext): Promise<CheckResult> {
 
 export async function checkGitRepository(ctx: DoctorContext): Promise<CheckResult> {
   const base = { id: 'git-repo', title: 'Git repository' } as const;
-  const result = await ctx.run('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ctx.cwd });
+  const result = await exec(ctx, 'git', ['rev-parse', '--is-inside-work-tree']);
+  if (result.timedOut) {
+    return {
+      ...base,
+      status: 'warn',
+      message: timeoutMessage('git'),
+      hint: 'Re-run `sentinel doctor`.',
+    };
+  }
   if (result.exitCode === 0 && result.stdout.trim() === 'true') {
     return { ...base, status: 'pass', message: 'Current directory is inside a git work tree' };
   }
@@ -118,7 +147,15 @@ export async function checkGitRepository(ctx: DoctorContext): Promise<CheckResul
 
 export async function checkGh(ctx: DoctorContext): Promise<CheckResult> {
   const base = { id: 'gh', title: 'GitHub CLI' } as const;
-  const result = await ctx.run('gh', ['--version'], { cwd: ctx.cwd });
+  const result = await exec(ctx, 'gh', ['--version']);
+  if (result.timedOut) {
+    return {
+      ...base,
+      status: 'warn',
+      message: timeoutMessage('gh'),
+      hint: 'Re-run `sentinel doctor`.',
+    };
+  }
   if (result.notFound || result.exitCode !== 0) {
     return {
       ...base,
@@ -140,7 +177,15 @@ export async function checkGhAuth(ctx: DoctorContext, ghAvailable: boolean): Pro
   if (!ghAvailable) {
     return { ...base, status: 'skip', message: 'Skipped: gh is not installed' };
   }
-  const result = await ctx.run('gh', ['auth', 'status'], { cwd: ctx.cwd });
+  const result = await exec(ctx, 'gh', ['auth', 'status']);
+  if (result.timedOut) {
+    return {
+      ...base,
+      status: 'warn',
+      message: `Could not verify authentication: ${timeoutMessage('gh auth status')}`,
+      hint: 'Check your network connection, then run `gh auth status`.',
+    };
+  }
   if (result.exitCode === 0) {
     return { ...base, status: 'pass', message: 'gh is authenticated' };
   }
@@ -157,7 +202,15 @@ export async function checkWindowsLongPaths(ctx: DoctorContext): Promise<CheckRe
   if (ctx.platform !== 'win32') {
     return { ...base, status: 'skip', message: 'Skipped: only relevant on Windows' };
   }
-  const result = await ctx.run('git', ['config', '--get', 'core.longpaths'], { cwd: ctx.cwd });
+  const result = await exec(ctx, 'git', ['config', '--get', 'core.longpaths']);
+  if (result.timedOut) {
+    return {
+      ...base,
+      status: 'warn',
+      message: timeoutMessage('git'),
+      hint: 'Re-run `sentinel doctor`.',
+    };
+  }
   if (result.exitCode === 0 && result.stdout.trim().toLowerCase() === 'true') {
     return { ...base, status: 'pass', message: 'core.longpaths is enabled' };
   }
