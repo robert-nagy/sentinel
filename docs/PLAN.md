@@ -339,7 +339,7 @@ Each milestone ends with a merged PR on `main` and green CI on **ubuntu, macOS a
 ### M0 — Foundation (≈1–2 days)
 
 - [ ] `package.json` (`@robert-nagy/sentinel`, `bin`, `engines.node >=22`, `files`, `exports`), TS strict, tsup, vitest, eslint/prettier, MIT LICENSE.
-- [ ] Sentinel's own CI: `ci.yml` (3-OS matrix), `security.yml` (CodeQL + `npm audit` + dependency review), `release.yml` (changesets + provenance).
+- [ ] Sentinel's own CI: `ci.yml` (3-OS matrix), `security.yml` (CodeQL + `npm audit` + dependency review), `publish.yml` (changesets + provenance; the filename must match the npm trusted-publisher config).
 - [ ] CLI skeleton + `doctor` (node, git, gh, auth, Windows `core.longpaths`).
 - [ ] ADR-0001 target formats (from the 2026-11-02 research), ADR-0002 "no LLM calls", ADR-0003 "skills as the canonical workflow format", ADR-0004 "issueProvider ≠ codeHost".
 
