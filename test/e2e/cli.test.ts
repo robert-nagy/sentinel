@@ -47,3 +47,18 @@ describe('built CLI (dist)', () => {
     expect(result.stderr).toContain('unknown command');
   });
 });
+
+describe('built CLI: config and branch', () => {
+  it('config schema is valid JSON describing the config', async () => {
+    const result = await sentinel('config', 'schema');
+    expect(result.exitCode).toBe(0);
+    const schema = JSON.parse(result.stdout) as { properties: Record<string, unknown> };
+    expect(schema.properties).toHaveProperty('branches');
+  });
+
+  it('branch name works against the repo defaults', async () => {
+    const result = await sentinel('branch', 'name', '--issue', '12', '--title', 'Hello World');
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe('feat/12-hello-world');
+  });
+});
