@@ -22,14 +22,25 @@ describe('fillTemplate / resolveInside', () => {
 });
 
 describe('PRD template', () => {
-  const filled = fillTemplate(PRD_TEMPLATE, { TITLE: 'T', SLUG: 't', ISSUE: 'none', DATE: '2026-01-01' });
+  const filled = fillTemplate(PRD_TEMPLATE, {
+    TITLE: 'T',
+    SLUG: 't',
+    ISSUE: 'none',
+    DATE: '2026-01-01',
+  });
 
   it('has every required section, so only the TODO markers stand between it and a pass', () => {
     const codes = new Set(analyzePrd(filled).issues.map((i) => i.code));
     expect(codes).toEqual(new Set(['ambiguous-term']));
   });
   it('cannot pass while TODO markers remain', () => {
-    const scores = { clarity: 100, testability: 100, completeness: 100, security: 100, feasibility: 100 };
+    const scores = {
+      clarity: 100,
+      testability: 100,
+      completeness: 100,
+      security: 100,
+      feasibility: 100,
+    };
     const report = validatePrd(filled, { scores, config: DEFAULT_CONFIG });
     expect(report.pass).toBe(false);
     expect(report.nextAction).toBe('refine');
@@ -107,7 +118,10 @@ describe('prd new / rfc new', () => {
     const a = cli();
     expect(await a.run('prd', 'new', 'a')).toBe(0);
     expect(a.out[0]).toBe(join(repo, 'specs', 'a.md'));
-    await writeFile(join(repo, 'sentinel.config.json'), JSON.stringify({ prd: { dir: '../escape' } }));
+    await writeFile(
+      join(repo, 'sentinel.config.json'),
+      JSON.stringify({ prd: { dir: '../escape' } }),
+    );
     const b = cli();
     expect(await b.run('prd', 'new', 'b')).toBe(1);
     expect(b.err.join('\n')).toContain('outside the repository');

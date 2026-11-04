@@ -18,18 +18,21 @@ export function registerRfc(program: Command, deps: CliDeps): void {
     .option('--force', 'overwrite an existing RFC')
     .option('--json', 'output machine-readable JSON')
     .action(
-      guarded(deps, async (id: string, options: { title?: string; force?: boolean; json?: boolean }) => {
-        const issueId = normalizeIssueId(id);
-        const { config } = await loadCliConfig(deps);
-        const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
-        const path = resolveInside(root, config.rfc.dir, `issue-${issueId}.md`);
-        const content = fillTemplate(RFC_TEMPLATE, {
-          TITLE: options.title?.trim() || `Issue ${issueId}`,
-          ISSUE: `#${issueId}`,
-          DATE: deps.now().toISOString().slice(0, 10),
-        });
-        await writeNewFile(path, content, options.force === true);
-        deps.stdout(options.json === true ? JSON.stringify({ path }, null, 2) : path);
-      }),
+      guarded(
+        deps,
+        async (id: string, options: { title?: string; force?: boolean; json?: boolean }) => {
+          const issueId = normalizeIssueId(id);
+          const { config } = await loadCliConfig(deps);
+          const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
+          const path = resolveInside(root, config.rfc.dir, `issue-${issueId}.md`);
+          const content = fillTemplate(RFC_TEMPLATE, {
+            TITLE: options.title?.trim() || `Issue ${issueId}`,
+            ISSUE: `#${issueId}`,
+            DATE: deps.now().toISOString().slice(0, 10),
+          });
+          await writeNewFile(path, content, options.force === true);
+          deps.stdout(options.json === true ? JSON.stringify({ path }, null, 2) : path);
+        },
+      ),
     );
 }
