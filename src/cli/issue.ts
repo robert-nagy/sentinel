@@ -53,9 +53,14 @@ export function registerIssue(program: Command, deps: CliDeps): void {
     .action(
       guarded(
         deps,
-        async (options: JsonOption & { state: string; label?: string[]; search?: string; limit: string }) => {
+        async (
+          options: JsonOption & { state: string; label?: string[]; search?: string; limit: string },
+        ) => {
           if (!['open', 'closed', 'all'].includes(options.state)) {
-            throw new ProviderError('failed', `--state must be open, closed or all (got "${options.state}")`);
+            throw new ProviderError(
+              'failed',
+              `--state must be open, closed or all (got "${options.state}")`,
+            );
           }
           const limit = Number.parseInt(options.limit, 10);
           if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
@@ -84,15 +89,27 @@ export function registerIssue(program: Command, deps: CliDeps): void {
     .action(
       guarded(
         deps,
-        async (options: JsonOption & { title: string; body?: string; bodyFile?: string; label?: string[] }) => {
+        async (
+          options: JsonOption & {
+            title: string;
+            body?: string;
+            bodyFile?: string;
+            label?: string[];
+          },
+        ) => {
           let body = options.body ?? '';
           if (options.bodyFile !== undefined) {
             const text = await deps.files.readText(options.bodyFile);
-            if (text === undefined) throw new ProviderError('failed', `body file not found: ${options.bodyFile}`);
+            if (text === undefined)
+              throw new ProviderError('failed', `body file not found: ${options.bodyFile}`);
             body = text;
           }
           const { issues } = await createServices(deps);
-          const created = await issues.createIssue({ title: options.title, body, labels: options.label });
+          const created = await issues.createIssue({
+            title: options.title,
+            body,
+            labels: options.label,
+          });
           print(created, `created #${created.id} ${created.url}`.trim(), options.json);
         },
       ),
@@ -133,7 +150,11 @@ export function registerIssue(program: Command, deps: CliDeps): void {
       guarded(deps, async (title: string, options: JsonOption) => {
         const { issues } = await createServices(deps);
         const found = await issues.findDuplicates(title);
-        print(found, found.length === 0 ? 'no similar issues found' : formatList(found), options.json);
+        print(
+          found,
+          found.length === 0 ? 'no similar issues found' : formatList(found),
+          options.json,
+        );
       }),
     );
 

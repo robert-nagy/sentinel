@@ -73,10 +73,16 @@ export class CustomIssueProvider implements IssueProvider {
 
   constructor(private readonly config: CustomProviderOptions) {}
 
-  private async exec(operation: Operation, values: Parameters<typeof renderCommand>[1]): Promise<string> {
+  private async exec(
+    operation: Operation,
+    values: Parameters<typeof renderCommand>[1],
+  ): Promise<string> {
     const templateText = this.config.options.commands[operation];
     if (templateText === undefined) {
-      throw new ProviderError('unsupported', `the custom provider has no "${operation}" command configured`);
+      throw new ProviderError(
+        'unsupported',
+        `the custom provider has no "${operation}" command configured`,
+      );
     }
     const { command, args } = renderCommand(templateText, values);
     const result = await this.config.run(command, args, {
@@ -91,7 +97,10 @@ export class CustomIssueProvider implements IssueProvider {
     }
     if (result.exitCode !== 0) {
       const detail = (result.stderr || result.stdout).trim().split('\n')[0] ?? '';
-      throw new ProviderError('failed', `custom ${operation} command failed (exit ${String(result.exitCode)}): ${detail}`);
+      throw new ProviderError(
+        'failed',
+        `custom ${operation} command failed (exit ${String(result.exitCode)}): ${detail}`,
+      );
     }
     return result.stdout;
   }
@@ -163,13 +172,19 @@ export class CustomIssueProvider implements IssueProvider {
 
   describe(): string {
     const caps = this.capabilities();
-    const lines = ['Issue tracker: custom (user-configured commands).', '- Read an issue: sentinel issue get <id> --json'];
+    const lines = [
+      'Issue tracker: custom (user-configured commands).',
+      '- Read an issue: sentinel issue get <id> --json',
+    ];
     if (caps.listIssues) lines.push('- Search: sentinel issue list --search "<text>" --json');
     if (caps.createIssue) lines.push('- Create: sentinel issue create --title "..." --body "..."');
     if (caps.addComment) lines.push('- Comment: sentinel issue comment <id> --body "..."');
     if (caps.linkPullRequest) lines.push('- Link a PR: sentinel issue link <id> --pr <url>');
-    const missing = (Object.entries(caps) as [string, boolean][]).filter(([k, v]) => !v && k !== 'transitions').map(([k]) => k);
-    if (missing.length > 0) lines.push(`- Not available with this provider: ${missing.join(', ')}.`);
+    const missing = (Object.entries(caps) as [string, boolean][])
+      .filter(([k, v]) => !v && k !== 'transitions')
+      .map(([k]) => k);
+    if (missing.length > 0)
+      lines.push(`- Not available with this provider: ${missing.join(', ')}.`);
     return lines.join('\n');
   }
 }

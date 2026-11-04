@@ -32,7 +32,12 @@ export interface GitHubProviderOptions {
   readonly labelMap?: Readonly<Record<string, string>> | undefined;
 }
 
-export const githubOptionsSchema = z.strictObject({ repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/).optional() });
+export const githubOptionsSchema = z.strictObject({
+  repo: z
+    .string()
+    .regex(/^[^/\s]+\/[^/\s]+$/)
+    .optional(),
+});
 
 function toIssue(raw: z.infer<typeof ghIssue>): Issue {
   return {
@@ -56,19 +61,37 @@ function issueNumber(id: string): string {
 
 /** Turns a failed `gh` invocation into a {@link ProviderError}. */
 export function ghError(
-  result: { exitCode: number | null; stderr: string; stdout: string; notFound: boolean; timedOut: boolean },
+  result: {
+    exitCode: number | null;
+    stderr: string;
+    stdout: string;
+    notFound: boolean;
+    timedOut: boolean;
+  },
   action: string,
 ): ProviderError {
   if (result.notFound) {
-    return new ProviderError('unavailable', 'the GitHub CLI (gh) was not found; install it from https://cli.github.com');
+    return new ProviderError(
+      'unavailable',
+      'the GitHub CLI (gh) was not found; install it from https://cli.github.com',
+    );
   }
-  if (result.timedOut) return new ProviderError('unavailable', `gh timed out while trying to ${action}`);
+  if (result.timedOut)
+    return new ProviderError('unavailable', `gh timed out while trying to ${action}`);
   const detail = (result.stderr || result.stdout).trim();
-  if (/gh auth login|not logged in|authentication|GH_TOKEN|HTTP 401|bad credentials/i.test(detail)) {
-    return new ProviderError('auth', `GitHub authentication failed: run \`gh auth login\` (${detail.split('\n')[0] ?? ''})`);
+  if (
+    /gh auth login|not logged in|authentication|GH_TOKEN|HTTP 401|bad credentials/i.test(detail)
+  ) {
+    return new ProviderError(
+      'auth',
+      `GitHub authentication failed: run \`gh auth login\` (${detail.split('\n')[0] ?? ''})`,
+    );
   }
   if (/could not resolve|not found|HTTP 404|no pull requests? found/i.test(detail)) {
-    return new ProviderError('not-found', `could not ${action}: ${detail.split('\n')[0] ?? 'not found'}`);
+    return new ProviderError(
+      'not-found',
+      `could not ${action}: ${detail.split('\n')[0] ?? 'not found'}`,
+    );
   }
   return new ProviderError('failed', `could not ${action}: ${detail || 'gh exited with an error'}`);
 }
@@ -97,14 +120,20 @@ export class GitHubIssueProvider implements IssueProvider {
     }
     const parsed = schema.safeParse(json);
     if (!parsed.success) {
-      throw new ProviderError('failed', `could not ${action}: unexpected gh output (${parsed.error.issues[0]?.message ?? 'invalid'})`);
+      throw new ProviderError(
+        'failed',
+        `could not ${action}: unexpected gh output (${parsed.error.issues[0]?.message ?? 'invalid'})`,
+      );
     }
     return parsed.data;
   }
 
   async getIssue(id: string): Promise<Issue> {
     const number = issueNumber(id);
-    const out = await this.gh(['issue', 'view', number, '--json', ISSUE_FIELDS], `read issue #${number}`);
+    const out = await this.gh(
+      ['issue', 'view', number, '--json', ISSUE_FIELDS],
+      `read issue #${number}`,
+    );
     return toIssue(this.parse(ghIssue, out, `read issue #${number}`));
   }
 
@@ -119,19 +148,25 @@ export class GitHubIssueProvider implements IssueProvider {
       '--limit',
       String(query.limit ?? 30),
     ];
-    for (const label of resolveLabels(query.labels, this.options.labelMap)) args.push('--label', label);
-    if (query.search !== undefined && query.search.trim() !== '') args.push('--search', query.search);
+    for (const label of resolveLabels(query.labels, this.options.labelMap))
+      args.push('--label', label);
+    if (query.search !== undefined && query.search.trim() !== '')
+      args.push('--search', query.search);
     const out = await this.gh(args, 'list issues');
     return this.parse(z.array(ghIssue), out, 'list issues').map(toIssue);
   }
 
   async createIssue(issue: NewIssue): Promise<Issue> {
     const args = ['issue', 'create', '--title', issue.title, '--body', issue.body];
-    for (const label of resolveLabels(issue.labels, this.options.labelMap)) args.push('--label', label);
+    for (const label of resolveLabels(issue.labels, this.options.labelMap))
+      args.push('--label', label);
     const out = await this.gh(args, 'create the issue');
     const number = /\/issues\/(\d+)\s*$/.exec(out.trim())?.[1];
     if (number === undefined) {
-      throw new ProviderError('failed', `issue was created but gh printed no issue URL: ${out.trim()}`);
+      throw new ProviderError(
+        'failed',
+        `issue was created but gh printed no issue URL: ${out.trim()}`,
+      );
     }
     return this.getIssue(number);
   }
@@ -151,7 +186,13 @@ export class GitHubIssueProvider implements IssueProvider {
   }
 
   capabilities(): ProviderCapabilities {
-    return { createIssue: true, addComment: true, linkPullRequest: true, listIssues: true, transitions: false };
+    return {
+      createIssue: true,
+      addComment: true,
+      linkPullRequest: true,
+      listIssues: true,
+      transitions: false,
+    };
   }
 
   describe(): string {

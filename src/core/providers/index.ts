@@ -19,18 +19,33 @@ export function createIssueProvider(
     case 'github': {
       const options = githubOptionsSchema.safeParse(config.options);
       if (!options.success) {
-        throw new ConfigError(`invalid issueProvider.options for github: ${optionsProblem(options.error)}`);
+        throw new ConfigError(
+          `invalid issueProvider.options for github: ${optionsProblem(options.error)}`,
+        );
       }
-      return new GitHubIssueProvider({ ...context, repo: options.data.repo, labelMap: config.labelMap });
+      return new GitHubIssueProvider({
+        ...context,
+        repo: options.data.repo,
+        labelMap: config.labelMap,
+      });
     }
     case 'custom': {
       const options = customOptionsSchema.safeParse(config.options);
       if (!options.success) {
-        throw new ConfigError(`invalid issueProvider.options for custom: ${optionsProblem(options.error)}`);
+        throw new ConfigError(
+          `invalid issueProvider.options for custom: ${optionsProblem(options.error)}`,
+        );
       }
-      return new CustomIssueProvider({ ...context, options: options.data, labelMap: config.labelMap });
+      return new CustomIssueProvider({
+        ...context,
+        options: options.data,
+        labelMap: config.labelMap,
+      });
     }
     default:
-      throw new ProviderError('unsupported', `the ${config.type} issue provider is not implemented yet (planned for a later release)`);
+      throw new ProviderError(
+        'unsupported',
+        `the ${config.type} issue provider is not implemented yet (planned for a later release)`,
+      );
   }
 }

@@ -81,12 +81,26 @@ export class GitHubCodeHost implements CodeHost {
   }
 
   async createPullRequest(pr: NewPullRequest): Promise<PullRequest> {
-    const args = ['pr', 'create', '--title', pr.title, '--body', pr.body, '--head', pr.head, '--base', pr.base];
+    const args = [
+      'pr',
+      'create',
+      '--title',
+      pr.title,
+      '--body',
+      pr.body,
+      '--head',
+      pr.head,
+      '--base',
+      pr.base,
+    ];
     if (pr.draft === true) args.push('--draft');
     const out = await this.gh(args, 'create the pull request');
     const url = /https:\/\/\S+\/pull\/\d+/.exec(out)?.[0];
     if (url === undefined) {
-      throw new ProviderError('failed', `pull request created but gh printed no URL: ${out.trim()}`);
+      throw new ProviderError(
+        'failed',
+        `pull request created but gh printed no URL: ${out.trim()}`,
+      );
     }
     return this.getPullRequest(url);
   }
@@ -133,12 +147,16 @@ export class GitHubCodeHost implements CodeHost {
       ['pr', 'list', '--head', branch, '--state', 'merged', '--json', 'number', '--limit', '1'],
       `look up merged pull requests of ${branch}`,
     );
-    return this.json(z.array(z.object({ number: z.number() })), out, 'parse merged pull requests').length > 0;
+    return (
+      this.json(z.array(z.object({ number: z.number() })), out, 'parse merged pull requests')
+        .length > 0
+    );
   }
 }
 
 function requireRunId(value: string): string {
   const id = /^\d+$/.test(value) ? value : /\/runs\/(\d+)/.exec(value)?.[1];
-  if (id === undefined) throw new ProviderError('failed', `"${value}" is not a workflow run id or run URL`);
+  if (id === undefined)
+    throw new ProviderError('failed', `"${value}" is not a workflow run id or run URL`);
   return id;
 }

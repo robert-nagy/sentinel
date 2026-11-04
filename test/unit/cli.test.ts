@@ -33,12 +33,12 @@ function harness(
       return Promise.resolve(
         respond(key) ??
           responses[key] ?? {
-          exitCode: null,
-          stdout: '',
-          stderr: '',
-          notFound: true,
-          timedOut: false,
-        },
+            exitCode: null,
+            stdout: '',
+            stderr: '',
+            notFound: true,
+            timedOut: false,
+          },
       );
     },
     files: {
@@ -219,7 +219,13 @@ describe('sentinel CLI', () => {
     it('exits 4 when gh is not authenticated', async () => {
       const h = harness('22.11.0', repoTree(), (l) =>
         l.startsWith('gh ')
-          ? { exitCode: 4, stdout: '', stderr: 'Run: gh auth login', notFound: false, timedOut: false }
+          ? {
+              exitCode: 4,
+              stdout: '',
+              stderr: 'Run: gh auth login',
+              notFound: false,
+              timedOut: false,
+            }
           : undefined,
       );
       const code = await main(argv('issue', 'get', '1'), h.deps);
@@ -241,7 +247,10 @@ describe('sentinel CLI', () => {
             options: { commands: { getIssue: 'mytracker show {id}' } },
           },
         }),
-        (l) => (l === 'mytracker show T-1' ? ok(JSON.stringify({ id: 'T-1', title: 'Hello' })) : undefined),
+        (l) =>
+          l === 'mytracker show T-1'
+            ? ok(JSON.stringify({ id: 'T-1', title: 'Hello' }))
+            : undefined,
       );
       expect(await main(argv('issue', 'get', 'T-1', '--json'), h.deps)).toBe(0);
       expect(JSON.parse(h.out.join('\n'))).toMatchObject({ id: 'T-1', title: 'Hello' });

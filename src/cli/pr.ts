@@ -33,7 +33,9 @@ export function registerPr(program: Command, deps: CliDeps): void {
 
         let head = options.head;
         if (head === undefined) {
-          const current = await deps.run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: deps.cwd });
+          const current = await deps.run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+            cwd: deps.cwd,
+          });
           head = current.exitCode === 0 ? current.stdout.trim() : '';
           if (head === '' || head === 'HEAD') {
             throw new ProviderError('failed', 'cannot determine the current branch; pass --head');
@@ -41,17 +43,30 @@ export function registerPr(program: Command, deps: CliDeps): void {
         }
         const base = options.base ?? config.codeHost.defaultBranch;
         if (head === base) {
-          throw new ProviderError('failed', `refusing to open a pull request from ${base} into itself`);
+          throw new ProviderError(
+            'failed',
+            `refusing to open a pull request from ${base} into itself`,
+          );
         }
 
         // gh needs the branch on the remote; pushing is idempotent.
-        const push = await deps.run('git', ['push', '--set-upstream', 'origin', head], { cwd: deps.cwd });
+        const push = await deps.run('git', ['push', '--set-upstream', 'origin', head], {
+          cwd: deps.cwd,
+        });
         if (push.exitCode !== 0) {
-          throw new ProviderError('failed', `git push failed: ${(push.stderr || push.stdout).trim()}`);
+          throw new ProviderError(
+            'failed',
+            `git push failed: ${(push.stderr || push.stdout).trim()}`,
+          );
         }
 
-        const reference = config.issueProvider.type === 'github' ? `Closes #${issue.id}` : `Refs ${issue.id}: ${issue.url}`.trim();
-        const body = [options.body?.trim(), reference].filter((part) => part !== undefined && part !== '').join('\n\n');
+        const reference =
+          config.issueProvider.type === 'github'
+            ? `Closes #${issue.id}`
+            : `Refs ${issue.id}: ${issue.url}`.trim();
+        const body = [options.body?.trim(), reference]
+          .filter((part) => part !== undefined && part !== '')
+          .join('\n\n');
         const created = await host.createPullRequest({
           title: options.title ?? `${issue.title} (#${issue.id})`,
           body,

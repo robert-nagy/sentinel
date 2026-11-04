@@ -52,6 +52,10 @@ export {
 export { createIssueProvider } from './core/providers/index.js';
 export { GitHubIssueProvider } from './core/providers/github.js';
 export { CustomIssueProvider } from './core/providers/custom.js';
-export { renderCommand, tokenizeTemplate, validateCommandTemplate } from './core/command-template.js';
+export {
+  renderCommand,
+  tokenizeTemplate,
+  validateCommandTemplate,
+} from './core/command-template.js';
 export type { CheckRun, CodeHost, NewPullRequest, PullRequest } from './core/code-host.js';
 export { GitHubCodeHost } from './core/hosts/github.js';

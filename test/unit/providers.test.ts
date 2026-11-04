@@ -29,7 +29,13 @@ function fakeRun(responder: (line: string) => CommandResult | undefined) {
     calls.push({ command, args });
     const line = [command, ...args].join(' ');
     return Promise.resolve(
-      responder(line) ?? { exitCode: null, stdout: '', stderr: '', notFound: true, timedOut: false },
+      responder(line) ?? {
+        exitCode: null,
+        stdout: '',
+        stderr: '',
+        notFound: true,
+        timedOut: false,
+      },
     );
   };
   return { run, calls };
@@ -49,7 +55,9 @@ const ghIssueJson = (n: number, title = 'Add login', extra: object = {}) =>
 
 describe('GitHubIssueProvider', () => {
   it('reads an issue through gh and normalises it', async () => {
-    const { run, calls } = fakeRun((l) => (l.startsWith('gh issue view 42 ') ? ok(ghIssueJson(42)) : undefined));
+    const { run, calls } = fakeRun((l) =>
+      l.startsWith('gh issue view 42 ') ? ok(ghIssueJson(42)) : undefined,
+    );
     const issue = await new GitHubIssueProvider({ run, cwd: '/r' }).getIssue('#42');
     expect(issue).toEqual({
       id: '42',
@@ -97,20 +105,36 @@ describe('GitHubIssueProvider', () => {
 
   it('rejects malformed gh output', async () => {
     const { run } = fakeRun(() => ok('not json'));
-    await expect(new GitHubIssueProvider({ run, cwd: '/r' }).getIssue('1')).rejects.toThrow(/invalid JSON/);
-    const bad = fakeRun(() => ok('{"number":"x"}'));
-    await expect(new GitHubIssueProvider({ run: bad.run, cwd: '/r' }).getIssue('1')).rejects.toThrow(
-      /unexpected gh output/,
+    await expect(new GitHubIssueProvider({ run, cwd: '/r' }).getIssue('1')).rejects.toThrow(
+      /invalid JSON/,
     );
+    const bad = fakeRun(() => ok('{"number":"x"}'));
+    await expect(
+      new GitHubIssueProvider({ run: bad.run, cwd: '/r' }).getIssue('1'),
+    ).rejects.toThrow(/unexpected gh output/);
   });
 
   it('lists with filters and mapped labels', async () => {
     const { run, calls } = fakeRun(() => ok(`[${ghIssueJson(1)}]`));
     const provider = new GitHubIssueProvider({ run, cwd: '/r', labelMap: { bug: 'kind/bug' } });
-    const issues = await provider.listIssues({ state: 'all', labels: ['bug'], search: 'login', limit: 5 });
+    const issues = await provider.listIssues({
+      state: 'all',
+      labels: ['bug'],
+      search: 'login',
+      limit: 5,
+    });
     expect(issues).toHaveLength(1);
     expect(calls[0]?.args).toEqual(
-      expect.arrayContaining(['--state', 'all', '--limit', '5', '--label', 'kind/bug', '--search', 'login']),
+      expect.arrayContaining([
+        '--state',
+        'all',
+        '--limit',
+        '5',
+        '--label',
+        'kind/bug',
+        '--search',
+        'login',
+      ]),
     );
   });
 
@@ -121,10 +145,21 @@ describe('GitHubIssueProvider', () => {
       return undefined;
     });
     const provider = new GitHubIssueProvider({ run, cwd: '/r', labelMap: { bug: 'kind/bug' } });
-    const created = await provider.createIssue({ title: 'Hi; rm -rf', body: '--body\nx', labels: ['bug'] });
+    const created = await provider.createIssue({
+      title: 'Hi; rm -rf',
+      body: '--body\nx',
+      labels: ['bug'],
+    });
     expect(created.id).toBe('7');
     expect(calls[0]?.args).toEqual([
-      'issue', 'create', '--title', 'Hi; rm -rf', '--body', '--body\nx', '--label', 'kind/bug',
+      'issue',
+      'create',
+      '--title',
+      'Hi; rm -rf',
+      '--body',
+      '--body\nx',
+      '--label',
+      'kind/bug',
     ]);
   });
 
@@ -176,7 +211,12 @@ describe('GitHubCodeHost', () => {
     const { run } = fakeRun(() => ({
       exitCode: 8,
       stdout: JSON.stringify([
-        { name: 'Test', bucket: 'fail', workflow: 'CI', link: 'https://github.com/o/r/actions/runs/123/job/4' },
+        {
+          name: 'Test',
+          bucket: 'fail',
+          workflow: 'CI',
+          link: 'https://github.com/o/r/actions/runs/123/job/4',
+        },
         { name: 'Lint', bucket: 'skipping', workflow: 'CI', link: null },
         { name: 'Odd', bucket: 'whatever' },
       ]),
@@ -209,7 +249,9 @@ describe('GitHubCodeHost', () => {
   });
 
   it('re-runs, comments and detects merged pull requests', async () => {
-    const { run, calls } = fakeRun((l) => (l.startsWith('gh pr list') ? ok('[{"number":3}]') : ok()));
+    const { run, calls } = fakeRun((l) =>
+      l.startsWith('gh pr list') ? ok('[{"number":3}]') : ok(),
+    );
     const host = new GitHubCodeHost({ run, cwd: '/r' });
     await host.rerunFailed('77');
     await host.comment('9', 'hi');
@@ -238,19 +280,33 @@ describe('CustomIssueProvider', () => {
 
   it('accepts numeric ids and lists', async () => {
     const { run } = fakeRun(() => ok(JSON.stringify([{ id: 5, title: 'A' }])));
-    const issues = await new CustomIssueProvider({ run, cwd: '/r', options }).listIssues({ search: 'a b' });
+    const issues = await new CustomIssueProvider({ run, cwd: '/r', options }).listIssues({
+      search: 'a b',
+    });
     expect(issues[0]).toMatchObject({ id: '5', state: 'open' });
   });
 
   it('keeps hostile values as single arguments', async () => {
     const { run, calls } = fakeRun(() => ok(json(2)));
-    await new CustomIssueProvider({ run, cwd: '/r', options, labelMap: { bug: 'Bug' } }).createIssue({
+    await new CustomIssueProvider({
+      run,
+      cwd: '/r',
+      options,
+      labelMap: { bug: 'Bug' },
+    }).createIssue({
       title: 'x" ; echo pwned',
       body: '$(whoami)',
       labels: ['bug', 'other'],
     });
     expect(calls[0]?.args).toEqual([
-      'issue', 'create', '--title', 'x" ; echo pwned', '--body', '$(whoami)', '--labels', 'Bug,other',
+      'issue',
+      'create',
+      '--title',
+      'x" ; echo pwned',
+      '--body',
+      '$(whoami)',
+      '--labels',
+      'Bug,other',
     ]);
   });
 
@@ -284,8 +340,12 @@ describe('CustomIssueProvider', () => {
 
   it('validates its options', () => {
     expect(customOptionsSchema.safeParse({ commands: {} }).success).toBe(false);
-    expect(customOptionsSchema.safeParse({ commands: { getIssue: 'tool {bad}' } }).success).toBe(false);
-    expect(customOptionsSchema.safeParse({ commands: { getIssue: 'tool' }, extra: 1 }).success).toBe(false);
+    expect(customOptionsSchema.safeParse({ commands: { getIssue: 'tool {bad}' } }).success).toBe(
+      false,
+    );
+    expect(
+      customOptionsSchema.safeParse({ commands: { getIssue: 'tool' }, extra: 1 }).success,
+    ).toBe(false);
   });
 });
 
@@ -301,10 +361,16 @@ describe('createIssueProvider', () => {
     ).toBe('custom');
   });
   it('rejects bad options as configuration errors', () => {
-    expect(() => createIssueProvider({ type: 'github', options: { repo: 'nope' } }, context)).toThrow(ConfigError);
-    expect(() => createIssueProvider({ type: 'custom', options: {} }, context)).toThrow(ConfigError);
+    expect(() =>
+      createIssueProvider({ type: 'github', options: { repo: 'nope' } }, context),
+    ).toThrow(ConfigError);
+    expect(() => createIssueProvider({ type: 'custom', options: {} }, context)).toThrow(
+      ConfigError,
+    );
   });
   it('reports providers that are not implemented yet', () => {
-    expect(() => createIssueProvider({ type: 'jira', options: {} }, context)).toThrow(ProviderError);
+    expect(() => createIssueProvider({ type: 'jira', options: {} }, context)).toThrow(
+      ProviderError,
+    );
   });
 });
