@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { ExitCode } from '../core/exit-codes.js';
+import { GitHubCodeHost } from '../core/hosts/github.js';
 import {
   GitWorktreeManager,
   WORKTREE_CLEANUP_THRESHOLD,
@@ -88,12 +89,33 @@ export function registerWorktree(program: Command, deps: CliDeps): void {
 
   worktree
     .command('prune')
-    .description('Remove clean worktrees whose branch is merged into the default branch')
+    .description(
+      'Remove clean worktrees whose branch is merged (checked locally and through GitHub)',
+    )
     .option('--dry-run', 'only report what would be removed')
     .action(
       guarded(deps, async (options: { dryRun?: boolean }) => {
         const manager = await createManager(deps);
-        const result = await manager.prune({ dryRun: options.dryRun === true });
+        // Squash and rebase merges leave the branch unmerged locally, so ask the code host too.
+        const host = new GitHubCodeHost({ run: deps.run, cwd: deps.cwd });
+        let hostFailure: string | undefined;
+        const result = await manager.prune({
+          dryRun: options.dryRun === true,
+          isMerged: async (branch) => {
+            if (await manager.isMergedLocally(branch)) return true;
+            try {
+              return await host.hasMergedPullRequest(branch);
+            } catch (error) {
+              hostFailure ??= error instanceof Error ? error.message : String(error);
+              return false;
+            }
+          },
+        });
+        if (hostFailure !== undefined) {
+          deps.stderr(
+            `sentinel: warning: could not ask the code host about merged PRs: ${hostFailure}`,
+          );
+        }
         for (const warning of result.warnings) deps.stderr(`sentinel: warning: ${warning}`);
         const verb = options.dryRun === true ? 'would remove' : 'removed';
         for (const w of result.removed) deps.stdout(`${verb} ${w.path}`);
