@@ -119,7 +119,7 @@ function renderTemplate(template: string, values: Readonly<Record<Placeholder, s
 }
 
 /** Issue ids may be numeric (`42`, `#42`), Jira keys (`PROJ-123`) or any similar token. */
-function normalizeIssueId(id: string | number): string {
+export function normalizeIssueId(id: string | number): string {
   const normalized = String(id).trim().replace(/^#/, '');
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(normalized)) {
     throw new BranchNameError(

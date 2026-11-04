@@ -44,6 +44,7 @@ function harness(
     files: {
       readText: (path) => Promise.resolve(tree.get(path)),
       exists: (path) => Promise.resolve(tree.has(path)),
+      listDir: () => Promise.resolve(undefined),
     },
     homeDir: '/home/u',
     env: {},
@@ -287,6 +288,15 @@ describe('sentinel CLI', () => {
       });
       expect(await main(argv('pr', 'create', '--issue', '42'), h.deps)).toBe(ExitCode.Provider);
       expect(h.err.join('\n')).toContain('into itself');
+    });
+  });
+
+  describe('analyze', () => {
+    it('reports an empty repo as JSON', async () => {
+      const h = harness();
+      const code = await main(argv('analyze', '--json'), h.deps);
+      expect(code).toBe(0);
+      expect(JSON.parse(h.out.join('\n'))).toEqual({ empty: true, projects: [] });
     });
   });
 });

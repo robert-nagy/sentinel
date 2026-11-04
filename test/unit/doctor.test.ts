@@ -95,6 +95,7 @@ describe('runDoctor', () => {
       node: 'pass',
       git: 'pass',
       'git-repo': 'pass',
+      worktrees: 'skip',
       gh: 'pass',
       'gh-auth': 'pass',
       'git-longpaths': 'skip',
@@ -200,6 +201,7 @@ describe('runDoctor timeouts and concurrency', () => {
       'node',
       'git',
       'git-repo',
+      'worktrees',
       'gh',
       'gh-auth',
       'git-longpaths',
@@ -214,11 +216,34 @@ describe('formatDoctorReport', () => {
     expect(text).toContain('✔ Node.js: Node.js 22.11.0');
     expect(text).toContain('⚠ GitHub authentication: gh is not authenticated');
     expect(text).toContain('→ Run `gh auth login`.');
-    expect(text).toMatch(/OK: 4 passed, 1 warnings, 0 failed, 1 skipped$/);
+    expect(text).toMatch(/OK: 4 passed, 1 warnings, 0 failed, 2 skipped$/);
   });
 
   it('reports FAILED when any check fails', async () => {
     const text = formatDoctorReport(await runDoctor(context({ nodeVersion: '18.0.0' })));
     expect(text).toMatch(/^FAILED:/m);
+  });
+});
+
+describe('worktrees check', () => {
+  const porcelain = (extra: number) =>
+    ['worktree /repo\nHEAD a\nbranch refs/heads/main\n']
+      .concat(
+        Array.from({ length: extra }, (_, i) => `worktree /repo/.worktrees/${String(i)}\nHEAD b\n`),
+      )
+      .join('\n');
+  const statusFor = async (extra: number) => {
+    const run = fakeRunner({ ...healthy, 'git worktree list --porcelain': ok(porcelain(extra)) });
+    const report = await runDoctor(context({ run }));
+    return report.checks.find((c) => c.id === 'worktrees');
+  };
+
+  it('passes with few extra worktrees', async () => {
+    expect((await statusFor(2))?.status).toBe('pass');
+  });
+  it('warns and suggests pruning from five extra worktrees on', async () => {
+    const check = await statusFor(5);
+    expect(check?.status).toBe('warn');
+    expect(check?.hint).toContain('worktree prune');
   });
 });

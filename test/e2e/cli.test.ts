@@ -62,3 +62,16 @@ describe('built CLI: config and branch', () => {
     expect(result.stdout.trim()).toBe('feat/12-hello-world');
   });
 });
+
+describe('built CLI: analyze', () => {
+  it('detects this repository as a TypeScript/node project using vitest', async () => {
+    const result = await sentinel('analyze', '--json');
+    expect(result.exitCode).toBe(0);
+    const report = JSON.parse(result.stdout) as {
+      projects: { path: string; language: string; tests: { unit: { detected: string } } }[];
+    };
+    const root = report.projects.find((p) => p.path === '.');
+    expect(root?.language).toBe('typescript');
+    expect(root?.tests.unit.detected).toBe('vitest');
+  });
+});

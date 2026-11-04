@@ -59,3 +59,22 @@ export {
 } from './core/command-template.js';
 export type { CheckRun, CodeHost, NewPullRequest, PullRequest } from './core/code-host.js';
 export { GitHubCodeHost } from './core/hosts/github.js';
+export {
+  GitWorktreeManager,
+  WORKTREE_CLEANUP_THRESHOLD,
+  WorktreeError,
+  parseWorktreeList,
+  type CreateWorktreeResult,
+  type PruneResult,
+  type WorktreeInfo,
+} from './core/git-worktree-manager.js';
+export {
+  TEST_TIERS,
+  analyze,
+  formatStackReport,
+  installCommands,
+  type Ecosystem,
+  type ProjectReport,
+  type StackReport,
+  type TestTier,
+} from './core/stack-analyzer.js';

@@ -3,7 +3,7 @@ import type { CodeHost } from '../core/code-host.js';
 import type { SentinelConfig } from '../core/config-schema.js';
 import type { IssueProvider } from '../core/issue-provider.js';
 import { createIssueProvider } from '../core/providers/index.js';
-import { loadCliConfig } from './common.js';
+import { loadCliConfig } from './branch.js';
 import type { CliDeps } from './deps.js';
 
 export interface Services {
