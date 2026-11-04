@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { main } from '../../src/cli/index.js';
 import { DEFAULT_CONFIG } from '../../src/core/config-schema.js';
-import { runCommand } from '../../src/core/exec.js';
+import { runCommand, type CommandResult } from '../../src/core/exec.js';
 import { nodeFiles } from '../../src/core/fs.js';
 import {
   GitWorktreeManager,
@@ -383,4 +383,70 @@ describe('sentinel worktree (CLI, real git)', () => {
     },
     TIMEOUT,
   );
+
+  describe('prune with the code host', () => {
+    const makeDeps = (ghPrList: (() => CommandResult) | undefined) => {
+      const out: string[] = [];
+      const err: string[] = [];
+      const deps = {
+        run: ((command, args, options) => {
+          if (command === 'gh' && ghPrList !== undefined) return Promise.resolve(ghPrList());
+          return runCommand(command, args, options);
+        }) as typeof runCommand,
+        files: nodeFiles,
+        stdout: (t: string) => out.push(t),
+        stderr: (t: string) => err.push(t),
+        setExitCode: () => undefined,
+        nodeVersion: process.versions.node,
+        platform: process.platform,
+        cwd: work,
+        homeDir: tmp,
+        env: { XDG_CONFIG_HOME: join(tmp, 'xdg'), APPDATA: join(tmp, 'appdata') },
+        now: () => new Date('2026-03-05T12:00:00Z'),
+      };
+      return { deps, out, err };
+    };
+    const okResult = (stdout: string): CommandResult => ({
+      exitCode: 0,
+      stdout,
+      stderr: '',
+      notFound: false,
+      timedOut: false,
+    });
+
+    it(
+      'removes a squash-merged worktree that git considers unmerged',
+      async () => {
+        const created = await manager().create(8, 'feat/squashed');
+        await commitFile(created.path, 'work.txt', 'x');
+        const { deps, out } = makeDeps(() => okResult('[{"number":3}]'));
+        expect(await main(['node', 'sentinel', 'worktree', 'prune'], deps)).toBe(0);
+        expect(out.join('\n')).toContain('removed');
+        expect(await exists(created.path)).toBe(false);
+        // The branch itself is kept: git cannot prove the squash merge, so `branch -d` refuses.
+        expect(await git(work, 'branch', '--list', 'feat/squashed')).toContain('feat/squashed');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'keeps unmerged worktrees and warns when the code host is unavailable',
+      async () => {
+        const created = await manager().create(9, 'feat/open');
+        await commitFile(created.path, 'work.txt', 'x');
+        const { deps, out, err } = makeDeps(() => ({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'To get started with GitHub CLI, please run: gh auth login',
+          notFound: false,
+          timedOut: false,
+        }));
+        await main(['node', 'sentinel', 'worktree', 'prune'], deps);
+        expect(out.join('\n')).toContain('branch is not merged');
+        expect(err.join('\n')).toContain('could not ask the code host');
+        expect(await exists(created.path)).toBe(true);
+      },
+      TIMEOUT,
+    );
+  });
 });
