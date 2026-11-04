@@ -4,7 +4,7 @@ import type { Command } from 'commander';
 import { normalizeIssueId, slugify } from '../core/branch-namer.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { findRepoRoot } from '../core/repo.js';
-import { fillTemplate, resolveInside, writeNewFile } from '../core/scaffold.js';
+import { fillTemplate, pickTitle, resolveInside, writeNewFile } from '../core/scaffold.js';
 import { PRD_TEMPLATE } from '../templates/prd-template.js';
 import { formatRubric } from '../templates/prd-rubric.js';
 import { evaluationsBefore, PrdError, recordEvaluation, type PrdState } from '../core/prd-state.js';
@@ -154,7 +154,7 @@ export function registerPrd(program: Command, deps: CliDeps): void {
           const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
           const path = resolveInside(root, config.prd.dir, `${slug}.md`);
           const content = fillTemplate(PRD_TEMPLATE, {
-            TITLE: options.title?.trim() || rawSlug.trim(),
+            TITLE: pickTitle(options.title, rawSlug.trim()),
             SLUG: slug,
             ISSUE: options.issue === undefined ? 'none' : `#${normalizeIssueId(options.issue)}`,
             DATE: deps.now().toISOString().slice(0, 10),

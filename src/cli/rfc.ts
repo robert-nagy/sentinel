@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { normalizeIssueId } from '../core/branch-namer.js';
 import { findRepoRoot } from '../core/repo.js';
-import { fillTemplate, resolveInside, writeNewFile } from '../core/scaffold.js';
+import { fillTemplate, pickTitle, resolveInside, writeNewFile } from '../core/scaffold.js';
 import { RFC_TEMPLATE } from '../templates/rfc-template.js';
 import { loadCliConfig } from './branch.js';
 import type { CliDeps } from './deps.js';
@@ -26,7 +26,7 @@ export function registerRfc(program: Command, deps: CliDeps): void {
           const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
           const path = resolveInside(root, config.rfc.dir, `issue-${issueId}.md`);
           const content = fillTemplate(RFC_TEMPLATE, {
-            TITLE: options.title?.trim() || `Issue ${issueId}`,
+            TITLE: pickTitle(options.title, `Issue ${issueId}`),
             ISSUE: `#${issueId}`,
             DATE: deps.now().toISOString().slice(0, 10),
           });

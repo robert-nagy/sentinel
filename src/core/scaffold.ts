@@ -35,3 +35,9 @@ export async function writeNewFile(path: string, content: string, force: boolean
     throw error;
   }
 }
+
+/** The trimmed title, or `fallback` when it is missing or blank. */
+export function pickTitle(title: string | undefined, fallback: string): string {
+  const trimmed = title?.trim();
+  return trimmed === undefined || trimmed === '' ? fallback : trimmed;
+}

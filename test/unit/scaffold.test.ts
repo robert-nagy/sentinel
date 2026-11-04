@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { main } from '../../src/cli/index.js';
 import { DEFAULT_CONFIG } from '../../src/core/config-schema.js';
@@ -16,8 +16,8 @@ describe('fillTemplate / resolveInside', () => {
     expect(fillTemplate('{{A}} {{B}} {{a}}', { A: 'x' })).toBe('x {{B}} {{a}}');
   });
   it('rejects directories that escape the repository', () => {
-    expect(() => resolveInside(join('/r'), '../outside', 'f.md')).toThrow(ScaffoldError);
-    expect(resolveInside(join('/r'), 'docs/prd', 'f.md')).toBe(join('/r', 'docs', 'prd', 'f.md'));
+    expect(() => resolveInside(resolve('/r'), '../outside', 'f.md')).toThrow(ScaffoldError);
+    expect(resolveInside(resolve('/r'), 'docs/prd', 'f.md')).toBe(resolve('/r', 'docs', 'prd', 'f.md'));
   });
 });
 
