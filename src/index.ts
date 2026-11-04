@@ -39,3 +39,11 @@ export { ConfigError, loadConfig, globalConfigPath, type LoadedConfig } from './
 export { StateStore, StateError } from './core/state.js';
 export { nodeFiles, type FileAccess } from './core/fs.js';
 export { findRepoRoot } from './core/repo.js';
+export {
+  GitWorktreeManager,
+  WorktreeError,
+  parseWorktreeList,
+  type CreateWorktreeResult,
+  type PruneResult,
+  type WorktreeInfo,
+} from './core/git-worktree-manager.js';
