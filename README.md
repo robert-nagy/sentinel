@@ -13,7 +13,7 @@ pass a quality gate, to issue → isolated worktree → RFC → test-driven impl
 CI babysitting.
 
 > **Status: early development (M0 — foundation).** Only `sentinel --version` and
-> `sentinel doctor` exist today. See [the implementation plan](docs/PLAN.md) for the roadmap.
+> `sentinel doctor`, `sentinel branch name` and `sentinel config` exist today. See [the implementation plan](docs/PLAN.md) for the roadmap.
 
 ## Design in one paragraph
 
@@ -37,6 +37,15 @@ npx @robert-nagy/sentinel doctor --json   # machine-readable output
 ```
 
 `doctor` exits `0` when no check fails (warnings are allowed) and `1` otherwise.
+
+```sh
+npx @robert-nagy/sentinel branch name --issue 42 --title "Add login page"   # feat/42-add-login-page
+npx @robert-nagy/sentinel config show      # effective config (defaults + global + repo)
+npx @robert-nagy/sentinel config schema    # JSON Schema for sentinel.config.json
+```
+
+Configuration lives in `sentinel.config.json` at the repo root (and optionally a global file; see
+`sentinel config path`). Invalid configuration exits with code `5`.
 
 ## Development
 

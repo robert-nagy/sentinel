@@ -37,6 +37,7 @@
   },
   "files": [
     "dist",
+    "schema",
     "README.md",
     "LICENSE"
   ],
@@ -65,7 +66,8 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "commander": "^14.0.0"
+    "commander": "^14.0.0",
+    "zod": "^4.1.0"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.7",

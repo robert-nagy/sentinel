@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { main, type CliDeps } from '../../src/cli/index.js';
 import type { CommandResult } from '../../src/core/exec.js';
@@ -12,7 +13,7 @@ const ok = (stdout = ''): CommandResult => ({
   timedOut: false,
 });
 
-function harness(nodeVersion = '22.11.0') {
+function harness(nodeVersion = '22.11.0', tree = new Map<string, string>()) {
   const out: string[] = [];
   const err: string[] = [];
   let exitCode: number | undefined;
@@ -35,6 +36,13 @@ function harness(nodeVersion = '22.11.0') {
         },
       );
     },
+    files: {
+      readText: (path) => Promise.resolve(tree.get(path)),
+      exists: (path) => Promise.resolve(tree.has(path)),
+    },
+    homeDir: '/home/u',
+    env: {},
+    now: () => new Date('2026-03-05T12:00:00Z'),
     stdout: (text) => out.push(text),
     stderr: (text) => err.push(text),
     setExitCode: (code) => {
@@ -93,5 +101,75 @@ describe('sentinel CLI', () => {
     expect(code).toBe(ExitCode.Failure);
     expect(h.exitCode()).toBe(ExitCode.Failure);
     expect(h.out.join('\n')).toContain('FAILED');
+  });
+
+  describe('branch name', () => {
+    const repoTree = (config?: unknown) => {
+      const tree = new Map<string, string>([[join('/repo', '.git'), '']]);
+      if (config !== undefined) {
+        tree.set(join('/repo', 'sentinel.config.json'), JSON.stringify(config));
+      }
+      return tree;
+    };
+
+    it('prints the default feature branch name', async () => {
+      const h = harness('22.11.0', repoTree());
+      const code = await main(
+        argv('branch', 'name', '--issue', '#42', '--title', 'Add Login Page!'),
+        h.deps,
+      );
+      expect(code).toBe(0);
+      expect(h.out).toEqual(['feat/42-add-login-page']);
+    });
+
+    it('infers the type from labels and emits JSON', async () => {
+      const h = harness('22.11.0', repoTree());
+      await main(argv('branch', 'name', '--issue', '7', '--label', 'kind/bug', '--json'), h.deps);
+      const parsed = JSON.parse(h.out.join('\n')) as { name: string; type: string };
+      expect(parsed).toMatchObject({ name: 'fix/7', type: 'bugfix' });
+    });
+
+    it('uses repo config templates', async () => {
+      const h = harness('22.11.0', repoTree({ branches: { feature: '{type}/{date}-{issue_id}' } }));
+      await main(argv('branch', 'name', '--issue', 'PROJ-1'), h.deps);
+      expect(h.out).toEqual(['feature/20260305-PROJ-1']);
+    });
+
+    it('rejects an invalid issue id with exit code 1', async () => {
+      const h = harness('22.11.0', repoTree());
+      const code = await main(argv('branch', 'name', '--issue', 'a b'), h.deps);
+      expect(code).toBe(ExitCode.Failure);
+      expect(h.err.join('\n')).toContain('invalid issue id');
+    });
+
+    it('rejects an unknown --type', async () => {
+      const h = harness('22.11.0', repoTree());
+      const code = await main(argv('branch', 'name', '--issue', '1', '--type', 'nope'), h.deps);
+      expect(code).toBe(ExitCode.Failure);
+    });
+
+    it('exits 5 on invalid config', async () => {
+      const h = harness('22.11.0', repoTree({ branches: { feature: 'no-placeholder' } }));
+      const code = await main(argv('branch', 'name', '--issue', '1'), h.deps);
+      expect(code).toBe(ExitCode.Config);
+      expect(h.err.join('\n')).toContain('{issue_id}');
+    });
+  });
+
+  describe('config', () => {
+    it('shows defaults when no config file exists', async () => {
+      const h = harness('22.11.0', new Map([[join('/repo', '.git'), '']]));
+      const code = await main(argv('config', 'show'), h.deps);
+      expect(code).toBe(0);
+      const shown = JSON.parse(h.out.join('\n')) as { prd: { threshold: number } };
+      expect(shown.prd.threshold).toBe(85);
+    });
+
+    it('prints a JSON schema', async () => {
+      const h = harness();
+      await main(argv('config', 'schema'), h.deps);
+      const schema = JSON.parse(h.out.join('\n')) as { properties: Record<string, unknown> };
+      expect(Object.keys(schema.properties)).toContain('branches');
+    });
   });
 });

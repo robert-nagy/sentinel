@@ -16,6 +16,7 @@ export default defineConfig({
   dts: { entry: { index: 'src/index.ts' } },
   sourcemap: true,
   clean: true,
+  onSuccess: 'node scripts/generate-schema.js',
   splitting: true,
   define: {
     __SENTINEL_VERSION__: JSON.stringify(pkg.version),
