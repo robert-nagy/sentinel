@@ -32,6 +32,7 @@ export interface CreateWorktreeResult {
 }
 
 export interface PruneResult {
+  readonly warnings: readonly string[];
   readonly removed: readonly WorktreeInfo[];
   readonly skipped: readonly { readonly worktree: WorktreeInfo; readonly reason: string }[];
 }
@@ -45,6 +46,9 @@ export interface WorktreeManagerOptions {
 }
 
 const GIT_TIMEOUT_MS = 120_000;
+
+/** From this many extra worktrees on, sentinel suggests pruning (CLI hint and `doctor`). */
+export const WORKTREE_CLEANUP_THRESHOLD = 5;
 
 /** Parses `git worktree list --porcelain`. */
 export function parseWorktreeList(output: string): WorktreeInfo[] {
@@ -250,6 +254,16 @@ export class GitWorktreeManager {
     const isMerged = options.isMerged ?? ((branch: string) => this.isAncestorOfDefault(branch));
     const removed: WorktreeInfo[] = [];
     const skipped: { worktree: WorktreeInfo; reason: string }[] = [];
+    const warnings: string[] = [];
+
+    // Merge checks compare against origin/<default>; refresh it so they are not stale.
+    const defaultBranch = this.config.codeHost.defaultBranch;
+    const fetched = await this.git(['fetch', '--quiet', 'origin', defaultBranch]);
+    if (fetched.exitCode !== 0) {
+      warnings.push(
+        `could not fetch origin/${defaultBranch}; merge checks use the last known state (${(fetched.stderr || 'fetch failed').trim()})`,
+      );
+    }
 
     for (const worktree of await this.list()) {
       if (worktree.branch === undefined) {
@@ -273,7 +287,7 @@ export class GitWorktreeManager {
       removed.push(worktree);
     }
     if (options.dryRun !== true) await this.git(['worktree', 'prune']);
-    return { removed, skipped };
+    return { warnings, removed, skipped };
   }
 
   private async isAncestorOfDefault(branch: string): Promise<boolean> {

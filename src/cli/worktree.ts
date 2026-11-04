@@ -1,6 +1,10 @@
 import type { Command } from 'commander';
 import { ExitCode } from '../core/exit-codes.js';
-import { GitWorktreeManager, WorktreeError } from '../core/git-worktree-manager.js';
+import {
+  GitWorktreeManager,
+  WORKTREE_CLEANUP_THRESHOLD,
+  WorktreeError,
+} from '../core/git-worktree-manager.js';
 import { addBranchOptions, loadCliConfig, resolveCliBranch, type BranchOptions } from './branch.js';
 import type { CliDeps } from './deps.js';
 import { guarded } from './safe.js';
@@ -38,6 +42,16 @@ export function registerWorktree(program: Command, deps: CliDeps): void {
           const branch = await resolveCliBranch(deps, config, { ...options, issue: id });
           const result = await manager.create(id, branch.name);
           for (const warning of result.warnings) deps.stderr(`sentinel: warning: ${warning}`);
+        const others = (await manager.list()).filter((w) => w.branch !== result.branch);
+        if (others.length >= WORKTREE_CLEANUP_THRESHOLD) {
+          let merged = 0;
+          for (const w of others) {
+            if (w.branch !== undefined && (await manager.isMergedLocally(w.branch))) merged += 1;
+          }
+          deps.stderr(
+            `sentinel: hint: ${String(others.length)} other worktrees exist (${String(merged)} look merged); run \`sentinel worktree prune\` to clean up`,
+          );
+        }
           deps.stdout(options.json === true ? JSON.stringify(result, null, 2) : result.path);
         },
       ),
@@ -80,6 +94,7 @@ export function registerWorktree(program: Command, deps: CliDeps): void {
       guarded(deps, async (options: { dryRun?: boolean }) => {
         const manager = await createManager(deps);
         const result = await manager.prune({ dryRun: options.dryRun === true });
+        for (const warning of result.warnings) deps.stderr(`sentinel: warning: ${warning}`);
         const verb = options.dryRun === true ? 'would remove' : 'removed';
         for (const w of result.removed) deps.stdout(`${verb} ${w.path}`);
         for (const s of result.skipped) deps.stdout(`kept ${s.worktree.path} (${s.reason})`);

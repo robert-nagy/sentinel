@@ -265,6 +265,19 @@ describe('GitWorktreeManager (real git)', () => {
   );
 
   it(
+    'warns when it cannot refresh origin before pruning',
+    async () => {
+      const config = {
+        ...DEFAULT_CONFIG,
+        codeHost: { ...DEFAULT_CONFIG.codeHost, defaultBranch: 'nope' },
+      };
+      const result = await manager(config).prune({ dryRun: true });
+      expect(result.warnings.join('\n')).toContain('could not fetch origin/nope');
+    },
+    TIMEOUT,
+  );
+
+  it(
     'honours a custom merged predicate (for example the code host)',
     async () => {
       const m = manager();
@@ -314,6 +327,32 @@ describe('sentinel worktree (CLI, real git)', () => {
       expect(await main(argv('worktree', 'remove', '42'), deps)).toBe(0);
       expect(out[0]).toContain('removed');
       expect(err).toEqual([]);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'hints at pruning when many other worktrees exist',
+    async () => {
+      const m = manager();
+      for (let i = 1; i <= 5; i += 1) await m.create(i, `feat/${String(i)}`);
+      const err: string[] = [];
+      const deps = {
+        run: runCommand,
+        files: nodeFiles,
+        stdout: () => undefined,
+        stderr: (t: string) => err.push(t),
+        setExitCode: () => undefined,
+        nodeVersion: process.versions.node,
+        platform: process.platform,
+        cwd: work,
+        homeDir: tmp,
+        env: { XDG_CONFIG_HOME: join(tmp, 'xdg'), APPDATA: join(tmp, 'appdata') },
+        now: () => new Date('2026-03-05T12:00:00Z'),
+      };
+      await main(['node', 'sentinel', 'worktree', 'add', '6'], deps);
+      expect(err.join('\n')).toContain('5 other worktrees exist (5 look merged)');
+      expect(err.join('\n')).toContain('sentinel worktree prune');
     },
     TIMEOUT,
   );

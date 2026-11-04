@@ -1,4 +1,5 @@
 import type { CommandRunner } from '../exec.js';
+import { WORKTREE_CLEANUP_THRESHOLD } from '../git-worktree-manager.js';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail' | 'skip';
 
@@ -220,4 +221,22 @@ export async function checkWindowsLongPaths(ctx: DoctorContext): Promise<CheckRe
     message: 'core.longpaths is not enabled; deep worktree paths may exceed 260 characters',
     hint: 'Run `git config --global core.longpaths true`.',
   };
+}
+
+export async function checkWorktrees(ctx: DoctorContext): Promise<CheckResult> {
+  const base = { id: 'worktrees', title: 'git worktrees' } as const;
+  const result = await exec(ctx, 'git', ['worktree', 'list', '--porcelain']);
+  if (result.exitCode !== 0) {
+    return { ...base, status: 'skip', message: 'Skipped: could not list worktrees' };
+  }
+  const extra = Math.max(0, result.stdout.split('\n').filter((l) => l.startsWith('worktree ')).length - 1);
+  if (extra >= WORKTREE_CLEANUP_THRESHOLD) {
+    return {
+      ...base,
+      status: 'warn',
+      message: `${String(extra)} extra worktrees exist`,
+      hint: 'Run `sentinel worktree prune --dry-run` to see which ones can be removed.',
+    };
+  }
+  return { ...base, status: 'pass', message: `${String(extra)} extra worktrees` };
 }
