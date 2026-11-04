@@ -10,7 +10,7 @@ export default defineConfig({
     __SENTINEL_VERSION__: JSON.stringify(pkg.version),
   },
   test: {
-    include: ['test/unit/**/*.test.ts'],
+    include: ['test/unit/**/*.test.{ts,js}'],
     environment: 'node',
     coverage: {
       provider: 'v8',

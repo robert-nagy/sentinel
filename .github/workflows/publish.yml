@@ -1,19 +1,30 @@
 name: Release
 
-# Changesets flow: on every push to main, either opens/updates a
-# "chore: version packages" PR (when unreleased changesets exist) or, once that
-# PR is merged, publishes the new version to npm with provenance.
+# Changesets + npm staged publishing (see docs/RELEASING.md).
+#
+#  1. On every push to main, changesets opens or updates a "chore: version
+#     packages" PR while unreleased changesets exist.
+#  2. When that PR is merged, the version in package.json changes and this
+#     workflow STAGES the new version on npm (`npm stage publish`). It is not
+#     installable yet.
+#  3. A maintainer approves the staged version with 2FA on npmjs.com (Staged
+#     Packages tab) or with `npm stage approve`.
+#  4. The next run (scheduled or manual) sees the version is live and creates the
+#     git tag and GitHub release.
 #
 # Disabled until the repository variable SENTINEL_RELEASE_ENABLED is set to
-# "true" (Settings → Secrets and variables → Actions → Variables), so nothing is
-# published before npm is configured. Publishing uses npm trusted publishing
-# (OIDC): add this workflow as a trusted publisher for @robert-nagy/sentinel on
-# npmjs.com. Alternatively, set an NPM_TOKEN secret.
+# "true" (Settings → Secrets and variables → Actions → Variables). Authentication
+# is npm trusted publishing (OIDC): this workflow file (publish.yml) must be
+# registered as a trusted publisher for @robert-nagy/sentinel with
+# "Allow npm stage publish" enabled. No npm token is used.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Picks up versions approved on npm and tags them. Harmless when nothing is pending.
+    - cron: '17 */6 * * *'
 
 concurrency:
   group: release
@@ -23,9 +34,9 @@ permissions:
   contents: read
 
 jobs:
-  release:
-    name: Version or publish
-    if: vars.SENTINEL_RELEASE_ENABLED == 'true'
+  version-and-stage:
+    name: Version PR or stage
+    if: vars.SENTINEL_RELEASE_ENABLED == 'true' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -33,42 +44,63 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
-      - name: Use an npm with trusted publishing support
-        run: npm install --global npm@^11.5.1
-      - name: Let npm fall through to OIDC when there is no NPM_TOKEN
+      - name: Use an npm with staged publishing support
+        run: npm install --global npm@^11.15.0
+      - name: Let npm fall through to OIDC
         # setup-node's registry-url writes `_authToken=${NODE_AUTH_TOKEN}` into
-        # .npmrc. With no NPM_TOKEN secret that line expands to an empty token,
-        # which npm can mistake for configured credentials and then skip the
-        # trusted-publishing (OIDC) login, failing with ENEEDAUTH. Remove the line
-        # unless a token was actually provided.
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NPM_TOKEN" ]; then
-            sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
-            echo "No NPM_TOKEN: publishing with OIDC trusted publishing"
-          else
-            echo "NPM_TOKEN present: publishing with token"
-          fi
+        # .npmrc. With no token that expands to an empty value, which npm can
+        # mistake for configured credentials and then skip the trusted-publishing
+        # (OIDC) login, failing with ENEEDAUTH. Remove the line.
+        run: sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
       - run: npm ci
       - run: npm run check
-      - uses: changesets/action@v1
+      - name: Open or update the version PR
+        id: changesets
+        # No `publish` command: changesets only prepares the version PR. Staging
+        # is done by scripts/stage-release.js below.
+        uses: changesets/action@v1
         with:
           version: npm run version-packages
-          publish: npm run release
           title: 'chore: version packages'
           commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: 'true'
+      - name: Stage the new version on npm
+        # Only when there are no pending changesets, i.e. after the version PR merged.
+        if: steps.changesets.outputs.hasChangesets != 'true'
+        run: |
+          npm run build
+          node scripts/stage-release.js
+        env:
+          RELEASE_BEFORE_SHA: ${{ github.event.before }}
       - name: Show npm's own error on failure
-        # changesets/action hides npm's stderr. Surface the auth-related lines
-        # (npm redacts secrets in its logs).
+        # Surface the auth/staging-related lines of npm's debug log (npm redacts secrets).
         if: failure()
-        run: grep -h -iE 'oidc|trusted|exchange|ENEEDAUTH|E40[134]' ~/.npm/_logs/*.log | head -40 || true
+        run: grep -h -iE 'oidc|trusted|exchange|stage|ENEEDAUTH|E40[134]' ~/.npm/_logs/*.log | head -40 || true
+
+  tag-release:
+    name: Tag approved release
+    needs: [version-and-stage]
+    # Also when version-and-stage was skipped (scheduled runs) or failed.
+    if: ${{ !cancelled() && vars.SENTINEL_RELEASE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Create the tag and GitHub release if the version is live on npm
+        run: node scripts/tag-release.js
+        env:
+          GH_TOKEN: ${{ github.token }}
