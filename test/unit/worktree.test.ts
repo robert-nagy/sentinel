@@ -103,7 +103,8 @@ describe('GitWorktreeManager (real git)', () => {
       });
       expect(await git(result.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feat/42-login');
       expect(await readFile(join(result.path, '.env.local'), 'utf8')).toBe('LOCAL=1\n');
-      expect(await readFile(join(result.path, '.env.example'), 'utf8')).toBe('KEY=value\n');
+      // Git on Windows may check the tracked file out with CRLF.
+      expect((await readFile(join(result.path, '.env.example'), 'utf8')).trim()).toBe('KEY=value');
       expect(await readFile(join(work, '.gitignore'), 'utf8')).toBe('.worktrees/\n');
       // Pushing the branch must not target main.
       const upstream = await runCommand('git', ['config', 'branch.feat/42-login.remote'], {
