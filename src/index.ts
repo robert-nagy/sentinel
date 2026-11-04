@@ -39,3 +39,13 @@ export { ConfigError, loadConfig, globalConfigPath, type LoadedConfig } from './
 export { StateStore, StateError } from './core/state.js';
 export { nodeFiles, type FileAccess } from './core/fs.js';
 export { findRepoRoot } from './core/repo.js';
+export {
+  TEST_TIERS,
+  analyze,
+  formatStackReport,
+  installCommands,
+  type Ecosystem,
+  type ProjectReport,
+  type StackReport,
+  type TestTier,
+} from './core/stack-analyzer.js';

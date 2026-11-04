@@ -39,6 +39,7 @@ function harness(nodeVersion = '22.11.0', tree = new Map<string, string>()) {
     files: {
       readText: (path) => Promise.resolve(tree.get(path)),
       exists: (path) => Promise.resolve(tree.has(path)),
+      listDir: () => Promise.resolve(undefined),
     },
     homeDir: '/home/u',
     env: {},
@@ -170,6 +171,15 @@ describe('sentinel CLI', () => {
       await main(argv('config', 'schema'), h.deps);
       const schema = JSON.parse(h.out.join('\n')) as { properties: Record<string, unknown> };
       expect(Object.keys(schema.properties)).toContain('branches');
+    });
+  });
+
+  describe('analyze', () => {
+    it('reports an empty repo as JSON', async () => {
+      const h = harness();
+      const code = await main(argv('analyze', '--json'), h.deps);
+      expect(code).toBe(0);
+      expect(JSON.parse(h.out.join('\n'))).toEqual({ empty: true, projects: [] });
     });
   });
 });

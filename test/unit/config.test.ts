@@ -15,6 +15,7 @@ function memory(entries: Record<string, string>): FileAccess {
   return {
     readText: (path) => Promise.resolve(tree.get(path)),
     exists: (path) => Promise.resolve(tree.has(path)),
+    listDir: () => Promise.resolve(undefined),
   };
 }
 

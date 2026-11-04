@@ -1,5 +1,6 @@
 import { Command, CommanderError } from 'commander';
 import { VERSION } from '../version.js';
+import { registerAnalyze } from './analyze.js';
 import { registerBranch } from './branch.js';
 import { registerConfig } from './config.js';
 import { defaultDeps, type CliDeps } from './deps.js';
@@ -29,6 +30,7 @@ export function createProgram(deps: CliDeps = defaultDeps()): Command {
     });
 
   registerDoctor(program, deps);
+  registerAnalyze(program, deps);
   registerBranch(program, deps);
   registerConfig(program, deps);
 
