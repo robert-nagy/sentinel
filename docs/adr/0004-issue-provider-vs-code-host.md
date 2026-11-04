@@ -1,6 +1,8 @@
 # ADR-0004: Issue provider is separate from code host
 
-- **Status:** Accepted
+- **Status:** Accepted; the `issueProvider` part is amended by
+  [ADR-0005](0005-agent-native-issue-trackers.md) (no built-in remote tracker clients; config
+  records intent only). The split between tracker and code host still stands.
 - **Date:** 2026-11-02
 
 ## Context

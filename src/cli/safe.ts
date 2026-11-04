@@ -2,7 +2,8 @@ import { BranchNameError } from '../core/branch-namer.js';
 import { ConfigError } from '../core/config.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { WorktreeError } from '../core/git-worktree-manager.js';
-import { ProviderError } from '../core/issue-provider.js';
+import { TrackerError } from '../core/issue-tracker.js';
+import { ProviderError } from '../core/provider-error.js';
 import { StateError } from '../core/state.js';
 import type { CliDeps } from './deps.js';
 
@@ -15,7 +16,10 @@ export function guarded<Args extends unknown[]>(
     try {
       await action(...args);
     } catch (error) {
-      if (error instanceof ConfigError) {
+      if (error instanceof TrackerError) {
+        deps.stderr(`sentinel: ${error.message}`);
+        deps.setExitCode(error.kind === 'unavailable' ? ExitCode.Provider : ExitCode.Failure);
+      } else if (error instanceof ConfigError) {
         deps.stderr(`sentinel: ${error.message}`);
         deps.setExitCode(ExitCode.Config);
       } else if (error instanceof ProviderError) {

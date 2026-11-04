@@ -179,7 +179,7 @@ describe('sentinel CLI', () => {
     });
   });
 
-  describe('issue and pr', () => {
+  describe('pr', () => {
     const repoTree = (config?: unknown) => {
       const tree = new Map<string, string>([[join('/repo', '.git'), '']]);
       if (config !== undefined) {
@@ -187,107 +187,82 @@ describe('sentinel CLI', () => {
       }
       return tree;
     };
-    const issueJson = JSON.stringify({
-      number: 42,
-      title: 'Add login',
-      body: 'Details',
-      state: 'OPEN',
-      labels: [{ name: 'bug' }],
-      url: 'https://github.com/o/r/issues/42',
-      assignees: [],
-    });
     const prJson = JSON.stringify({
       number: 9,
       url: 'https://github.com/o/r/pull/9',
-      title: 'Add login (#42)',
+      title: 'Add login',
       state: 'OPEN',
       isDraft: false,
       headRefName: 'feat/42-add-login',
       baseRefName: 'main',
     });
-
-    it('prints an issue and its JSON form', async () => {
-      const h = harness('22.11.0', repoTree(), (l) =>
-        l.startsWith('gh issue view 42') ? ok(issueJson) : undefined,
-      );
-      expect(await main(argv('issue', 'get', '42'), h.deps)).toBe(0);
-      expect(h.out.join('\n')).toContain('#42 Add login [open]');
-      h.out.length = 0;
-      await main(argv('issue', 'get', '42', '--json'), h.deps);
-      expect(JSON.parse(h.out.join('\n'))).toMatchObject({ id: '42', labels: ['bug'] });
-    });
-
-    it('exits 4 when gh is not authenticated', async () => {
-      const h = harness('22.11.0', repoTree(), (l) =>
-        l.startsWith('gh ')
-          ? {
-              exitCode: 4,
-              stdout: '',
-              stderr: 'Run: gh auth login',
-              notFound: false,
-              timedOut: false,
-            }
-          : undefined,
-      );
-      const code = await main(argv('issue', 'get', '1'), h.deps);
-      expect(code).toBe(ExitCode.Provider);
-      expect(h.err.join('\n')).toContain('gh auth login');
-    });
-
-    it('exits 5 for an invalid custom provider configuration', async () => {
-      const h = harness('22.11.0', repoTree({ issueProvider: { type: 'custom', options: {} } }));
-      expect(await main(argv('issue', 'get', '1'), h.deps)).toBe(ExitCode.Config);
-    });
-
-    it('works with the custom provider', async () => {
-      const h = harness(
-        '22.11.0',
-        repoTree({
-          issueProvider: {
-            type: 'custom',
-            options: { commands: { getIssue: 'mytracker show {id}' } },
-          },
-        }),
-        (l) =>
-          l === 'mytracker show T-1'
-            ? ok(JSON.stringify({ id: 'T-1', title: 'Hello' }))
-            : undefined,
-      );
-      expect(await main(argv('issue', 'get', 'T-1', '--json'), h.deps)).toBe(0);
-      expect(JSON.parse(h.out.join('\n'))).toMatchObject({ id: 'T-1', title: 'Hello' });
-    });
-
-    it('describes the provider', async () => {
-      const h = harness('22.11.0', repoTree());
-      await main(argv('issue', 'describe-provider'), h.deps);
-      expect(h.out.join('\n')).toContain('GitHub Issues');
-    });
-
-    it('opens a pull request that closes the issue', async () => {
-      const calls: string[] = [];
-      const h = harness('22.11.0', repoTree(), (l) => {
+    const responder =
+      (calls: string[], branch = 'feat/42-add-login') =>
+      (l: string) => {
         calls.push(l);
-        if (l.startsWith('gh issue view 42')) return ok(issueJson);
-        if (l === 'git rev-parse --abbrev-ref HEAD') return ok('feat/42-add-login\n');
+        if (l === 'git rev-parse --abbrev-ref HEAD') return ok(`${branch}\n`);
         if (l.startsWith('git push')) return ok();
         if (l.startsWith('gh pr create')) return ok('https://github.com/o/r/pull/9\n');
         if (l.startsWith('gh pr view')) return ok(prJson);
         return undefined;
-      });
-      expect(await main(argv('pr', 'create', '--issue', '42'), h.deps)).toBe(0);
+      };
+
+    it('opens a pull request that closes a GitHub issue', async () => {
+      const calls: string[] = [];
+      const h = harness(
+        '22.11.0',
+        repoTree({ issueProvider: { tracker: 'github' } }),
+        responder(calls),
+      );
+      expect(
+        await main(argv('pr', 'create', '--issue', '#42', '--title', 'Add login'), h.deps),
+      ).toBe(0);
       expect(h.out).toEqual(['https://github.com/o/r/pull/9']);
       expect(calls).toContain('git push --set-upstream origin feat/42-add-login');
       expect(calls.find((c) => c.startsWith('gh pr create'))).toContain('Closes #42');
+      expect(h.err).toEqual([]);
+    });
+
+    it('references other trackers and hints at linking with the agent tools', async () => {
+      const calls: string[] = [];
+      const h = harness(
+        '22.11.0',
+        repoTree({ issueProvider: { tracker: 'jira' } }),
+        responder(calls),
+      );
+      await main(
+        argv(
+          'pr',
+          'create',
+          '--issue',
+          'PROJ-7',
+          '--title',
+          'Add login',
+          '--issue-url',
+          'https://acme.atlassian.net/browse/PROJ-7',
+        ),
+        h.deps,
+      );
+      const create = calls.find((c) => c.startsWith('gh pr create')) ?? '';
+      expect(create).toContain('Refs PROJ-7: https://acme.atlassian.net/browse/PROJ-7');
+      expect(create).not.toContain('Closes');
+      expect(h.err.join('\n')).toContain('with your jira tools');
+    });
+
+    it('requires a title', async () => {
+      const h = harness('22.11.0', repoTree());
+      expect(await main(argv('pr', 'create', '--issue', '42'), h.deps)).not.toBe(0);
+      expect(h.err.join('\n')).toContain('--title');
     });
 
     it('refuses to open a pull request from the default branch', async () => {
-      const h = harness('22.11.0', repoTree(), (l) => {
-        if (l.startsWith('gh issue view')) return ok(issueJson);
-        if (l === 'git rev-parse --abbrev-ref HEAD') return ok('main\n');
-        return undefined;
-      });
-      expect(await main(argv('pr', 'create', '--issue', '42'), h.deps)).toBe(ExitCode.Provider);
+      const calls: string[] = [];
+      const h = harness('22.11.0', repoTree(), responder(calls, 'main'));
+      expect(await main(argv('pr', 'create', '--issue', '42', '--title', 'x'), h.deps)).toBe(
+        ExitCode.Provider,
+      );
       expect(h.err.join('\n')).toContain('into itself');
+      expect(calls.some((c) => c.startsWith('git push'))).toBe(false);
     });
   });
 

@@ -27,7 +27,11 @@ to the default branch.
 
 - Node.js ≥ 22
 - git ≥ 2.25
-- GitHub CLI (`gh`) for the GitHub issue provider / code host
+- GitHub CLI (`gh`) for the GitHub code host
+
+No issue-tracker credentials: your agent reaches the tracker with the connections it already has
+(an MCP server or CLI for GitHub, Jira, Linear, Azure DevOps…). See
+[ADR-0005](docs/adr/0005-agent-native-issue-trackers.md).
 
 ## Usage (current)
 
@@ -43,6 +47,20 @@ npx @robert-nagy/sentinel branch name --issue 42 --title "Add login page"   # fe
 npx @robert-nagy/sentinel config show      # effective config (defaults + global + repo)
 npx @robert-nagy/sentinel config schema    # JSON Schema for sentinel.config.json
 ```
+
+### Issue trackers
+
+```sh
+npx @robert-nagy/sentinel issue resolve --available linear,github   # use | ask | fallback | unavailable
+npx @robert-nagy/sentinel issue use linear --location "team ENG" --label kind/bug=Bug
+npx @robert-nagy/sentinel issue describe   # what the agent should do, and how labels map
+npx @robert-nagy/sentinel issue duplicates "Add login page" --candidates candidates.json
+```
+
+`resolve` decides which tracker to use: the configured one; otherwise the only reachable one when
+it doesn't conflict with the git remote; otherwise it asks; with nothing reachable it falls back to
+the local tracker, Markdown files in `docs/issues/` managed with `sentinel issue
+create|get|list|comment|label|close|reopen`.
 
 Configuration lives in `sentinel.config.json` at the repo root (and optionally a global file; see
 `sentinel config path`). Invalid configuration exits with code `5`.

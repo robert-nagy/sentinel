@@ -161,7 +161,8 @@ export async function checkGh(ctx: DoctorContext): Promise<CheckResult> {
     return {
       ...base,
       status: 'warn',
-      message: 'gh is not installed; required for the GitHub issue provider and code host',
+      message:
+        'gh is not installed; required for the GitHub code host (and useful when issues live on GitHub)',
       hint: 'Install the GitHub CLI from https://cli.github.com.',
     };
   }

@@ -1,8 +1,44 @@
 import { z } from 'zod';
 import type { CheckBucket, CheckRun, CodeHost, NewPullRequest, PullRequest } from '../code-host.js';
 import type { CommandRunner } from '../exec.js';
-import { ProviderError } from '../issue-provider.js';
-import { ghError } from '../providers/github.js';
+import { ProviderError } from '../provider-error.js';
+
+/** Turns a failed `gh` invocation into a {@link ProviderError}. */
+export function ghError(
+  result: {
+    exitCode: number | null;
+    stderr: string;
+    stdout: string;
+    notFound: boolean;
+    timedOut: boolean;
+  },
+  action: string,
+): ProviderError {
+  if (result.notFound) {
+    return new ProviderError(
+      'unavailable',
+      'the GitHub CLI (gh) was not found; install it from https://cli.github.com',
+    );
+  }
+  if (result.timedOut)
+    return new ProviderError('unavailable', `gh timed out while trying to ${action}`);
+  const detail = (result.stderr || result.stdout).trim();
+  if (
+    /gh auth login|not logged in|authentication|GH_TOKEN|HTTP 401|bad credentials/i.test(detail)
+  ) {
+    return new ProviderError(
+      'auth',
+      `GitHub authentication failed: run \`gh auth login\` (${detail.split('\n')[0] ?? ''})`,
+    );
+  }
+  if (/could not resolve|not found|HTTP 404|no pull requests? found/i.test(detail)) {
+    return new ProviderError(
+      'not-found',
+      `could not ${action}: ${detail.split('\n')[0] ?? 'not found'}`,
+    );
+  }
+  return new ProviderError('failed', `could not ${action}: ${detail || 'gh exited with an error'}`);
+}
 
 const PR_FIELDS = 'number,url,title,state,isDraft,headRefName,baseRefName';
 const GH_TIMEOUT_MS = 60_000;
