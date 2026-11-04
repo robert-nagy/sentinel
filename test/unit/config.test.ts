@@ -82,7 +82,12 @@ describe('loadConfig', () => {
       [globalPath]: JSON.stringify({ prd: { threshold: 90 }, rfc: { dir: 'rfc' } }),
       [repoConfig]: JSON.stringify({ prd: { maxRefinements: 1 }, $schema: 'x' }),
     });
-    expect(config.prd).toEqual({ dir: 'docs/prd', threshold: 90, dimensionFloor: 70, maxRefinements: 1 });
+    expect(config.prd).toEqual({
+      dir: 'docs/prd',
+      threshold: 90,
+      dimensionFloor: 70,
+      maxRefinements: 1,
+    });
     expect(config.rfc.dir).toBe('rfc');
     expect(sources).toEqual([globalPath, repoConfig]);
   });

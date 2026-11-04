@@ -106,7 +106,9 @@ describe('sentinel CLI', () => {
   describe('branch name', () => {
     const repoTree = (config?: unknown) => {
       const tree = new Map<string, string>([[join('/repo', '.git'), '']]);
-      if (config !== undefined) tree.set(join('/repo', 'sentinel.config.json'), JSON.stringify(config));
+      if (config !== undefined) {
+        tree.set(join('/repo', 'sentinel.config.json'), JSON.stringify(config));
+      }
       return tree;
     };
 
@@ -122,19 +124,13 @@ describe('sentinel CLI', () => {
 
     it('infers the type from labels and emits JSON', async () => {
       const h = harness('22.11.0', repoTree());
-      await main(
-        argv('branch', 'name', '--issue', '7', '--label', 'kind/bug', '--json'),
-        h.deps,
-      );
+      await main(argv('branch', 'name', '--issue', '7', '--label', 'kind/bug', '--json'), h.deps);
       const parsed = JSON.parse(h.out.join('\n')) as { name: string; type: string };
       expect(parsed).toMatchObject({ name: 'fix/7', type: 'bugfix' });
     });
 
     it('uses repo config templates', async () => {
-      const h = harness(
-        '22.11.0',
-        repoTree({ branches: { feature: '{type}/{date}-{issue_id}' } }),
-      );
+      const h = harness('22.11.0', repoTree({ branches: { feature: '{type}/{date}-{issue_id}' } }));
       await main(argv('branch', 'name', '--issue', 'PROJ-1'), h.deps);
       expect(h.out).toEqual(['feature/20260305-PROJ-1']);
     });

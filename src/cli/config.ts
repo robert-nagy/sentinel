@@ -28,7 +28,8 @@ export function registerConfig(program: Command, deps: CliDeps): void {
         const repo = await findRepoConfigPath(deps.cwd, deps.files);
         deps.stdout(`global: ${globalConfigPath(location)}`);
         deps.stdout(`repo:   ${repo ?? '(none found)'}`);
-        deps.stdout(`loaded: ${loaded.sources.length === 0 ? '(defaults only)' : loaded.sources.join(', ')}`);
+        const used = loaded.sources.length === 0 ? '(defaults only)' : loaded.sources.join(', ');
+        deps.stdout(`loaded: ${used}`);
       }),
     );
 

@@ -37,7 +37,8 @@ export function registerBranch(program: Command, deps: CliDeps): void {
     .option('--json', 'output machine-readable JSON')
     .action(
       guarded(deps, async (options: NameOptions) => {
-        if (options.type !== undefined && !(BRANCH_TYPES as readonly string[]).includes(options.type)) {
+        const knownTypes: readonly string[] = BRANCH_TYPES;
+        if (options.type !== undefined && !knownTypes.includes(options.type)) {
           throw new BranchNameError(
             `unknown branch type "${options.type}"; use one of: ${BRANCH_TYPES.join(', ')}`,
           );
