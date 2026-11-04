@@ -17,7 +17,9 @@ describe('fillTemplate / resolveInside', () => {
   });
   it('rejects directories that escape the repository', () => {
     expect(() => resolveInside(resolve('/r'), '../outside', 'f.md')).toThrow(ScaffoldError);
-    expect(resolveInside(resolve('/r'), 'docs/prd', 'f.md')).toBe(resolve('/r', 'docs', 'prd', 'f.md'));
+    expect(resolveInside(resolve('/r'), 'docs/prd', 'f.md')).toBe(
+      resolve('/r', 'docs', 'prd', 'f.md'),
+    );
   });
 });
 
