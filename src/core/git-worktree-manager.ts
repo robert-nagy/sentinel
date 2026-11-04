@@ -251,7 +251,7 @@ export class GitWorktreeManager {
   async prune(
     options: { dryRun?: boolean; isMerged?: (branch: string) => Promise<boolean> } = {},
   ): Promise<PruneResult> {
-    const isMerged = options.isMerged ?? ((branch: string) => this.isAncestorOfDefault(branch));
+    const isMerged = options.isMerged ?? ((branch: string) => this.isMergedLocally(branch));
     const removed: WorktreeInfo[] = [];
     const skipped: { worktree: WorktreeInfo; reason: string }[] = [];
     const warnings: string[] = [];
@@ -290,7 +290,8 @@ export class GitWorktreeManager {
     return { warnings, removed, skipped };
   }
 
-  private async isAncestorOfDefault(branch: string): Promise<boolean> {
+  /** True when the branch is an ancestor of `origin/<default>` (merge-commit or fast-forward merges). */
+  async isMergedLocally(branch: string): Promise<boolean> {
     const base = `origin/${this.config.codeHost.defaultBranch}`;
     const result = await this.git(['merge-base', '--is-ancestor', `refs/heads/${branch}`, base]);
     return result.exitCode === 0;

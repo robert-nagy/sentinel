@@ -95,6 +95,7 @@ describe('runDoctor', () => {
       node: 'pass',
       git: 'pass',
       'git-repo': 'pass',
+      worktrees: 'skip',
       gh: 'pass',
       'gh-auth': 'pass',
       'git-longpaths': 'skip',

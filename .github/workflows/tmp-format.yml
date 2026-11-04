@@ -29,3 +29,5 @@ jobs:
           git diff --cached --quiet && { echo "nothing to format"; exit 0; }
           git commit -m "style: prettier formatting"
           git push
+
+# retrigger
