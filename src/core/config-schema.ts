@@ -106,5 +106,5 @@ export const DEFAULT_CONFIG: SentinelConfig = {
 
 /** JSON Schema for `sentinel.config.json`, for editor completion and validation. */
 export function configJsonSchema(): Record<string, unknown> {
-  return z.toJSONSchema(userConfigSchema) as Record<string, unknown>;
+  return z.toJSONSchema(userConfigSchema);
 }

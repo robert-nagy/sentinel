@@ -52,7 +52,7 @@ describe('deepMerge', () => {
   });
   it('ignores __proto__ keys', () => {
     const merged = deepMerge({}, JSON.parse('{"__proto__":{"polluted":true}}')) as object;
-    expect(({} as Record<string, unknown>)['polluted']).toBeUndefined();
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     expect(Object.keys(merged)).toEqual([]);
   });
 });

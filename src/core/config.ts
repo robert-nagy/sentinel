@@ -53,10 +53,10 @@ export interface GlobalConfigLocation {
 export function globalConfigPath(location: GlobalConfigLocation): string {
   const { homeDir, env, platform } = location;
   if (platform === 'win32') {
-    const base = env['APPDATA'] ?? win32.join(homeDir, 'AppData', 'Roaming');
+    const base = env.APPDATA ?? win32.join(homeDir, 'AppData', 'Roaming');
     return win32.join(base, 'sentinel', 'config.json');
   }
-  const base = env['XDG_CONFIG_HOME'] ?? posix.join(homeDir, '.config');
+  const base = env.XDG_CONFIG_HOME ?? posix.join(homeDir, '.config');
   return posix.join(base, 'sentinel', 'config.json');
 }
 
