@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 import { basename, extname, resolve } from 'node:path';
 import type { Command } from 'commander';
-import { slugify } from '../core/branch-namer.js';
+import { normalizeIssueId, slugify } from '../core/branch-namer.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { findRepoRoot } from '../core/repo.js';
+import { fillTemplate, resolveInside, writeNewFile } from '../core/scaffold.js';
+import { PRD_TEMPLATE } from '../templates/prd-template.js';
+import { formatRubric } from '../templates/prd-rubric.js';
 import { evaluationsBefore, PrdError, recordEvaluation, type PrdState } from '../core/prd-state.js';
 import {
   DIMENSIONS,
@@ -129,6 +132,45 @@ export function registerPrd(program: Command, deps: CliDeps): void {
         },
       ),
     );
+
+  prd
+    .command('new')
+    .description('Create a PRD from the IEEE 29148-aligned template')
+    .argument('<slug>', 'short name; also the file name')
+    .option('--title <title>', 'PRD title (default: the slug)')
+    .option('--issue <id>', 'issue the PRD belongs to')
+    .option('--force', 'overwrite an existing PRD')
+    .option('--json', 'output machine-readable JSON')
+    .action(
+      guarded(
+        deps,
+        async (
+          rawSlug: string,
+          options: { title?: string; issue?: string; force?: boolean; json?: boolean },
+        ) => {
+          const slug = slugify(rawSlug, 60);
+          if (slug === '') throw new PrdError(`"${rawSlug}" cannot be turned into a slug`);
+          const { config } = await loadCliConfig(deps);
+          const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
+          const path = resolveInside(root, config.prd.dir, `${slug}.md`);
+          const content = fillTemplate(PRD_TEMPLATE, {
+            TITLE: options.title?.trim() || rawSlug.trim(),
+            SLUG: slug,
+            ISSUE: options.issue === undefined ? 'none' : `#${normalizeIssueId(options.issue)}`,
+            DATE: deps.now().toISOString().slice(0, 10),
+          });
+          await writeNewFile(path, content, options.force === true);
+          deps.stdout(options.json === true ? JSON.stringify({ path, slug }, null, 2) : path);
+        },
+      ),
+    );
+
+  prd
+    .command('rubric')
+    .description('Print the scoring rubric for the five dimensions')
+    .action(() => {
+      deps.stdout(formatRubric());
+    });
 
   prd
     .command('status')
