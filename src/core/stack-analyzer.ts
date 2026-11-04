@@ -229,7 +229,13 @@ const SPECS: Readonly<Record<Ecosystem, EcosystemSpec>> = {
           ['selenium', 'selenium'],
         ],
       },
-      load: { ...k6, known: [['gatling', 'gatling'], ['k6', 'k6']] },
+      load: {
+        ...k6,
+        known: [
+          ['gatling', 'gatling'],
+          ['k6', 'k6'],
+        ],
+      },
     }),
   },
   dotnet: {
@@ -256,7 +262,13 @@ const SPECS: Readonly<Record<Ecosystem, EcosystemSpec>> = {
         install: 'dotnet add package Microsoft.Playwright',
         known: [['microsoft.playwright', 'Playwright']],
       },
-      load: { ...k6, known: [['nbomber', 'NBomber'], ['k6', 'k6']] },
+      load: {
+        ...k6,
+        known: [
+          ['nbomber', 'NBomber'],
+          ['k6', 'k6'],
+        ],
+      },
     }),
   },
   ruby: {
@@ -348,7 +360,8 @@ const IGNORED_DIRS = new Set([
 ]);
 
 /** Root entries that do not make a repository "non-empty". */
-const BOOTSTRAP_ENTRIES = /^(\.git|\.gitignore|\.gitattributes|\.sentinel|\.github|readme(\..+)?|license(\..+)?|sentinel\.config\.json)$/i;
+const BOOTSTRAP_ENTRIES =
+  /^(\.git|\.gitignore|\.gitattributes|\.sentinel|\.github|readme(\..+)?|license(\..+)?|sentinel\.config\.json)$/i;
 
 const MAX_DEPTH = 3;
 const MAX_DIRS = 500;
@@ -367,10 +380,7 @@ function mentions(haystack: string, needle: string): boolean {
   return pattern.test(haystack);
 }
 
-function pickPackageManager(
-  pkg: { packageManager?: unknown },
-  names: ReadonlySet<string>,
-): string {
+function pickPackageManager(pkg: { packageManager?: unknown }, names: ReadonlySet<string>): string {
   if (typeof pkg.packageManager === 'string') {
     const declared = /^(npm|pnpm|yarn|bun)@/.exec(pkg.packageManager)?.[1];
     if (declared) return declared;
@@ -403,7 +413,13 @@ function jsonDependencies(text: string): Set<string> {
   const deps = new Set<string>();
   try {
     const json = JSON.parse(text) as Record<string, unknown>;
-    for (const key of ['dependencies', 'devDependencies', 'peerDependencies', 'require', 'require-dev']) {
+    for (const key of [
+      'dependencies',
+      'devDependencies',
+      'peerDependencies',
+      'require',
+      'require-dev',
+    ]) {
       const section = json[key];
       if (typeof section === 'object' && section !== null) {
         for (const name of Object.keys(section)) deps.add(name.toLowerCase());
@@ -448,9 +464,10 @@ async function analyzeProject(
     }
   } else {
     has = (name) => mentions(text, name);
-    packageManager = { python: 'pip', go: 'go', rust: 'cargo', java: null, dotnet: 'dotnet', ruby: 'bundler' }[
-      ecosystem
-    ] ?? null;
+    packageManager =
+      { python: 'pip', go: 'go', rust: 'cargo', java: null, dotnet: 'dotnet', ruby: 'bundler' }[
+        ecosystem
+      ] ?? null;
     if (ecosystem === 'python') {
       if (nameSet.has('uv.lock')) packageManager = 'uv';
       else if (nameSet.has('poetry.lock')) packageManager = 'poetry';
@@ -472,7 +489,11 @@ async function analyzeProject(
     if (detected === null && tier === 'load' && names.some((n) => loadDirs.includes(n))) {
       detected = 'k6';
     }
-    tests[tier] = { detected, recommended: t.recommended, install: detected === null ? t.install : null };
+    tests[tier] = {
+      detected,
+      recommended: t.recommended,
+      install: detected === null ? t.install : null,
+    };
   }
 
   return { path: relative, ecosystem, language, packageManager, frameworks, tests };
@@ -537,9 +558,7 @@ export function formatStackReport(report: StackReport): string {
       ];
       for (const tier of TEST_TIERS) {
         const t = p.tests[tier];
-        lines.push(
-          `  ${tier.padEnd(11)} ${t.detected ?? `missing (recommend ${t.recommended})`}`,
-        );
+        lines.push(`  ${tier.padEnd(11)} ${t.detected ?? `missing (recommend ${t.recommended})`}`);
       }
       return lines.join('\n');
     })
@@ -547,7 +566,9 @@ export function formatStackReport(report: StackReport): string {
 }
 
 /** Install commands for every missing tier, de-duplicated, in project order. */
-export function installCommands(report: StackReport): { path: string; tier: TestTier; command: string }[] {
+export function installCommands(
+  report: StackReport,
+): { path: string; tier: TestTier; command: string }[] {
   const commands: { path: string; tier: TestTier; command: string }[] = [];
   for (const project of report.projects) {
     for (const tier of TEST_TIERS) {

@@ -93,7 +93,8 @@ describe('analyze', () => {
       'rs/Cargo.toml': '[dependencies]\naxum = "0.7"',
       'jv/pom.xml':
         '<artifactId>spring-boot-starter-web</artifactId><artifactId>junit-jupiter</artifactId>',
-      'dn/App.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"><PackageReference Include="xunit" /></Project>',
+      'dn/App.csproj':
+        '<Project Sdk="Microsoft.NET.Sdk.Web"><PackageReference Include="xunit" /></Project>',
       'rb/Gemfile': "gem 'rails'\ngem 'rspec'",
       'ph/composer.json': JSON.stringify({
         require: { 'laravel/framework': '^11' },
@@ -142,13 +143,17 @@ describe('analyze', () => {
 
 describe('reports', () => {
   it('lists install commands only for missing tiers', async () => {
-    const report = await run({ 'package.json': JSON.stringify({ devDependencies: { vitest: '1' } }) });
+    const report = await run({
+      'package.json': JSON.stringify({ devDependencies: { vitest: '1' } }),
+    });
     const tiers = installCommands(report).map((c) => c.tier);
     expect(tiers).toEqual(['integration', 'e2e']);
   });
 
   it('formats a readable summary', async () => {
-    const report = await run({ 'package.json': JSON.stringify({ devDependencies: { jest: '1' } }) });
+    const report = await run({
+      'package.json': JSON.stringify({ devDependencies: { jest: '1' } }),
+    });
     const text = formatStackReport(report);
     expect(text).toContain('jest');
     expect(text).toContain('missing (recommend playwright)');
