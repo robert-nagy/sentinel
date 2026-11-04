@@ -40,6 +40,15 @@ export { StateStore, StateError } from './core/state.js';
 export { nodeFiles, type FileAccess } from './core/fs.js';
 export { findRepoRoot } from './core/repo.js';
 export {
+  GitWorktreeManager,
+  WORKTREE_CLEANUP_THRESHOLD,
+  WorktreeError,
+  parseWorktreeList,
+  type CreateWorktreeResult,
+  type PruneResult,
+  type WorktreeInfo,
+} from './core/git-worktree-manager.js';
+export {
   TEST_TIERS,
   analyze,
   formatStackReport,

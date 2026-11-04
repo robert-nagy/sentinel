@@ -4,6 +4,7 @@ import {
   checkGit,
   checkGitRepository,
   checkNode,
+  checkWorktrees,
   checkWindowsLongPaths,
   type CheckResult,
   type CheckStatus,
@@ -23,7 +24,9 @@ async function gitChecks(ctx: DoctorContext): Promise<CheckResult[]> {
   const git = await checkGit(ctx);
   const results = [git];
   if (git.status === 'pass' || git.status === 'warn') {
-    results.push(await checkGitRepository(ctx));
+    const repo = await checkGitRepository(ctx);
+    results.push(repo);
+    if (repo.status === 'pass') results.push(await checkWorktrees(ctx));
   }
   return results;
 }

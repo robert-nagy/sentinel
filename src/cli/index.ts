@@ -5,6 +5,7 @@ import { registerBranch } from './branch.js';
 import { registerConfig } from './config.js';
 import { defaultDeps, type CliDeps } from './deps.js';
 import { registerDoctor } from './doctor.js';
+import { registerWorktree } from './worktree.js';
 
 export type { CliDeps } from './deps.js';
 
@@ -33,6 +34,7 @@ export function createProgram(deps: CliDeps = defaultDeps()): Command {
   registerAnalyze(program, deps);
   registerBranch(program, deps);
   registerConfig(program, deps);
+  registerWorktree(program, deps);
 
   return program;
 }
