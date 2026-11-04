@@ -2,6 +2,7 @@ import { BranchNameError } from '../core/branch-namer.js';
 import { ConfigError } from '../core/config.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { WorktreeError } from '../core/git-worktree-manager.js';
+import { ProviderError } from '../core/issue-provider.js';
 import { StateError } from '../core/state.js';
 import type { CliDeps } from './deps.js';
 
@@ -17,6 +18,9 @@ export function guarded<Args extends unknown[]>(
       if (error instanceof ConfigError) {
         deps.stderr(`sentinel: ${error.message}`);
         deps.setExitCode(ExitCode.Config);
+      } else if (error instanceof ProviderError) {
+        deps.stderr(`sentinel: ${error.message}`);
+        deps.setExitCode(ExitCode.Provider);
       } else if (
         error instanceof BranchNameError ||
         error instanceof StateError ||
