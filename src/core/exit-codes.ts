@@ -11,7 +11,7 @@ export const ExitCode = {
   Refine: 2,
   /** Retry budget exhausted; escalate or hand over to a human. */
   Escalate: 3,
-  /** Issue provider / code host / authentication error. */
+  /** Tracker unavailable here / code host / authentication error. */
   Provider: 4,
   /** Invalid or missing configuration. */
   Config: 5,
