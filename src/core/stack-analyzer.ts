@@ -405,7 +405,7 @@ async function readManifestText(
     const text = await files.readText(join(dir, name));
     if (text !== undefined && text.length <= MAX_MANIFEST_BYTES) parts.push(text);
   }
-  return parts.join('\n').toLowerCase();
+  return parts.join('\n');
 }
 
 /** All dependency names for a node/php manifest; empty when the JSON is unreadable. */
@@ -463,7 +463,8 @@ async function analyzeProject(
       packageManager = 'composer';
     }
   } else {
-    has = (name) => mentions(text, name);
+    const lowered = text.toLowerCase();
+    has = (name) => mentions(lowered, name);
     packageManager =
       { python: 'pip', go: 'go', rust: 'cargo', java: null, dotnet: 'dotnet', ruby: 'bundler' }[
         ecosystem

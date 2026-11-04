@@ -102,20 +102,20 @@ describe('analyze', () => {
       }),
     });
     const by = Object.fromEntries(report.projects.map((p) => [p.ecosystem, p]));
-    expect(by['python']).toMatchObject({ frameworks: ['FastAPI'] });
-    expect(by['python']?.tests.unit.detected).toBe('pytest');
-    expect(by['python']?.tests.e2e.detected).toBe('playwright');
-    expect(by['go']?.frameworks).toEqual(['Gin']);
-    expect(by['go']?.tests.unit.detected).toBe('go test');
-    expect(by['go']?.tests.integration.detected).toBe('testcontainers-go');
-    expect(by['rust']?.frameworks).toEqual(['axum']);
-    expect(by['rust']?.tests.unit.detected).toBe('cargo test');
-    expect(by['java']).toMatchObject({ frameworks: ['Spring Boot'], packageManager: 'maven' });
-    expect(by['java']?.tests.unit.detected).toBe('JUnit 5');
-    expect(by['dotnet']?.frameworks).toEqual(['ASP.NET Core']);
-    expect(by['dotnet']?.tests.unit.detected).toBe('xUnit');
-    expect(by['ruby']?.frameworks).toEqual(['Rails']);
-    expect(by['php']?.tests.unit.detected).toBe('pest');
+    expect(by.python).toMatchObject({ frameworks: ['FastAPI'] });
+    expect(by.python?.tests.unit.detected).toBe('pytest');
+    expect(by.python?.tests.e2e.detected).toBe('playwright');
+    expect(by.go?.frameworks).toEqual(['Gin']);
+    expect(by.go?.tests.unit.detected).toBe('go test');
+    expect(by.go?.tests.integration.detected).toBe('testcontainers-go');
+    expect(by.rust?.frameworks).toEqual(['axum']);
+    expect(by.rust?.tests.unit.detected).toBe('cargo test');
+    expect(by.java).toMatchObject({ frameworks: ['Spring Boot'], packageManager: 'maven' });
+    expect(by.java?.tests.unit.detected).toBe('JUnit 5');
+    expect(by.dotnet?.frameworks).toEqual(['ASP.NET Core']);
+    expect(by.dotnet?.tests.unit.detected).toBe('xUnit');
+    expect(by.ruby?.frameworks).toEqual(['Rails']);
+    expect(by.php?.tests.unit.detected).toBe('pest');
   });
 
   it('finds monorepo packages and skips dependency directories', async () => {
