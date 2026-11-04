@@ -78,3 +78,18 @@ export {
   type StackReport,
   type TestTier,
 } from './core/stack-analyzer.js';
+export {
+  DIMENSIONS,
+  ESCALATION_MESSAGE,
+  analyzePrd,
+  capsFor,
+  decide,
+  scoresSchema,
+  validatePrd,
+  type Dimension,
+  type NextAction,
+  type PrdIssue,
+  type PrdReport,
+  type Scores,
+} from './core/prd-validator.js';
+export { PrdError, evaluationsBefore, recordEvaluation, type PrdState } from './core/prd-state.js';
