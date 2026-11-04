@@ -132,7 +132,8 @@ export function parseLocalIssue(text: string, path: string): LocalIssue {
   const status = fields.get('status') === 'closed' ? 'closed' : 'open';
   const rawLabels = fields.get('labels');
   const labels = Array.isArray(rawLabels) ? rawLabels.map(String) : [];
-  const created = String(fields.get('created') ?? '');
+  const rawCreated = fields.get('created');
+  const created = typeof rawCreated === 'string' ? rawCreated : '';
 
   const lines = rest.split('\n');
   const headingIndex = lines.findIndex((l) => l.trim() === COMMENTS_HEADING);
