@@ -86,16 +86,23 @@ describe('GitWorktreeManager (real git)', () => {
   it(
     'creates a worktree on a new branch from origin/main',
     async () => {
-      const result = await manager().create(42, 'feat/42-login');
+      // .env.example is tracked (already in the checkout); .env.local is untracked and copied.
+      await writeFile(join(work, '.env.local'), 'LOCAL=1\n', 'utf8');
+      const config = {
+        ...DEFAULT_CONFIG,
+        worktrees: { ...DEFAULT_CONFIG.worktrees, copyFiles: ['.env.example', '.env.local'] },
+      };
+      const result = await manager(config).create(42, 'feat/42-login');
       expect(result).toMatchObject({
         path: join(work, '.worktrees', '42'),
         branch: 'feat/42-login',
         branchSource: 'new',
         alreadyExisted: false,
-        copiedFiles: ['.env.example'],
+        copiedFiles: ['.env.local'],
         gitignoreUpdated: true,
       });
       expect(await git(result.path, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feat/42-login');
+      expect(await readFile(join(result.path, '.env.local'), 'utf8')).toBe('LOCAL=1\n');
       expect(await readFile(join(result.path, '.env.example'), 'utf8')).toBe('KEY=value\n');
       expect(await readFile(join(work, '.gitignore'), 'utf8')).toBe('.worktrees/\n');
       // Pushing the branch must not target main.
