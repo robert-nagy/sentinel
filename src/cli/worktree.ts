@@ -89,7 +89,9 @@ export function registerWorktree(program: Command, deps: CliDeps): void {
 
   worktree
     .command('prune')
-    .description('Remove clean worktrees whose branch is merged (checked locally and through GitHub)')
+    .description(
+      'Remove clean worktrees whose branch is merged (checked locally and through GitHub)',
+    )
     .option('--dry-run', 'only report what would be removed')
     .action(
       guarded(deps, async (options: { dryRun?: boolean }) => {
@@ -110,7 +112,9 @@ export function registerWorktree(program: Command, deps: CliDeps): void {
           },
         });
         if (hostFailure !== undefined) {
-          deps.stderr(`sentinel: warning: could not ask the code host about merged PRs: ${hostFailure}`);
+          deps.stderr(
+            `sentinel: warning: could not ask the code host about merged PRs: ${hostFailure}`,
+          );
         }
         for (const warning of result.warnings) deps.stderr(`sentinel: warning: ${warning}`);
         const verb = options.dryRun === true ? 'would remove' : 'removed';
