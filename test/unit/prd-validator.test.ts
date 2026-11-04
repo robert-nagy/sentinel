@@ -50,6 +50,7 @@ describe('golden PRDs', () => {
         'fr-no-scenario',
         'nfr-unmeasurable',
         'security-input-validation',
+        'test-matrix-tier',
       ]),
     );
     const caps = capsFor(analysis);
@@ -134,7 +135,7 @@ describe('structural checks', () => {
     expect(codes(good.replace(/\| Load[^\n]*\n/, ''))).toContain('test-matrix-tier');
   });
   it('flags unmeasurable NFRs but accepts percentile phrasing', () => {
-    expect(codes(good.replace('under 200 ms at the 95th percentile', 'quick'))).toContain(
+    expect(codes(good.replace(/- NFR-1:.*\n/, '- NFR-1: The page must load quickly.\n'))).toContain(
       'nfr-unmeasurable',
     );
     expect(

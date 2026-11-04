@@ -69,12 +69,18 @@ interface Section {
   readonly body: readonly { readonly text: string; readonly line: number }[];
 }
 
-const HEADING = /^(#{1,6})[ \t]+(.*)$/;
-
-/** Heading text without surrounding spaces or closing `#` marks. */
-function headingTitle(raw: string): string {
-  return raw.trim().replace(/[ \t]*#+$/, '').trim();
+/** ATX heading (`## Title`), parsed without regular expressions. */
+function parseHeading(line: string): { level: number; title: string } | null {
+  let level = 0;
+  while (level < line.length && line[level] === '#') level += 1;
+  if (level === 0 || level > 6) return null;
+  const next = line[level];
+  if (next !== ' ' && next !== '\t') return null;
+  let title = line.slice(level).trim();
+  while (title.endsWith('#')) title = title.slice(0, -1);
+  return { level, title: title.trim() };
 }
+
 const FENCE = /^\s*(```|~~~)/;
 
 /** Splits a document into sections by heading, ignoring headings inside code fences. */
@@ -100,10 +106,10 @@ function parseSections(markdown: string): { sections: Section[]; codeFreeLines: 
       return;
     }
     codeFreeLines.push(inFence ? '' : text);
-    const heading = inFence ? null : HEADING.exec(text);
+    const heading = inFence ? null : parseHeading(text);
     if (heading !== null) {
       flush();
-      current = { title: headingTitle(heading[2] ?? ''), level: (heading[1] ?? '#').length, line, body: [] };
+      current = { title: heading.title, level: heading.level, line, body: [] };
       return;
     }
     body.push({ text, line });
