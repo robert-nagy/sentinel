@@ -29,4 +29,11 @@ export default tseslint.config(
     files: ['**/*.js'],
     ...tseslint.configs.disableTypeChecked,
   },
+  {
+    // Plain-JS release scripts and their tests run on Node.
+    files: ['scripts/**/*.js', 'test/**/*.js'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
+    },
+  },
 );
