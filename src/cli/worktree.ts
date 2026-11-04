@@ -42,16 +42,16 @@ export function registerWorktree(program: Command, deps: CliDeps): void {
           const branch = await resolveCliBranch(deps, config, { ...options, issue: id });
           const result = await manager.create(id, branch.name);
           for (const warning of result.warnings) deps.stderr(`sentinel: warning: ${warning}`);
-        const others = (await manager.list()).filter((w) => w.branch !== result.branch);
-        if (others.length >= WORKTREE_CLEANUP_THRESHOLD) {
-          let merged = 0;
-          for (const w of others) {
-            if (w.branch !== undefined && (await manager.isMergedLocally(w.branch))) merged += 1;
+          const others = (await manager.list()).filter((w) => w.branch !== result.branch);
+          if (others.length >= WORKTREE_CLEANUP_THRESHOLD) {
+            let merged = 0;
+            for (const w of others) {
+              if (w.branch !== undefined && (await manager.isMergedLocally(w.branch))) merged += 1;
+            }
+            deps.stderr(
+              `sentinel: hint: ${String(others.length)} other worktrees exist (${String(merged)} look merged); run \`sentinel worktree prune\` to clean up`,
+            );
           }
-          deps.stderr(
-            `sentinel: hint: ${String(others.length)} other worktrees exist (${String(merged)} look merged); run \`sentinel worktree prune\` to clean up`,
-          );
-        }
           deps.stdout(options.json === true ? JSON.stringify(result, null, 2) : result.path);
         },
       ),

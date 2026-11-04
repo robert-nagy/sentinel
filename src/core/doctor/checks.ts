@@ -229,7 +229,10 @@ export async function checkWorktrees(ctx: DoctorContext): Promise<CheckResult> {
   if (result.exitCode !== 0) {
     return { ...base, status: 'skip', message: 'Skipped: could not list worktrees' };
   }
-  const extra = Math.max(0, result.stdout.split('\n').filter((l) => l.startsWith('worktree ')).length - 1);
+  const extra = Math.max(
+    0,
+    result.stdout.split('\n').filter((l) => l.startsWith('worktree ')).length - 1,
+  );
   if (extra >= WORKTREE_CLEANUP_THRESHOLD) {
     return {
       ...base,
