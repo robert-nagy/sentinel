@@ -1,10 +1,12 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 
 /** The file-system reads core logic needs; injectable so tests can use an in-memory tree. */
 export interface FileAccess {
   /** File contents, or `undefined` if the file does not exist. */
   readonly readText: (path: string) => Promise<string | undefined>;
   readonly exists: (path: string) => Promise<boolean>;
+  /** Entry names of a directory, or `undefined` if it does not exist or is not a directory. */
+  readonly listDir: (path: string) => Promise<string[] | undefined>;
 }
 
 function isNotFound(error: unknown): boolean {
@@ -28,6 +30,14 @@ export const nodeFiles: FileAccess = {
       return true;
     } catch (error) {
       if (isNotFound(error)) return false;
+      throw error;
+    }
+  },
+  async listDir(path) {
+    try {
+      return await readdir(path);
+    } catch (error) {
+      if (isNotFound(error)) return undefined;
       throw error;
     }
   },
