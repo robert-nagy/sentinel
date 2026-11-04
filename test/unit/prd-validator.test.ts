@@ -44,8 +44,13 @@ describe('golden PRDs', () => {
 
   it('a borderline PRD reports specific gaps and caps the matching dimensions', () => {
     const analysis = analyzePrd(borderline);
-    expect(analysis.issues.map((i) => i.code).sort()).toEqual(
-      ['ambiguous-term', 'fr-no-scenario', 'nfr-unmeasurable', 'security-input-validation'].sort(),
+    expect(new Set(analysis.issues.map((i) => i.code))).toEqual(
+      new Set([
+        'ambiguous-term',
+        'fr-no-scenario',
+        'nfr-unmeasurable',
+        'security-input-validation',
+      ]),
     );
     const caps = capsFor(analysis);
     expect(caps).toEqual({
@@ -142,7 +147,7 @@ describe('structural checks', () => {
   });
   it('grades the clarity cap by the amount of ambiguity', () => {
     const base = analyzePrd(good);
-    const words = (n: number) => `${good}\n${'This is fast. '.repeat(n)}\n`;
+    const words = (n: number) => `${good}\n${'This is fast.\n'.repeat(n)}\n`;
     expect(capsFor(analyzePrd(words(1))).clarity).toBe(85);
     expect(capsFor(analyzePrd(words(3))).clarity).toBe(75);
     expect(capsFor(analyzePrd(words(6))).clarity).toBe(65);

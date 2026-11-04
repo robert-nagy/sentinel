@@ -69,7 +69,12 @@ interface Section {
   readonly body: readonly { readonly text: string; readonly line: number }[];
 }
 
-const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+const HEADING = /^(#{1,6})[ \t]+(.*)$/;
+
+/** Heading text without surrounding spaces or closing `#` marks. */
+function headingTitle(raw: string): string {
+  return raw.trim().replace(/[ \t]*#+$/, '').trim();
+}
 const FENCE = /^\s*(```|~~~)/;
 
 /** Splits a document into sections by heading, ignoring headings inside code fences. */
@@ -98,7 +103,7 @@ function parseSections(markdown: string): { sections: Section[]; codeFreeLines: 
     const heading = inFence ? null : HEADING.exec(text);
     if (heading !== null) {
       flush();
-      current = { title: heading[2] ?? '', level: (heading[1] ?? '#').length, line, body: [] };
+      current = { title: headingTitle(heading[2] ?? ''), level: (heading[1] ?? '#').length, line, body: [] };
       return;
     }
     body.push({ text, line });
@@ -186,7 +191,7 @@ function scenarioState(lines: readonly string[]): ScenarioState {
 }
 
 const MEASURE =
-  /\d[\d,.]*\s*(?:ms|milliseconds?|s|sec|secs|seconds?|min|mins|minutes?|h|hrs?|hours?|days?|weeks?|%|percent|rps|req\/s|qps|tps|requests?|users?|kb|mb|gb|tb|kib|mib|gib|nines|\/s|\/sec|\/min)\b/i;
+  /\d[\d,.]*[ \t]?(?:ms|milliseconds?|s|sec|secs|seconds?|min|mins|minutes?|h|hrs?|hours?|days?|weeks?|%|percent|rps|req\/s|qps|tps|requests?|users?|kb|mb|gb|tb|kib|mib|gib|nines|\/s|\/sec|\/min)(?![a-z0-9])/i;
 
 function isMeasurable(text: string): boolean {
   return MEASURE.test(text) || /\bp(?:50|90|95|99|99\.9)\b.*\d/i.test(text);
