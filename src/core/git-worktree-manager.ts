@@ -66,7 +66,7 @@ export function parseWorktreeList(output: string): WorktreeInfo[] {
 
 async function canonical(path: string): Promise<string> {
   try {
-    return await realpath.native(path);
+    return await realpath(path);
   } catch {
     return resolve(path);
   }
