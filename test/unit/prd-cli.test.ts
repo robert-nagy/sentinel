@@ -10,7 +10,8 @@ import { evaluationsBefore, recordEvaluation, type PrdState } from '../../src/co
 import { validatePrd, type Scores } from '../../src/core/prd-validator.js';
 import { DEFAULT_CONFIG } from '../../src/core/config-schema.js';
 
-const fixture = (name: string) => fileURLToPath(new URL(`../fixtures/prd/${name}.md`, import.meta.url));
+const fixture = (name: string) =>
+  fileURLToPath(new URL(`../fixtures/prd/${name}.md`, import.meta.url));
 const uniform = (n: number): Scores => ({
   clarity: n,
   testability: n,
@@ -66,7 +67,11 @@ describe('sentinel prd validate', () => {
     await writeScores('s.json', uniform(92));
     const { run, out } = cli();
     expect(await run('prd', 'validate', 'docs/good.md', '--scores', 's.json', '--json')).toBe(0);
-    expect(JSON.parse(out.join('\n'))).toMatchObject({ slug: 'good', nextAction: 'accept', mean: 92 });
+    expect(JSON.parse(out.join('\n'))).toMatchObject({
+      slug: 'good',
+      nextAction: 'accept',
+      mean: 92,
+    });
   });
 
   it('refines three times and then escalates (exit 2, 2, 2, 3)', async () => {
@@ -119,7 +124,13 @@ describe('prd state rules', () => {
   const now = new Date('2026-03-05T12:00:00Z');
 
   it('starts a fresh cycle when an accepted PRD changes', () => {
-    const accepted: PrdState = recordEvaluation(undefined, 's', 'h1', { ...report(99, 0), nextAction: 'accept' }, now);
+    const accepted: PrdState = recordEvaluation(
+      undefined,
+      's',
+      'h1',
+      { ...report(99, 0), nextAction: 'accept' },
+      now,
+    );
     expect(evaluationsBefore(accepted, 'h2')).toBe(0);
     const next = recordEvaluation(accepted, 's', 'h2', report(10, 0), now);
     expect(next.evaluations).toBe(1);

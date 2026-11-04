@@ -65,7 +65,9 @@ function formatReport(report: PrdReport, slug: string): string {
   lines.push('', 'Dimension       cap  score');
   for (const d of DIMENSIONS) {
     const effective = report.effectiveScores?.[d];
-    lines.push(`  ${d.padEnd(13)} ${String(report.caps[d]).padStart(4)}  ${effective === undefined ? '-' : String(effective)}`);
+    lines.push(
+      `  ${d.padEnd(13)} ${String(report.caps[d]).padStart(4)}  ${effective === undefined ? '-' : String(effective)}`,
+    );
   }
   if (report.mean !== undefined) {
     lines.push(`  mean ${String(report.mean)}, lowest ${String(report.min ?? 0)}`);
@@ -87,28 +89,45 @@ export function registerPrd(program: Command, deps: CliDeps): void {
     .option('--slug <slug>', 'name for the iteration state (default: file name)')
     .option('--json', 'output machine-readable JSON')
     .action(
-      guarded(deps, async (file: string, options: { scores?: string; slug?: string; json?: boolean }) => {
-        const markdown = await deps.files.readText(resolve(deps.cwd, file));
-        if (markdown === undefined) throw new PrdError(`PRD file not found: ${file}`);
-        const scores = options.scores === undefined ? undefined : await readScores(options.scores, deps);
-        const slug = slugFor(file, options.slug);
-        const { config } = await loadCliConfig(deps);
-        const store = new StateStore((await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd);
-        const stateName = `prd-${slug}`;
-        const previous = await store.read<PrdState>(stateName);
-        const hash = createHash('sha256').update(markdown).update(JSON.stringify(scores ?? null)).digest('hex');
+      guarded(
+        deps,
+        async (file: string, options: { scores?: string; slug?: string; json?: boolean }) => {
+          const markdown = await deps.files.readText(resolve(deps.cwd, file));
+          if (markdown === undefined) throw new PrdError(`PRD file not found: ${file}`);
+          const scores =
+            options.scores === undefined ? undefined : await readScores(options.scores, deps);
+          const slug = slugFor(file, options.slug);
+          const { config } = await loadCliConfig(deps);
+          const store = new StateStore((await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd);
+          const stateName = `prd-${slug}`;
+          const previous = await store.read<PrdState>(stateName);
+          const hash = createHash('sha256')
+            .update(markdown)
+            .update(JSON.stringify(scores ?? null))
+            .digest('hex');
 
-        const report = validatePrd(markdown, {
-          scores,
-          config,
-          evaluationsBefore: scores === undefined ? (previous?.evaluations ?? 0) : evaluationsBefore(previous, hash),
-        });
-        if (scores !== undefined) {
-          await store.write(stateName, recordEvaluation(previous, slug, hash, report, deps.now()));
-        }
-        deps.stdout(options.json === true ? JSON.stringify({ slug, ...report }, null, 2) : formatReport(report, slug));
-        deps.setExitCode(EXIT[report.nextAction]);
-      }),
+          const report = validatePrd(markdown, {
+            scores,
+            config,
+            evaluationsBefore:
+              scores === undefined
+                ? (previous?.evaluations ?? 0)
+                : evaluationsBefore(previous, hash),
+          });
+          if (scores !== undefined) {
+            await store.write(
+              stateName,
+              recordEvaluation(previous, slug, hash, report, deps.now()),
+            );
+          }
+          deps.stdout(
+            options.json === true
+              ? JSON.stringify({ slug, ...report }, null, 2)
+              : formatReport(report, slug),
+          );
+          deps.setExitCode(EXIT[report.nextAction]);
+        },
+      ),
     );
 
   prd
@@ -123,7 +142,10 @@ export function registerPrd(program: Command, deps: CliDeps): void {
         if (state === undefined) throw new PrdError(`no evaluations recorded for "${slug}"`);
         const { config } = await loadCliConfig(deps);
         const last = state.history.at(-1);
-        const remaining = Math.max(0, config.prd.maxRefinements - Math.max(0, state.evaluations - 1));
+        const remaining = Math.max(
+          0,
+          config.prd.maxRefinements - Math.max(0, state.evaluations - 1),
+        );
         if (options.json === true) {
           deps.stdout(JSON.stringify({ ...state, refinementsRemaining: remaining }, null, 2));
           return;

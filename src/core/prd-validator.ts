@@ -235,8 +235,8 @@ export function analyzePrd(markdown: string): PrdAnalysis {
   }
 
   // Functional requirements
-  const functionalIndex = sections.findIndex((s) =>
-    /\bfunctional requirements\b/i.test(s.title) && !/\bnon[- ]?functional\b/i.test(s.title),
+  const functionalIndex = sections.findIndex(
+    (s) => /\bfunctional requirements\b/i.test(s.title) && !/\bnon[- ]?functional\b/i.test(s.title),
   );
   const functionalBody =
     functionalIndex === -1
@@ -246,7 +246,8 @@ export function analyzePrd(markdown: string): PrdAnalysis {
   if (frBlocks.length === 0) {
     add({
       code: 'no-functional-requirements',
-      message: 'No functional requirements found. Number them FR-1, FR-2, … under "Functional Requirements".',
+      message:
+        'No functional requirements found. Number them FR-1, FR-2, … under "Functional Requirements".',
       caps: { completeness: 40, testability: 50 },
     });
   }
@@ -331,19 +332,40 @@ export function analyzePrd(markdown: string): PrdAnalysis {
   if (security === undefined) {
     add({
       code: 'no-security-section',
-      message: 'Add a "Security" section covering authentication, authorisation (RBAC) and input validation.',
+      message:
+        'Add a "Security" section covering authentication, authorisation (RBAC) and input validation.',
       caps: { security: 40 },
     });
   } else {
     const text = plain(security);
-    if (!/\b(?:authenticat\w*|authn|login|sign[- ]?in|oauth\w*|oidc|sso|jwt|saml|mfa|api key\w*)\b/i.test(text)) {
-      add({ code: 'security-authentication', message: 'Security section does not cover authentication.', caps: { security: 60 } });
+    if (
+      !/\b(?:authenticat\w*|authn|login|sign[- ]?in|oauth\w*|oidc|sso|jwt|saml|mfa|api key\w*)\b/i.test(
+        text,
+      )
+    ) {
+      add({
+        code: 'security-authentication',
+        message: 'Security section does not cover authentication.',
+        caps: { security: 60 },
+      });
     }
-    if (!/\b(?:authori[sz]\w*|authz|rbac|abac|permissions?|roles?|access control|acl)\b/i.test(text)) {
-      add({ code: 'security-authorization', message: 'Security section does not cover authorisation / RBAC.', caps: { security: 60 } });
+    if (
+      !/\b(?:authori[sz]\w*|authz|rbac|abac|permissions?|roles?|access control|acl)\b/i.test(text)
+    ) {
+      add({
+        code: 'security-authorization',
+        message: 'Security section does not cover authorisation / RBAC.',
+        caps: { security: 60 },
+      });
     }
-    if (!/\b(?:input validation|validat\w*|sanitis\w*|sanitiz\w*|injection|escap\w*)\b/i.test(text)) {
-      add({ code: 'security-input-validation', message: 'Security section does not cover input validation.', caps: { security: 65 } });
+    if (
+      !/\b(?:input validation|validat\w*|sanitis\w*|sanitiz\w*|injection|escap\w*)\b/i.test(text)
+    ) {
+      add({
+        code: 'security-input-validation',
+        message: 'Security section does not cover input validation.',
+        caps: { security: 65 },
+      });
     }
   }
 
@@ -370,7 +392,10 @@ export function analyzePrd(markdown: string): PrdAnalysis {
   }
 
   // Test strategy matrix
-  const matrix = findSection(sections, /\btest(?:ing)? (?:strategy|matrix|plan)\b|\btest strategy\b/i);
+  const matrix = findSection(
+    sections,
+    /\btest(?:ing)? (?:strategy|matrix|plan)\b|\btest strategy\b/i,
+  );
   if (matrix === undefined) {
     add({
       code: 'missing-test-matrix',
@@ -476,17 +501,20 @@ export function decide(
   if (scores === undefined) {
     const best = DIMENSIONS.map((d) => caps[d]);
     const bestMean = best.reduce((a, b) => a + b, 0) / best.length;
-    const blocked = bestMean < thresholds.threshold || Math.min(...best) < thresholds.dimensionFloor;
+    const blocked =
+      bestMean < thresholds.threshold || Math.min(...best) < thresholds.dimensionFloor;
     return blocked
       ? {
           nextAction: 'refine',
           pass: false,
-          reason: 'The structural issues cap the achievable score below the pass rule; fix them first.',
+          reason:
+            'The structural issues cap the achievable score below the pass rule; fix them first.',
         }
       : {
           nextAction: 'score',
           pass: false,
-          reason: 'Structure is acceptable: self-score the five dimensions with the rubric and re-run with --scores.',
+          reason:
+            'Structure is acceptable: self-score the five dimensions with the rubric and re-run with --scores.',
         };
   }
 
@@ -497,7 +525,14 @@ export function decide(
   const min = Math.min(...values);
   const pass = mean >= thresholds.threshold && min >= thresholds.dimensionFloor;
   if (pass) {
-    return { nextAction: 'accept', pass, effectiveScores: effective, mean, min, reason: 'The PRD meets the threshold.' };
+    return {
+      nextAction: 'accept',
+      pass,
+      effectiveScores: effective,
+      mean,
+      min,
+      reason: 'The PRD meets the threshold.',
+    };
   }
   const refinementsDone = evaluationsBefore;
   if (refinementsDone >= thresholds.maxRefinements) {
@@ -514,7 +549,14 @@ export function decide(
     mean < thresholds.threshold
       ? `mean ${String(mean)} is below ${String(thresholds.threshold)}`
       : `lowest dimension ${String(min)} is below the floor ${String(thresholds.dimensionFloor)}`;
-  return { nextAction: 'refine', pass, effectiveScores: effective, mean, min, reason: `Refine the PRD: ${why}.` };
+  return {
+    nextAction: 'refine',
+    pass,
+    effectiveScores: effective,
+    mean,
+    min,
+    reason: `Refine the PRD: ${why}.`,
+  };
 }
 
 export interface PrdReport extends PrdDecision {

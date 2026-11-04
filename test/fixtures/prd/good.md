@@ -46,9 +46,9 @@ and rejected with a 400 response when invalid.
 
 ## 7. Test Strategy Matrix
 
-| Tier        | Scope                                | Tooling               |
-| ----------- | ------------------------------------ | --------------------- |
-| Unit        | status mapping, validation           | vitest                |
-| Integration | API with a real database             | vitest, testcontainers |
-| E2E         | order page in a browser              | playwright            |
-| Load        | 500 requests per second for 10 minutes | k6                  |
+| Tier        | Scope                                  | Tooling                |
+| ----------- | -------------------------------------- | ---------------------- |
+| Unit        | status mapping, validation             | vitest                 |
+| Integration | API with a real database               | vitest, testcontainers |
+| E2E         | order page in a browser                | playwright             |
+| Load        | 500 requests per second for 10 minutes | k6                     |

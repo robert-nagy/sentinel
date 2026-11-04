@@ -94,31 +94,47 @@ describe('golden PRDs', () => {
 });
 
 describe('structural checks', () => {
-  const withSection = (section: string): string => good.replace(/## 4\. Security[\s\S]*?(?=## 5)/, section);
+  const withSection = (section: string): string =>
+    good.replace(/## 4\. Security[\s\S]*?(?=## 5)/, section);
 
   it('flags a requirement with an incomplete scenario', () => {
-    const md = good.replace('- Then the page shows the latest carrier status and its timestamp\n', '');
+    const md = good.replace(
+      '- Then the page shows the latest carrier status and its timestamp\n',
+      '',
+    );
     expect(codes(md)).toContain('fr-incomplete-scenario');
   });
   it('accepts a single-line Given/When/Then', () => {
-    const md = good
-      .replace(/- Given a signed-in[\s\S]*?timestamp\n/, 'Given a customer, when they open the page, then it shows the status.\n');
+    const md = good.replace(
+      /- Given a signed-in[\s\S]*?timestamp\n/,
+      'Given a customer, when they open the page, then it shows the status.\n',
+    );
     expect(codes(md)).not.toContain('fr-no-scenario');
   });
   it('flags duplicate requirement ids', () => {
     expect(codes(good.replace('FR-2:', 'FR-1:'))).toContain('duplicate-requirement-id');
   });
   it('flags missing security topics individually', () => {
-    expect(codes(withSection('## 4. Security\n\nWe care about safety in general terms here.\n\n'))).toEqual(
-      expect.arrayContaining(['security-authentication', 'security-authorization', 'security-input-validation']),
+    expect(
+      codes(withSection('## 4. Security\n\nWe care about safety in general terms here.\n\n')),
+    ).toEqual(
+      expect.arrayContaining([
+        'security-authentication',
+        'security-authorization',
+        'security-input-validation',
+      ]),
     );
   });
   it('flags a missing test tier', () => {
     expect(codes(good.replace(/\| Load[^\n]*\n/, ''))).toContain('test-matrix-tier');
   });
   it('flags unmeasurable NFRs but accepts percentile phrasing', () => {
-    expect(codes(good.replace('under 200 ms at the 95th percentile', 'quick'))).toContain('nfr-unmeasurable');
-    expect(codes(good.replace('under 200 ms at the 95th percentile', 'p95 under 200 ms'))).not.toContain('nfr-unmeasurable');
+    expect(codes(good.replace('under 200 ms at the 95th percentile', 'quick'))).toContain(
+      'nfr-unmeasurable',
+    );
+    expect(
+      codes(good.replace('under 200 ms at the 95th percentile', 'p95 under 200 ms')),
+    ).not.toContain('nfr-unmeasurable');
   });
   it('ignores ambiguous words inside code fences', () => {
     const md = `${good}\n\`\`\`\nTBD fast etc.\n\`\`\`\n`;
@@ -157,7 +173,11 @@ describe('decide', () => {
     expect(decide(caps, undefined, thresholds, 0).nextAction).toBe('score');
   });
   it('uses the verbatim escalation message', () => {
-    const report = validatePrd(bad, { scores: uniform(50), config: DEFAULT_CONFIG, evaluationsBefore: 3 });
+    const report = validatePrd(bad, {
+      scores: uniform(50),
+      config: DEFAULT_CONFIG,
+      evaluationsBefore: 3,
+    });
     expect(report.nextAction).toBe('escalate');
     expect(report.message).toBe(ESCALATION_MESSAGE);
     expect(ESCALATION_MESSAGE).toBe(
