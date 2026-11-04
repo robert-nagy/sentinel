@@ -17,9 +17,11 @@ export function guarded<Args extends unknown[]>(
       if (error instanceof ConfigError) {
         deps.stderr(`sentinel: ${error.message}`);
         deps.setExitCode(ExitCode.Config);
-      } else if (error instanceof BranchNameError ||
+      } else if (
+        error instanceof BranchNameError ||
         error instanceof StateError ||
-        error instanceof WorktreeError) {
+        error instanceof WorktreeError
+      ) {
         deps.stderr(`sentinel: ${error.message}`);
         deps.setExitCode(ExitCode.Failure);
       } else {

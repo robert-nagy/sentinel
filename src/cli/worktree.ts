@@ -30,14 +30,17 @@ export function registerWorktree(program: Command, deps: CliDeps): void {
   )
     .option('--json', 'output machine-readable JSON')
     .action(
-      guarded(deps, async (id: string, options: Omit<BranchOptions, 'issue'> & { json?: boolean }) => {
-        const manager = await createManager(deps);
-        const { config } = await loadCliConfig(deps);
-        const branch = await resolveCliBranch(deps, config, { ...options, issue: id });
-        const result = await manager.create(id, branch.name);
-        for (const warning of result.warnings) deps.stderr(`sentinel: warning: ${warning}`);
-        deps.stdout(options.json === true ? JSON.stringify(result, null, 2) : result.path);
-      }),
+      guarded(
+        deps,
+        async (id: string, options: Omit<BranchOptions, 'issue'> & { json?: boolean }) => {
+          const manager = await createManager(deps);
+          const { config } = await loadCliConfig(deps);
+          const branch = await resolveCliBranch(deps, config, { ...options, issue: id });
+          const result = await manager.create(id, branch.name);
+          for (const warning of result.warnings) deps.stderr(`sentinel: warning: ${warning}`);
+          deps.stdout(options.json === true ? JSON.stringify(result, null, 2) : result.path);
+        },
+      ),
     );
 
   worktree

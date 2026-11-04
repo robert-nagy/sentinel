@@ -56,7 +56,8 @@ export function parseWorktreeList(output: string): WorktreeInfo[] {
     for (const line of block.split(/\r?\n/)) {
       if (line.startsWith('worktree ')) path = line.slice('worktree '.length);
       else if (line.startsWith('HEAD ')) head = line.slice('HEAD '.length);
-      else if (line.startsWith('branch ')) branch = line.slice('branch '.length).replace(/^refs\/heads\//, '');
+      else if (line.startsWith('branch '))
+        branch = line.slice('branch '.length).replace(/^refs\/heads\//, '');
     }
     if (path !== undefined) worktrees.push({ path, branch, head });
   }
@@ -188,18 +189,37 @@ export class GitWorktreeManager {
       await this.mustGit([...prefix, 'worktree', 'add', path, branch]);
     } else if (await this.refExists(`refs/remotes/origin/${branch}`)) {
       branchSource = 'remote';
-      await this.mustGit([...prefix, 'worktree', 'add', '--track', '-b', branch, path, `origin/${branch}`]);
+      await this.mustGit([
+        ...prefix,
+        'worktree',
+        'add',
+        '--track',
+        '-b',
+        branch,
+        path,
+        `origin/${branch}`,
+      ]);
     } else {
       branchSource = 'new';
       if (!(await this.refExists(`refs/remotes/${base}`))) {
-        throw new WorktreeError(`${base} does not exist; is the default branch "${defaultBranch}" correct?`);
+        throw new WorktreeError(
+          `${base} does not exist; is the default branch "${defaultBranch}" correct?`,
+        );
       }
       await this.mustGit([...prefix, 'worktree', 'add', '--no-track', '-b', branch, path, base]);
     }
 
     const copiedFiles = await this.copyFiles(path, warnings);
     const gitignoreUpdated = await this.ensureIgnored();
-    return { path, branch, branchSource, alreadyExisted: false, copiedFiles, gitignoreUpdated, warnings };
+    return {
+      path,
+      branch,
+      branchSource,
+      alreadyExisted: false,
+      copiedFiles,
+      gitignoreUpdated,
+      warnings,
+    };
   }
 
   /** Removes the worktree of an issue. Git refuses when it has local changes unless `force`. */
@@ -209,8 +229,14 @@ export class GitWorktreeManager {
     for (const worktree of await this.list()) {
       if (await samePath(worktree.path, path)) target = worktree;
     }
-    if (target === undefined) throw new WorktreeError(`no worktree for issue ${String(issueId)} at ${path}`);
-    await this.mustGit(['worktree', 'remove', ...(options.force === true ? ['--force'] : []), target.path]);
+    if (target === undefined)
+      throw new WorktreeError(`no worktree for issue ${String(issueId)} at ${path}`);
+    await this.mustGit([
+      'worktree',
+      'remove',
+      ...(options.force === true ? ['--force'] : []),
+      target.path,
+    ]);
     return target;
   }
 

@@ -190,7 +190,10 @@ describe('GitWorktreeManager (real git)', () => {
   it(
     'fails clearly when origin/<default> is unknown',
     async () => {
-      const config = { ...DEFAULT_CONFIG, codeHost: { ...DEFAULT_CONFIG.codeHost, defaultBranch: 'nope' } };
+      const config = {
+        ...DEFAULT_CONFIG,
+        codeHost: { ...DEFAULT_CONFIG.codeHost, defaultBranch: 'nope' },
+      };
       await expect(manager(config).create(1, 'feat/1')).rejects.toThrow(WorktreeError);
     },
     TIMEOUT,
