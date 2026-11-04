@@ -47,3 +47,12 @@ export {
   type PruneResult,
   type WorktreeInfo,
 } from './core/git-worktree-manager.js';
+  TEST_TIERS,
+  analyze,
+  formatStackReport,
+  installCommands,
+  type Ecosystem,
+  type ProjectReport,
+  type StackReport,
+  type TestTier,
+} from './core/stack-analyzer.js';
