@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { ProviderError, type Issue } from '../core/issue-provider.js';
-import { collect } from './branch.js';
+import { collect } from './common.js';
 import type { CliDeps } from './deps.js';
 import { createServices } from './providers.js';
 import { guarded } from './safe.js';
