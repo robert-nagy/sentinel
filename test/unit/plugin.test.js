@@ -20,7 +20,7 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const FAKE_BUNDLE = [
   "const args = process.argv.slice(2).join(' ');",
   "if (args === '--version') process.stdout.write('1.0.0\\n');",
-  "else if (args === 'config schema') process.stdout.write('{\"type\":\"object\"}\\n');",
+  'else if (args === \'config schema\') process.stdout.write(\'{"type":"object"}\\n\');',
   '',
 ].join('\n');
 
@@ -80,10 +80,7 @@ describe('checkConsistency', () => {
   });
 
   it('finds the skills', () => {
-    expect(skillDirs(root)).toEqual([
-      'plugins/sentinel/skills/one',
-      'plugins/sentinel/skills/two',
-    ]);
+    expect(skillDirs(root)).toEqual(['plugins/sentinel/skills/one', 'plugins/sentinel/skills/two']);
   });
 
   it('flags a hand-edited generated manifest', () => {
@@ -108,7 +105,10 @@ describe('checkConsistency', () => {
 
   it('flags a bundle whose version differs from package.json', () => {
     write('package.json', toJsonText({ name: 'p', version: '1.0.1' }));
-    write('plugins/sentinel/.claude-plugin/plugin.json', toJsonText({ ...claudePlugin, version: '1.0.1' }));
+    write(
+      'plugins/sentinel/.claude-plugin/plugin.json',
+      toJsonText({ ...claudePlugin, version: '1.0.1' }),
+    );
     expect(checkConsistency(root).join('\n')).toContain('the committed bundle reports version');
   });
 

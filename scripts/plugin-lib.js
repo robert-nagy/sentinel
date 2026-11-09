@@ -35,7 +35,17 @@ function sha256(buffer) {
 export function deriveAgentPlugin(claudePlugin) {
   const { name, version, description, author, homepage, repository, license, keywords } =
     claudePlugin;
-  return { name, version, description, author, homepage, repository, license, keywords, skills: './skills/' };
+  return {
+    name,
+    version,
+    description,
+    author,
+    homepage,
+    repository,
+    license,
+    keywords,
+    skills: './skills/',
+  };
 }
 
 /** Codex catalog. */
@@ -112,7 +122,9 @@ export function checkConsistency(root) {
   }
   for (const entry of marketplace.plugins) {
     if (!existsSync(join(root, entry.source, '.claude-plugin/plugin.json'))) {
-      problems.push(`${PATHS.claudeMarketplace}: plugin "${entry.name}" has no plugin.json at ${entry.source}`);
+      problems.push(
+        `${PATHS.claudeMarketplace}: plugin "${entry.name}" has no plugin.json at ${entry.source}`,
+      );
     }
   }
 
@@ -120,7 +132,9 @@ export function checkConsistency(root) {
     if (!existsSync(join(root, path))) {
       problems.push(`${path} is missing; run npm run build:plugin`);
     } else if (JSON.stringify(readJson(root, path)) !== JSON.stringify(expected)) {
-      problems.push(`${path} does not match what the Claude manifests derive; run npm run build:plugin`);
+      problems.push(
+        `${path} does not match what the Claude manifests derive; run npm run build:plugin`,
+      );
     }
   }
 
@@ -146,18 +160,24 @@ export function checkConsistency(root) {
     try {
       const reported = runBundle(root, bundlePath, ['--version']).trim();
       if (reported !== pkgVersion) {
-        problems.push(`the committed bundle reports version ${reported}, package.json says ${pkgVersion}`);
+        problems.push(
+          `the committed bundle reports version ${reported}, package.json says ${pkgVersion}`,
+        );
       }
       if (existsSync(join(root, PATHS.schema))) {
         const schema = JSON.parse(runBundle(root, bundlePath, ['config', 'schema']));
         if (JSON.stringify(schema) !== JSON.stringify(readJson(root, PATHS.schema))) {
-          problems.push(`${PATHS.schema} does not match the committed bundle; run npm run build:plugin`);
+          problems.push(
+            `${PATHS.schema} does not match the committed bundle; run npm run build:plugin`,
+          );
         }
       } else {
         problems.push(`${PATHS.schema} is missing; run npm run build:plugin`);
       }
     } catch (error) {
-      problems.push(`the committed bundle does not run: ${error instanceof Error ? error.message : String(error)}`);
+      problems.push(
+        `the committed bundle does not run: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
   return problems;
@@ -213,7 +233,9 @@ export function verifyFresh(root) {
   for (const dir of skillDirs(root)) {
     const committed = join(root, dir, 'scripts', BUNDLE_NAME);
     if (existsSync(committed) && sha256(readFileSync(committed)) !== fresh) {
-      problems.push(`${dir}/scripts/${BUNDLE_NAME} is stale: it does not match a fresh build of src/`);
+      problems.push(
+        `${dir}/scripts/${BUNDLE_NAME} is stale: it does not match a fresh build of src/`,
+      );
     }
   }
   return problems;

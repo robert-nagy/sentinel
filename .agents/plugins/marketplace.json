@@ -1,0 +1,20 @@
+{
+  "name": "robert-nagy",
+  "interface": {
+    "displayName": "robert-nagy"
+  },
+  "plugins": [
+    {
+      "name": "sentinel",
+      "source": {
+        "source": "local",
+        "path": "./plugins/sentinel"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "development"
+    }
+  ]
+}

@@ -18,7 +18,9 @@ if (flag === undefined) {
     for (const problem of problems) process.stderr.write(`- ${problem}\n`);
     process.exitCode = 1;
   } else {
-    process.stdout.write(flag === '--check' ? 'plugin is consistent\n' : 'plugin bundle is fresh\n');
+    process.stdout.write(
+      flag === '--check' ? 'plugin is consistent\n' : 'plugin bundle is fresh\n',
+    );
   }
 } else {
   process.stderr.write(`unknown option ${flag}; use --check or --verify-fresh\n`);
