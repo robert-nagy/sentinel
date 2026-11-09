@@ -28,7 +28,7 @@ export type PublicQuestion = Omit<Question, 'when'>;
 
 const PII_WORDS =
   /\b(pii|personal|personally|email|e-mail|name|address|phone|birth|ssn|passport|health|medical|patient|payment|card|iban|biometric|gdpr|hipaa|location|customer data)\b/i;
-const NONE_WORDS = /^\s*(none|no|n\/a|na|nothing|-)\s*\.?\s*$/i;
+const NONE_WORDS = new Set(['none', 'no', 'n/a', 'na', 'nothing', '-']);
 
 /** True when the answers say the system touches personal data. */
 export function isPiiLikely(answers: Answers): boolean {
@@ -39,7 +39,10 @@ export function isPiiLikely(answers: Answers): boolean {
 
 /** True when the answer names something (not "none" / "n/a"). */
 export function isSubstantive(value: string | undefined): boolean {
-  return value !== undefined && value.trim() !== '' && !NONE_WORDS.test(value);
+  if (value === undefined) return false;
+  const text = value.trim().toLowerCase();
+  const bare = text.endsWith('.') ? text.slice(0, -1).trimEnd() : text;
+  return bare !== '' && !NONE_WORDS.has(bare);
 }
 
 /** The question bank, in the order questions are asked. */

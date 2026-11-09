@@ -153,7 +153,11 @@ function extraSteps(project: ProjectReport, tier: TestTier, command: string): st
 }
 
 function slug(path: string): string {
-  return path === '.' ? '' : `-${path.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+  if (path === '.') return '';
+  return `-${path
+    .split(/[^a-zA-Z0-9]+/)
+    .filter((part) => part !== '')
+    .join('-')}`;
 }
 
 function job(project: ProjectReport, tier: TestTier, command: string, single: boolean): string[] {
