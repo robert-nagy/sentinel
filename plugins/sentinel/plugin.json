@@ -1,6 +1,6 @@
 {
   "name": "sentinel",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "PRD validation, RFCs, worktrees and PR babysitting for AI coding agents, backed by a deterministic CLI.",
   "author": {
     "name": "Robert Nagy"

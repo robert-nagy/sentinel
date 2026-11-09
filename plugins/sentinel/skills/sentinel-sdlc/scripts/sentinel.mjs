@@ -3225,11 +3225,11 @@ Expecting one of '${allowedValues.join("', '")}'`);
        */
       _getOutputContext(contextOptions) {
         contextOptions = contextOptions || {};
-        const error62 = !!contextOptions.error;
+        const error63 = !!contextOptions.error;
         let baseWrite;
         let hasColors;
         let helpWidth;
-        if (error62) {
+        if (error63) {
           baseWrite = (str) => this._outputConfiguration.writeErr(str);
           hasColors = this._outputConfiguration.getErrHasColors();
           helpWidth = this._outputConfiguration.getErrHelpWidth();
@@ -3242,7 +3242,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
           if (!hasColors) str = this._outputConfiguration.stripColor(str);
           return baseWrite(str);
         };
-        return { error: error62, write: write2, hasColors, helpWidth };
+        return { error: error63, write: write2, hasColors, helpWidth };
       }
       /**
        * Output help information for this command.
@@ -3488,7 +3488,7 @@ var {
 } = import_index.default;
 
 // src/version.ts
-var VERSION = "0.2.0";
+var VERSION = "0.3.0";
 
 // src/core/stack-analyzer.ts
 import { join } from "path";
@@ -3845,9 +3845,9 @@ function jsonDependencies(text2) {
       "require",
       "require-dev"
     ]) {
-      const section = json2[key];
-      if (typeof section === "object" && section !== null) {
-        for (const name of Object.keys(section)) deps.add(name.toLowerCase());
+      const section2 = json2[key];
+      if (typeof section2 === "object" && section2 !== null) {
+        for (const name of Object.keys(section2)) deps.add(name.toLowerCase());
       }
     }
   } catch {
@@ -3969,6 +3969,22 @@ function installCommands(report) {
   }
   return commands;
 }
+var ECOSYSTEMS = Object.keys(SPECS);
+function plannedProject(ecosystem, path = ".", packageManager = null) {
+  const spec = SPECS[ecosystem];
+  const tiers = spec.tiers(packageManager);
+  const tests = Object.fromEntries(
+    TEST_TIERS.map((tier) => [
+      tier,
+      {
+        detected: null,
+        recommended: tiers[tier].recommended,
+        install: tiers[tier].install
+      }
+    ])
+  );
+  return { path, ecosystem, language: spec.language, packageManager, frameworks: [], tests };
+}
 
 // src/core/repo.ts
 import { dirname, join as join2 } from "path";
@@ -4005,142 +4021,21 @@ function registerAnalyze(program2, deps) {
   });
 }
 
-// src/core/branch-namer.ts
-var BRANCH_TYPES = ["feature", "bugfix", "hotfix", "refactor"];
-var PLACEHOLDERS = ["issue_id", "slug", "type", "user", "date"];
-var BranchNameError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "BranchNameError";
-  }
+// src/core/exit-codes.ts
+var ExitCode = {
+  /** Command succeeded. */
+  Ok: 0,
+  /** Generic failure (e.g. a `doctor` check failed). */
+  Failure: 1,
+  /** A quality threshold was not met; the caller should refine and retry. */
+  Refine: 2,
+  /** Retry budget exhausted; escalate or hand over to a human. */
+  Escalate: 3,
+  /** Tracker unavailable here / code host / authentication error. */
+  Provider: 4,
+  /** Invalid or missing configuration. */
+  Config: 5
 };
-var PLACEHOLDER_PATTERN = /\{([^{}]*)\}/g;
-var MAX_BRANCH_LENGTH = 200;
-var MAX_SLUG_LENGTH = 40;
-var SAMPLE_VALUES = {
-  issue_id: "123",
-  slug: "sample-title",
-  type: "feature",
-  user: "user",
-  date: "20260101"
-};
-var TRANSLITERATIONS = {
-  \u00DF: "ss",
-  \u00F8: "o",
-  \u0142: "l",
-  \u0111: "d",
-  \u00F0: "d",
-  \u00E6: "ae",
-  \u0153: "oe",
-  \u00FE: "th"
-};
-function slugify(input2, maxLength = MAX_SLUG_LENGTH) {
-  const folded = input2.normalize("NFKD").replace(new RegExp("\\p{M}+", "gu"), "").toLowerCase().replace(/[ßøłđðæœþ]/g, (letter) => TRANSLITERATIONS[letter] ?? letter);
-  const slug = folded.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  if (slug.length <= maxLength) return slug;
-  const cut = slug.slice(0, maxLength);
-  if (slug[maxLength] === "-") return cut;
-  const boundary = cut.lastIndexOf("-");
-  return (boundary >= maxLength / 2 ? cut.slice(0, boundary) : cut).replace(/-+$/, "");
-}
-function isValidBranchName(name) {
-  if (name === "" || name === "@" || name.length > MAX_BRANCH_LENGTH) return false;
-  for (const char of name) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code <= 32 || code === 127 || "~^:?*[\\".includes(char)) return false;
-  }
-  if (name.includes("..") || name.includes("@{") || name.includes("//")) return false;
-  if (name.startsWith("/") || name.endsWith("/") || name.endsWith(".") || name.startsWith("-")) {
-    return false;
-  }
-  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
-}
-function templatePlaceholders(template) {
-  return [...template.matchAll(PLACEHOLDER_PATTERN)].map((match) => match[1] ?? "");
-}
-function validateBranchTemplate(template) {
-  if (template.trim() === "") return "the branch template must not be empty";
-  const names = templatePlaceholders(template);
-  const unknown2 = names.find((name) => !PLACEHOLDERS.includes(name));
-  if (unknown2 !== void 0) {
-    return `unknown placeholder {${unknown2}}; allowed: ${PLACEHOLDERS.map((p) => `{${p}}`).join(", ")}`;
-  }
-  const leftover = template.replace(PLACEHOLDER_PATTERN, "");
-  if (leftover.includes("{") || leftover.includes("}")) {
-    return "unbalanced braces in the branch template";
-  }
-  if (!names.includes("issue_id")) {
-    return "the branch template must contain {issue_id} so branches can be traced to their issue";
-  }
-  if (!isValidBranchName(renderTemplate(template, SAMPLE_VALUES))) {
-    return `"${template}" does not produce a valid git branch name`;
-  }
-  return void 0;
-}
-function renderTemplate(template, values) {
-  const filled = template.replace(PLACEHOLDER_PATTERN, (_match, name) => {
-    return values[name];
-  });
-  return filled.split("/").map((part) => part.replace(/-{2,}/g, "-").replace(/^[-_.]+|[-_.]+$/g, "")).filter((part) => part !== "").join("/");
-}
-function normalizeIssueId(id) {
-  const normalized = String(id).trim().replace(/^#/, "");
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(normalized)) {
-    throw new BranchNameError(
-      `invalid issue id "${String(id)}": use letters, digits, ".", "_" or "-" (for example 42 or PROJ-123)`
-    );
-  }
-  return normalized;
-}
-var TYPE_HINTS = [
-  ["hotfix", ["hotfix", "incident"]],
-  ["bugfix", ["bug", "bugfix", "defect", "fix"]],
-  ["refactor", ["refactor", "refactoring", "tech-debt", "techdebt", "cleanup"]],
-  ["feature", ["feature", "enhancement", "story", "user story", "new feature"]]
-];
-function inferBranchType(issue2) {
-  const tokens = /* @__PURE__ */ new Set();
-  for (const raw of [...issue2.labels ?? [], issue2.issueType ?? ""]) {
-    const lowered = raw.trim().toLowerCase();
-    if (lowered === "") continue;
-    tokens.add(lowered);
-    const afterSlash = lowered.split("/").pop();
-    if (afterSlash) tokens.add(afterSlash);
-  }
-  for (const [type, hints] of TYPE_HINTS) {
-    if (hints.some((hint) => tokens.has(hint))) return type;
-  }
-  return "feature";
-}
-function resolveBranchName(input2, config2, context = {}) {
-  const type = input2.type ?? inferBranchType(input2.issue);
-  const template = config2.branches[type];
-  const problem = validateBranchTemplate(template);
-  if (problem !== void 0) {
-    throw new BranchNameError(`invalid branch template for ${type}: ${problem}`);
-  }
-  const user = slugify(context.user ?? "", 20);
-  if (templatePlaceholders(template).includes("user") && user === "") {
-    throw new BranchNameError(
-      `the ${type} branch template uses {user}, but no user name is available (set git config user.name)`
-    );
-  }
-  const date5 = (context.now ?? /* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
-  const name = renderTemplate(template, {
-    issue_id: normalizeIssueId(input2.issue.id),
-    slug: slugify(input2.issue.title ?? ""),
-    type,
-    user,
-    date: date5
-  });
-  if (!isValidBranchName(name)) {
-    throw new BranchNameError(`"${name}" is not a valid git branch name (template: ${template})`);
-  }
-  return { name, type, template };
-}
-
-// src/core/config.ts
-import { dirname as dirname2, join as join3, win32, posix } from "path";
 
 // node_modules/zod/v4/classic/external.js
 var external_exports = {};
@@ -4794,7 +4689,7 @@ __export(util_exports, {
   safeExtend: () => safeExtend,
   shallowClone: () => shallowClone,
   sizeCaps: () => sizeCaps,
-  slugify: () => slugify2,
+  slugify: () => slugify,
   stringifyPrimitive: () => stringifyPrimitive,
   toZod: () => toZod,
   uint8ArrayToBase64: () => uint8ArrayToBase64,
@@ -4986,7 +4881,7 @@ function randomString(length = 10) {
 function esc(str) {
   return JSON.stringify(str);
 }
-function slugify2(input2) {
+function slugify(input2) {
   return input2.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
 var captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {
@@ -5754,10 +5649,10 @@ function node(obj, key, make) {
   }
   return obj[key];
 }
-function flattenError(error62, mapper = (issue2) => issue2.message) {
+function flattenError(error63, mapper = (issue2) => issue2.message) {
   const fieldErrors = {};
   const formErrors = [];
-  for (const sub of error62.issues) {
+  for (const sub of error63.issues) {
     if (sub.path.length > 0) {
       node(fieldErrors, sub.path[0], () => []).push(mapper(sub));
     } else {
@@ -5766,10 +5661,10 @@ function flattenError(error62, mapper = (issue2) => issue2.message) {
   }
   return { formErrors, fieldErrors };
 }
-function formatError(error62, mapper = (issue2) => issue2.message) {
+function formatError(error63, mapper = (issue2) => issue2.message) {
   const fieldErrors = { _errors: [] };
-  const processError = (error63, path = []) => {
-    for (const issue2 of error63.issues) {
+  const processError = (error64, path = []) => {
+    for (const issue2 of error64.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
         issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
@@ -5800,25 +5695,25 @@ function formatError(error62, mapper = (issue2) => issue2.message) {
                 configurable: true
               });
             }
-            const node2 = curr[el];
+            const node3 = curr[el];
             if (terminal) {
-              node2._errors.push(mapper(issue2));
+              node3._errors.push(mapper(issue2));
             }
-            curr = node2;
+            curr = node3;
             i++;
           }
         }
       }
     }
   };
-  processError(error62);
+  processError(error63);
   return fieldErrors;
 }
-function treeifyError(error62, mapper = (issue2) => issue2.message) {
+function treeifyError(error63, mapper = (issue2) => issue2.message) {
   const result = { errors: [] };
-  const processError = (error63, path = []) => {
+  const processError = (error64, path = []) => {
     var _a3;
-    for (const issue2 of error63.issues) {
+    for (const issue2 of error64.issues) {
       if (issue2.code === "invalid_union" && issue2.errors.length) {
         issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
       } else if (issue2.code === "invalid_key") {
@@ -5860,7 +5755,7 @@ function treeifyError(error62, mapper = (issue2) => issue2.message) {
       }
     }
   };
-  processError(error62);
+  processError(error63);
   return result;
 }
 function toDotPath(_path) {
@@ -5881,9 +5776,9 @@ function toDotPath(_path) {
   }
   return segs.join("");
 }
-function prettifyError(error62) {
+function prettifyError(error63) {
   const lines = [];
-  const issues = [...error62.issues].sort((a, b) => (a.path ?? []).length - (b.path ?? []).length);
+  const issues = [...error63.issues].sort((a, b) => (a.path ?? []).length - (b.path ?? []).length);
   for (const issue2 of issues) {
     lines.push(`\u2716 ${issue2.message}`);
     if (issue2.path?.length)
@@ -5939,19 +5834,19 @@ var _safeParse = (_Err) => (schema, value, _ctx) => {
 };
 var safeParse = /* @__PURE__ */ _safeParse($ZodRealError);
 function failure(Err, issues, ctx) {
-  let error62;
+  let error63;
   return {
     success: false,
     get error() {
-      if (!error62) {
-        error62 = new Err(issues.map((iss) => finalizeIssue(iss, ctx, config())));
+      if (!error63) {
+        error63 = new Err(issues.map((iss) => finalizeIssue(iss, ctx, config())));
         issues = void 0;
         ctx = void 0;
       }
-      return error62;
+      return error63;
     },
     set error(e) {
-      error62 = e;
+      error63 = e;
       issues = void 0;
       ctx = void 0;
     }
@@ -9209,7 +9104,7 @@ var recursive = /* @__PURE__ */ new WeakMap();
 var NONE = 0;
 var ASSUMED = 1;
 var PROVEN = 2;
-function isRecursive(inst, stack, resolve5) {
+function isRecursive(inst, stack, resolve7) {
   const cached2 = recursive.get(inst);
   if (cached2 !== void 0)
     return cached2 ? PROVEN : NONE;
@@ -9219,7 +9114,7 @@ function isRecursive(inst, stack, resolve5) {
   let result = NONE;
   const check2 = (child) => {
     if (result !== PROVEN && child?._zod) {
-      const answer = isRecursive(child, stack, resolve5);
+      const answer = isRecursive(child, stack, resolve7);
       if (answer > result)
         result = answer;
     }
@@ -9230,7 +9125,7 @@ function isRecursive(inst, stack, resolve5) {
       const desc = Object.getOwnPropertyDescriptor(sh, key);
       if (spread && !desc.enumerable)
         continue;
-      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve5) : NONE;
+      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve7) : NONE;
       if (child > answer)
         answer = child;
     }
@@ -9294,7 +9189,7 @@ function isRecursive(inst, stack, resolve5) {
       break;
     // `$ZodLazy` caches its inner on the def, so a resolved edge is followed exactly
     case "lazy": {
-      const inner = def._cachedInner ?? (resolve5 ? inst._zod.innerType : void 0);
+      const inner = def._cachedInner ?? (resolve7 ? inst._zod.innerType : void 0);
       merge2(inner ? isRecursive(inner, stack, false) : ASSUMED);
       break;
     }
@@ -19396,7 +19291,7 @@ function _toUpperCase() {
 }
 // @__NO_SIDE_EFFECTS__
 function _slugify() {
-  return /* @__PURE__ */ _overwrite((input2) => slugify2(input2));
+  return /* @__PURE__ */ _overwrite((input2) => slugify(input2));
 }
 // @__NO_SIDE_EFFECTS__
 function _array(Class2, element, params) {
@@ -23640,9 +23535,9 @@ function fromJSONSchema(schema, params) {
 // node_modules/zod/v4/core/visit.js
 var RESOLVING = /* @__PURE__ */ Symbol("z.visit/resolving");
 function visit(schema, fnOrHandlers) {
-  const fn = typeof fnOrHandlers === "function" ? fnOrHandlers : (node2, rewritten) => {
-    const h = fnOrHandlers[node2._zod.def.type];
-    return h ? h(node2, rewritten) : node2;
+  const fn = typeof fnOrHandlers === "function" ? fnOrHandlers : (node3, rewritten) => {
+    const h = fnOrHandlers[node3._zod.def.type];
+    return h ? h(node3, rewritten) : node3;
   };
   const cache = /* @__PURE__ */ new Map();
   function run(s) {
@@ -23859,6 +23754,704 @@ function date4(params) {
   return _coercedDate(ZodDate, params);
 }
 
+// src/core/provider-error.ts
+var ProviderError = class extends Error {
+  kind;
+  constructor(kind, message) {
+    super(message);
+    this.name = "ProviderError";
+    this.kind = kind;
+  }
+};
+
+// src/core/hosts/github.ts
+function ghError(result, action) {
+  if (result.notFound) {
+    return new ProviderError(
+      "unavailable",
+      "the GitHub CLI (gh) was not found; install it from https://cli.github.com"
+    );
+  }
+  if (result.timedOut)
+    return new ProviderError("unavailable", `gh timed out while trying to ${action}`);
+  const detail = (result.stderr || result.stdout).trim();
+  if (/gh auth login|not logged in|authentication|GH_TOKEN|HTTP 401|bad credentials/i.test(detail)) {
+    return new ProviderError(
+      "auth",
+      `GitHub authentication failed: run \`gh auth login\` (${detail.split("\n")[0] ?? ""})`
+    );
+  }
+  if (/could not resolve|not found|HTTP 404|no pull requests? found/i.test(detail)) {
+    return new ProviderError(
+      "not-found",
+      `could not ${action}: ${detail.split("\n")[0] ?? "not found"}`
+    );
+  }
+  return new ProviderError("failed", `could not ${action}: ${detail || "gh exited with an error"}`);
+}
+var PR_FIELDS = "number,url,title,state,isDraft,headRefName,baseRefName";
+var GH_TIMEOUT_MS = 6e4;
+var MAX_LOG_CHARS = 1e5;
+var ghPr = external_exports.object({
+  number: external_exports.number(),
+  url: external_exports.string(),
+  title: external_exports.string(),
+  state: external_exports.string(),
+  isDraft: external_exports.boolean().default(false),
+  headRefName: external_exports.string(),
+  baseRefName: external_exports.string()
+});
+var ghCheck = external_exports.object({
+  name: external_exports.string(),
+  bucket: external_exports.string().default("pending"),
+  workflow: external_exports.string().nullish(),
+  link: external_exports.string().nullish()
+});
+function toPullRequest(raw) {
+  const state = raw.state.toUpperCase();
+  return {
+    number: raw.number,
+    url: raw.url,
+    title: raw.title,
+    state: state === "MERGED" ? "merged" : state === "CLOSED" ? "closed" : "open",
+    isDraft: raw.isDraft,
+    head: raw.headRefName,
+    base: raw.baseRefName
+  };
+}
+var BUCKETS = ["pass", "fail", "pending", "skipped", "cancelled"];
+function toBucket(value) {
+  if (value === "skipping") return "skipped";
+  if (value === "cancel") return "cancelled";
+  return BUCKETS.includes(value) ? value : "pending";
+}
+var GitHubCodeHost = class {
+  constructor(options) {
+    this.options = options;
+  }
+  type = "github";
+  async gh(args, action, acceptExitCodes = [0]) {
+    const repoArgs = this.options.repo === void 0 ? [] : ["--repo", this.options.repo];
+    const result = await this.options.run("gh", [...args, ...repoArgs], {
+      cwd: this.options.cwd,
+      timeoutMs: GH_TIMEOUT_MS
+    });
+    if (result.exitCode === null || !acceptExitCodes.includes(result.exitCode)) {
+      throw ghError(result, action);
+    }
+    return result.stdout;
+  }
+  json(schema, text2, action) {
+    try {
+      const parsed = schema.safeParse(JSON.parse(text2));
+      if (parsed.success) return parsed.data;
+    } catch {
+    }
+    throw new ProviderError("failed", `could not ${action}: unexpected gh output`);
+  }
+  async createPullRequest(pr) {
+    const args = [
+      "pr",
+      "create",
+      "--title",
+      pr.title,
+      "--body",
+      pr.body,
+      "--head",
+      pr.head,
+      "--base",
+      pr.base
+    ];
+    if (pr.draft === true) args.push("--draft");
+    const out = await this.gh(args, "create the pull request");
+    const url2 = /https:\/\/\S+\/pull\/\d+/.exec(out)?.[0];
+    if (url2 === void 0) {
+      throw new ProviderError(
+        "failed",
+        `pull request created but gh printed no URL: ${out.trim()}`
+      );
+    }
+    return this.getPullRequest(url2);
+  }
+  async getPullRequest(ref) {
+    const out = await this.gh(["pr", "view", ref, "--json", PR_FIELDS], `read pull request ${ref}`);
+    return toPullRequest(this.json(ghPr, out, `read pull request ${ref}`));
+  }
+  async listChecks(ref) {
+    const out = await this.gh(
+      ["pr", "checks", ref, "--json", "name,bucket,workflow,link"],
+      `list checks of ${ref}`,
+      [0, 1, 8]
+    );
+    if (out.trim() === "") return [];
+    return this.json(external_exports.array(ghCheck), out, `list checks of ${ref}`).map((c) => ({
+      name: c.name,
+      bucket: toBucket(c.bucket),
+      workflow: c.workflow ?? "",
+      link: c.link ?? "",
+      runId: /\/runs\/(\d+)/.exec(c.link ?? "")?.[1]
+    }));
+  }
+  async getFailedLogs(runId) {
+    const id = requireRunId(runId);
+    const out = await this.gh(["run", "view", id, "--log-failed"], `read failed logs of run ${id}`);
+    return out.length > MAX_LOG_CHARS ? `\u2026(truncated)
+${out.slice(-MAX_LOG_CHARS)}` : out;
+  }
+  async rerunFailed(runId) {
+    const id = requireRunId(runId);
+    await this.gh(["run", "rerun", id, "--failed"], `re-run failed jobs of run ${id}`);
+  }
+  async comment(ref, body) {
+    await this.gh(["pr", "comment", ref, "--body", body], `comment on ${ref}`);
+  }
+  async hasMergedPullRequest(branch) {
+    const out = await this.gh(
+      ["pr", "list", "--head", branch, "--state", "merged", "--json", "number", "--limit", "1"],
+      `look up merged pull requests of ${branch}`
+    );
+    return this.json(external_exports.array(external_exports.object({ number: external_exports.number() })), out, "parse merged pull requests").length > 0;
+  }
+};
+function requireRunId(value) {
+  const id = /^\d+$/.test(value) ? value : /\/runs\/(\d+)/.exec(value)?.[1];
+  if (id === void 0)
+    throw new ProviderError("failed", `"${value}" is not a workflow run id or run URL`);
+  return id;
+}
+
+// src/core/log-parser.ts
+import { createHash } from "crypto";
+var MAX_LINE = 1e3;
+var MAX_ERRORS = 20;
+var MAX_EXCERPT = 300;
+var ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
+var INFRA = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|socket hang up|Could not resolve host|503 Service Unavailable|rate limit exceeded|runner has received a shutdown signal|The operation was canceled/i;
+function toLines(log) {
+  return log.split(/\r?\n/).map((raw) => {
+    const clean = raw.replace(ANSI, "").slice(0, MAX_LINE);
+    const parts = clean.split("	");
+    if (parts.length < 3) return { job: void 0, text: clean };
+    let text2 = parts.slice(2).join("	");
+    const space = text2.indexOf(" ");
+    if (space > 19 && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(text2.slice(0, space))) {
+      text2 = text2.slice(space + 1);
+    }
+    return { job: parts[0], text: text2 };
+  });
+}
+function error62(file2, line, message, excerpt) {
+  return {
+    file: file2,
+    line: line === void 0 ? void 0 : Number(line),
+    message: message.trim().slice(0, 500),
+    excerpt: excerpt.trim().slice(0, MAX_EXCERPT)
+  };
+}
+var tsc = (lines) => {
+  const found = [];
+  for (const text2 of lines) {
+    const paren = /^(.+?)\((\d+),\d+\): error (TS\d+): (.+)$/.exec(text2);
+    const colon = /^(\S+?):(\d+):\d+ - error (TS\d+): (.+)$/.exec(text2);
+    const m = paren ?? colon;
+    if (m) found.push(error62(m[1], m[2], `${m[3] ?? ""}: ${m[4] ?? ""}`, text2));
+  }
+  return found;
+};
+var dotnet = (lines) => {
+  const found = [];
+  for (const text2 of lines) {
+    const m = /^(.+?)\((\d+),\d+\): error ([A-Z]+\d+): (.+?)(?: \[[^\]]*\])?$/.exec(text2);
+    if (m) found.push(error62(m[1], m[2], `${m[3] ?? ""}: ${m[4] ?? ""}`, text2));
+  }
+  return found;
+};
+var eslint = (lines) => {
+  const found = [];
+  let file2;
+  for (const text2 of lines) {
+    if (/^\S+\.[A-Za-z]{1,5}$/.test(text2) && (text2.includes("/") || text2.includes("\\"))) {
+      file2 = text2;
+      continue;
+    }
+    const m = /^\s+(\d+):\d+\s+error\s+(.+?)(?:\s{2,}(\S+))?$/.exec(text2);
+    if (m && file2 !== void 0) {
+      found.push(
+        error62(file2, m[1], m[3] === void 0 ? m[2] ?? "" : `${m[3]}: ${m[2] ?? ""}`, text2)
+      );
+    }
+  }
+  return found;
+};
+var vitestJest = (lines) => {
+  const found = [];
+  let file2;
+  for (const text2 of lines) {
+    const vitest = /^\s*FAIL\s+(\S+\.\w+)\s+>\s+(.+)$/.exec(text2);
+    if (vitest) {
+      file2 = vitest[1];
+      found.push(error62(file2, void 0, vitest[2] ?? "", text2));
+      continue;
+    }
+    const jestFile = /^\s*FAIL\s+(\S+\.\w+)\s*$/.exec(text2);
+    if (jestFile) {
+      file2 = jestFile[1];
+      continue;
+    }
+    const jest = /^\s*● (.+)$/.exec(text2);
+    if (jest && file2 !== void 0) {
+      found.push(error62(file2, void 0, jest[1] ?? "", text2));
+      continue;
+    }
+    const last = found.at(-1);
+    const detail = /^\s*(?:AssertionError|TypeError|ReferenceError|Error): (.+)$/.exec(text2);
+    if (last !== void 0 && detail && !last.message.includes(": ")) {
+      found[found.length - 1] = error62(
+        last.file,
+        last.line,
+        `${last.message}: ${detail[1] ?? ""}`,
+        last.excerpt
+      );
+    }
+    const stack = /^\s*❯ (\S+):(\d+):\d+/.exec(text2);
+    if (last !== void 0 && stack && last.line === void 0) {
+      found[found.length - 1] = error62(last.file, stack[2], last.message, last.excerpt);
+    }
+  }
+  return found;
+};
+var pytest = (lines) => {
+  const found = [];
+  for (const text2 of lines) {
+    const m = /^FAILED (\S+?)::(\S+)(?: - (.+))?$/.exec(text2);
+    if (m)
+      found.push(
+        error62(m[1], void 0, m[3] === void 0 ? m[2] ?? "" : `${m[2] ?? ""} - ${m[3]}`, text2)
+      );
+  }
+  return found;
+};
+var go = (lines) => {
+  const found = [];
+  for (const text2 of lines) {
+    const m = /^\s*(\S+\.go):(\d+):(?:\d+:)? (.+)$/.exec(text2);
+    if (m) found.push(error62(m[1], m[2], m[3] ?? "", text2));
+  }
+  return found;
+};
+var cargo = (lines) => {
+  const found = [];
+  lines.forEach((text2, index) => {
+    const m = /^error(?:\[(E\d+)\])?: (.+)$/.exec(text2);
+    if (!m || (m[2] ?? "").startsWith("could not compile")) return;
+    const where = /^\s*--> (.+):(\d+):\d+$/.exec(lines[index + 1] ?? "");
+    found.push(
+      error62(
+        where?.[1],
+        where?.[2],
+        m[1] === void 0 ? m[2] ?? "" : `${m[1]}: ${m[2] ?? ""}`,
+        text2
+      )
+    );
+  });
+  return found;
+};
+var generic = (lines) => {
+  const found = [];
+  lines.forEach((text2, index) => {
+    const m = /^\s*(?:Uncaught |Unhandled )?([A-Za-z]*Error): (.+)$/.exec(text2);
+    if (!m) return;
+    const frame = /\(?([^\s()]+):(\d+):\d+\)?\s*$/.exec(lines[index + 1] ?? "");
+    found.push(error62(frame?.[1], frame?.[2], `${m[1] ?? ""}: ${m[2] ?? ""}`, text2));
+  });
+  return found;
+};
+var DETECTORS = [
+  ["tsc", tsc],
+  ["dotnet", dotnet],
+  ["eslint", eslint],
+  ["vitest/jest", vitestJest],
+  ["pytest", pytest],
+  ["go", go],
+  ["cargo", cargo],
+  ["generic", generic]
+];
+function normalise(message) {
+  return message.toLowerCase().replace(/\d+/g, "#").replace(/\s+/g, " ").slice(0, 120);
+}
+function signatureOf(toolchain, errors) {
+  const key = errors.slice(0, 5).map((e) => `${e.file ?? ""}|${normalise(e.message)}`).sort().join("\n");
+  return createHash("sha256").update(`${toolchain}
+${key}`).digest("hex").slice(0, 12);
+}
+function parseFailureLog(log, jobsHint = []) {
+  const lines = toLines(log);
+  const texts = lines.map((l) => l.text);
+  const jobs = [
+    .../* @__PURE__ */ new Set([...jobsHint, ...lines.map((l) => l.job).filter((j) => j !== void 0)])
+  ];
+  let toolchain = "unknown";
+  let errors = [];
+  for (const [name, detect] of DETECTORS) {
+    const hits = detect(texts);
+    if (hits.length > 0) {
+      toolchain = name;
+      errors = hits;
+      break;
+    }
+  }
+  if (errors.length === 0) {
+    const tail = texts.filter((t) => t.trim() !== "").slice(-10);
+    const last = tail.at(-1);
+    if (last !== void 0) errors = [error62(void 0, void 0, last, tail.join("\n"))];
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const unique = errors.filter((e) => {
+    const key = `${e.file ?? ""}:${String(e.line ?? "")}:${e.message}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const capped = unique.slice(0, MAX_ERRORS);
+  const infra = INFRA.test(log);
+  const located = capped.some((e) => e.file !== void 0);
+  return {
+    signature: signatureOf(toolchain, capped),
+    toolchain,
+    jobs,
+    errors: capped,
+    suspectedFlaky: infra && (toolchain === "unknown" || toolchain === "generic" || !located)
+  };
+}
+
+// src/core/pr-babysitter.ts
+var SAME_SIGNATURE_LIMIT = 3;
+var MAX_LOG_RUNS = 3;
+function initialState(pr) {
+  return { pr, attempts: 0, signatures: {}, lastRunIds: [], afterRerun: false, gaveUp: false };
+}
+function describe3(packet) {
+  const lines = packet.errors.slice(0, 5).map(
+    (e) => `- ${e.file === void 0 ? "" : `${e.file}${e.line === void 0 ? "" : `:${String(e.line)}`}: `}${e.message}`
+  );
+  return lines.join("\n");
+}
+async function babysitStep(host, pr, previous, settings) {
+  const state = previous ?? initialState(pr.number);
+  const result = (action, reason, next2, packet2) => ({ action, reason, pr, attempts: next2.attempts, packet: packet2, state: next2 });
+  if (pr.state === "merged") return result("done", "the pull request is merged", state);
+  if (pr.state === "closed") return result("done", "the pull request is closed", state);
+  if (state.gaveUp)
+    return result("give-up", "sentinel already gave up on this pull request", state);
+  const checks = await host.listChecks(String(pr.number));
+  if (checks.length === 0) return result("wait", "no checks reported yet", state);
+  if (checks.some((c) => c.bucket === "pending"))
+    return result("wait", "checks are still running", state);
+  const failed = checks.filter((c) => c.bucket === "fail" || c.bucket === "cancelled");
+  if (failed.length === 0) return result("done", "all checks passed", state);
+  const runIds = [...new Set(failed.map((c) => c.runId).filter((id) => id !== void 0))].sort();
+  if (runIds.length === 0) {
+    const names = failed.map((c) => c.name).join(", ");
+    return giveUp(
+      host,
+      pr,
+      state,
+      `failing checks are not GitHub Actions runs, so there are no logs to read: ${names}`,
+      void 0,
+      result
+    );
+  }
+  const logs = [];
+  for (const id of runIds.slice(0, MAX_LOG_RUNS)) logs.push(await host.getFailedLogs(id));
+  const packet = parseFailureLog(
+    logs.join("\n"),
+    failed.map((c) => c.name)
+  );
+  const known = state.signatures[packet.signature] ?? { seen: 0, reran: false };
+  const sameRuns = runIds.join(",") === state.lastRunIds.join(",");
+  const fresh = !sameRuns || state.afterRerun;
+  if (!fresh) {
+    return result("patch", "the same failing run as before: push a fix first", state, packet);
+  }
+  if (known.seen === 0 && !known.reran && packet.suspectedFlaky) {
+    for (const id of runIds) await host.rerunFailed(id);
+    const next2 = {
+      ...state,
+      lastRunIds: runIds,
+      afterRerun: true,
+      signatures: { ...state.signatures, [packet.signature]: { seen: 1, reran: true } }
+    };
+    return result(
+      "rerun",
+      "the failure looks like an infrastructure problem: re-ran the failed jobs once",
+      next2,
+      packet
+    );
+  }
+  const seen = known.seen + 1;
+  const attempts = state.attempts + 1;
+  const next = {
+    ...state,
+    attempts,
+    lastRunIds: runIds,
+    afterRerun: false,
+    signatures: { ...state.signatures, [packet.signature]: { seen, reran: known.reran } }
+  };
+  if (attempts > settings.maxAttempts) {
+    return giveUp(
+      host,
+      pr,
+      next,
+      `${String(settings.maxAttempts)} fix attempts did not make CI green`,
+      packet,
+      result
+    );
+  }
+  if (seen > SAME_SIGNATURE_LIMIT) {
+    return giveUp(
+      host,
+      pr,
+      next,
+      `the same failure survived ${String(SAME_SIGNATURE_LIMIT)} fixes`,
+      packet,
+      result
+    );
+  }
+  return result(
+    "patch",
+    `CI failed (attempt ${String(attempts)} of ${String(settings.maxAttempts)})`,
+    next,
+    packet
+  );
+}
+async function giveUp(host, pr, state, reason, packet, result) {
+  const body = [
+    `sentinel stopped babysitting this pull request: ${reason}.`,
+    packet === void 0 ? "" : `
+Last failure (${packet.signature}):
+${describe3(packet)}`,
+    "\nA human needs to take over."
+  ].join("\n");
+  await host.comment(String(pr.number), body);
+  return result("give-up", reason, { ...state, gaveUp: true }, packet);
+}
+async function babysit(host, ref, store, options) {
+  const started = options.now();
+  for (; ; ) {
+    const pr = await host.getPullRequest(ref);
+    const name = `babysit-pr-${String(pr.number)}`;
+    const result = await babysitStep(
+      host,
+      pr,
+      await store.read(name),
+      options.settings
+    );
+    await store.write(name, result.state);
+    if (options.once || result.action !== "wait" && result.action !== "rerun") return result;
+    options.onProgress?.(`${result.action}: ${result.reason}`);
+    if (options.now() - started > options.timeoutMin * 6e4) {
+      return {
+        ...result,
+        action: "give-up",
+        reason: `timed out after ${String(options.timeoutMin)} minutes`
+      };
+    }
+    await options.sleep(options.pollIntervalSec * 1e3);
+  }
+}
+
+// src/core/state.ts
+import { mkdir, readFile, rename, rm, writeFile } from "fs/promises";
+import { join as join3 } from "path";
+var NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}$/i;
+var StateError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "StateError";
+  }
+};
+var StateStore = class {
+  dir;
+  constructor(repoRoot) {
+    this.dir = join3(repoRoot, ".sentinel", "state");
+  }
+  pathFor(name) {
+    if (!NAME_PATTERN.test(name) || name.includes("..")) {
+      throw new StateError(`invalid state name "${name}"`);
+    }
+    return join3(this.dir, `${name}.json`);
+  }
+  async read(name) {
+    const path = this.pathFor(name);
+    let text2;
+    try {
+      text2 = await readFile(path, "utf8");
+    } catch (error63) {
+      if (error63.code === "ENOENT") return void 0;
+      throw error63;
+    }
+    try {
+      return JSON.parse(text2);
+    } catch {
+      throw new StateError(`state file ${path} is corrupt; delete it to reset`);
+    }
+  }
+  /** Atomic write: temp file in the same directory, then rename. */
+  async write(name, value) {
+    const path = this.pathFor(name);
+    await mkdir(this.dir, { recursive: true });
+    const temp = `${path}.${String(process.pid)}.${String(Date.now())}.tmp`;
+    await writeFile(temp, `${JSON.stringify(value, null, 2)}
+`, "utf8");
+    try {
+      await rename(temp, path);
+    } catch (error63) {
+      await rm(temp, { force: true });
+      throw error63;
+    }
+  }
+  async remove(name) {
+    await rm(this.pathFor(name), { force: true });
+  }
+};
+
+// src/core/branch-namer.ts
+var BRANCH_TYPES = ["feature", "bugfix", "hotfix", "refactor"];
+var PLACEHOLDERS = ["issue_id", "slug", "type", "user", "date"];
+var BranchNameError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "BranchNameError";
+  }
+};
+var PLACEHOLDER_PATTERN = /\{([^{}]*)\}/g;
+var MAX_BRANCH_LENGTH = 200;
+var MAX_SLUG_LENGTH = 40;
+var SAMPLE_VALUES = {
+  issue_id: "123",
+  slug: "sample-title",
+  type: "feature",
+  user: "user",
+  date: "20260101"
+};
+var TRANSLITERATIONS = {
+  \u00DF: "ss",
+  \u00F8: "o",
+  \u0142: "l",
+  \u0111: "d",
+  \u00F0: "d",
+  \u00E6: "ae",
+  \u0153: "oe",
+  \u00FE: "th"
+};
+function slugify2(input2, maxLength = MAX_SLUG_LENGTH) {
+  const folded = input2.normalize("NFKD").replace(new RegExp("\\p{M}+", "gu"), "").toLowerCase().replace(/[ßøłđðæœþ]/g, (letter) => TRANSLITERATIONS[letter] ?? letter);
+  const slug2 = folded.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (slug2.length <= maxLength) return slug2;
+  const cut = slug2.slice(0, maxLength);
+  if (slug2[maxLength] === "-") return cut;
+  const boundary = cut.lastIndexOf("-");
+  return (boundary >= maxLength / 2 ? cut.slice(0, boundary) : cut).replace(/-+$/, "");
+}
+function isValidBranchName(name) {
+  if (name === "" || name === "@" || name.length > MAX_BRANCH_LENGTH) return false;
+  for (const char of name) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code <= 32 || code === 127 || "~^:?*[\\".includes(char)) return false;
+  }
+  if (name.includes("..") || name.includes("@{") || name.includes("//")) return false;
+  if (name.startsWith("/") || name.endsWith("/") || name.endsWith(".") || name.startsWith("-")) {
+    return false;
+  }
+  return name.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock"));
+}
+function templatePlaceholders(template) {
+  return [...template.matchAll(PLACEHOLDER_PATTERN)].map((match) => match[1] ?? "");
+}
+function validateBranchTemplate(template) {
+  if (template.trim() === "") return "the branch template must not be empty";
+  const names = templatePlaceholders(template);
+  const unknown2 = names.find((name) => !PLACEHOLDERS.includes(name));
+  if (unknown2 !== void 0) {
+    return `unknown placeholder {${unknown2}}; allowed: ${PLACEHOLDERS.map((p) => `{${p}}`).join(", ")}`;
+  }
+  const leftover = template.replace(PLACEHOLDER_PATTERN, "");
+  if (leftover.includes("{") || leftover.includes("}")) {
+    return "unbalanced braces in the branch template";
+  }
+  if (!names.includes("issue_id")) {
+    return "the branch template must contain {issue_id} so branches can be traced to their issue";
+  }
+  if (!isValidBranchName(renderTemplate(template, SAMPLE_VALUES))) {
+    return `"${template}" does not produce a valid git branch name`;
+  }
+  return void 0;
+}
+function renderTemplate(template, values) {
+  const filled = template.replace(PLACEHOLDER_PATTERN, (_match, name) => {
+    return values[name];
+  });
+  return filled.split("/").map((part) => part.replace(/-{2,}/g, "-").replace(/^[-_.]+|[-_.]+$/g, "")).filter((part) => part !== "").join("/");
+}
+function normalizeIssueId(id) {
+  const normalized = String(id).trim().replace(/^#/, "");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(normalized)) {
+    throw new BranchNameError(
+      `invalid issue id "${String(id)}": use letters, digits, ".", "_" or "-" (for example 42 or PROJ-123)`
+    );
+  }
+  return normalized;
+}
+var TYPE_HINTS = [
+  ["hotfix", ["hotfix", "incident"]],
+  ["bugfix", ["bug", "bugfix", "defect", "fix"]],
+  ["refactor", ["refactor", "refactoring", "tech-debt", "techdebt", "cleanup"]],
+  ["feature", ["feature", "enhancement", "story", "user story", "new feature"]]
+];
+function inferBranchType(issue2) {
+  const tokens = /* @__PURE__ */ new Set();
+  for (const raw of [...issue2.labels ?? [], issue2.issueType ?? ""]) {
+    const lowered = raw.trim().toLowerCase();
+    if (lowered === "") continue;
+    tokens.add(lowered);
+    const afterSlash = lowered.split("/").pop();
+    if (afterSlash) tokens.add(afterSlash);
+  }
+  for (const [type, hints] of TYPE_HINTS) {
+    if (hints.some((hint) => tokens.has(hint))) return type;
+  }
+  return "feature";
+}
+function resolveBranchName(input2, config2, context = {}) {
+  const type = input2.type ?? inferBranchType(input2.issue);
+  const template = config2.branches[type];
+  const problem = validateBranchTemplate(template);
+  if (problem !== void 0) {
+    throw new BranchNameError(`invalid branch template for ${type}: ${problem}`);
+  }
+  const user = slugify2(context.user ?? "", 20);
+  if (templatePlaceholders(template).includes("user") && user === "") {
+    throw new BranchNameError(
+      `the ${type} branch template uses {user}, but no user name is available (set git config user.name)`
+    );
+  }
+  const date5 = (context.now ?? /* @__PURE__ */ new Date()).toISOString().slice(0, 10).replace(/-/g, "");
+  const name = renderTemplate(template, {
+    issue_id: normalizeIssueId(input2.issue.id),
+    slug: slugify2(input2.issue.title ?? ""),
+    type,
+    user,
+    date: date5
+  });
+  if (!isValidBranchName(name)) {
+    throw new BranchNameError(`"${name}" is not a valid git branch name (template: ${template})`);
+  }
+  return { name, type, template };
+}
+
+// src/core/config.ts
+import { dirname as dirname2, join as join4, win32, posix } from "path";
+
 // src/core/config-schema.ts
 var branchTemplate = external_exports.string().superRefine((value, ctx) => {
   const problem = validateBranchTemplate(value);
@@ -23977,8 +24570,8 @@ var ConfigError = class extends Error {
     this.name = "ConfigError";
   }
 };
-function formatIssues(source, error62) {
-  const lines = error62.issues.map((issue2) => {
+function formatIssues(source, error63) {
+  const lines = error63.issues.map((issue2) => {
     const path = issue2.path.map(String).join(".");
     return `  - ${path === "" ? "(root)" : path}: ${issue2.message}`;
   });
@@ -24012,7 +24605,7 @@ async function findRepoConfigPath(cwd, files) {
   const root = await findRepoRoot(cwd, files);
   let dir = cwd;
   for (; ; ) {
-    const candidate = join3(dir, CONFIG_FILE_NAME);
+    const candidate = join4(dir, CONFIG_FILE_NAME);
     if (await files.exists(candidate)) return candidate;
     const parent = dirname2(dir);
     if (dir === root || parent === dir) return void 0;
@@ -24025,8 +24618,8 @@ async function readUserConfig(path, files) {
   let json2;
   try {
     json2 = JSON.parse(text2);
-  } catch (error62) {
-    const reason = error62 instanceof Error ? error62.message : String(error62);
+  } catch (error63) {
+    const reason = error63 instanceof Error ? error63.message : String(error63);
     throw new ConfigError(`${path} is not valid JSON: ${reason}`);
   }
   const parsed = userConfigSchema.safeParse(json2);
@@ -24054,22 +24647,6 @@ async function loadConfig(options) {
   }
   return { config: result.data, sources };
 }
-
-// src/core/exit-codes.ts
-var ExitCode = {
-  /** Command succeeded. */
-  Ok: 0,
-  /** Generic failure (e.g. a `doctor` check failed). */
-  Failure: 1,
-  /** A quality threshold was not met; the caller should refine and retry. */
-  Refine: 2,
-  /** Retry budget exhausted; escalate or hand over to a human. */
-  Escalate: 3,
-  /** Tracker unavailable here / code host / authentication error. */
-  Provider: 4,
-  /** Invalid or missing configuration. */
-  Config: 5
-};
 
 // src/core/guardrails.ts
 var GUARDRAIL_RULES = [
@@ -24128,8 +24705,8 @@ function applyClaudePointer(existing) {
 
 // src/core/git-worktree-manager.ts
 import { constants } from "fs";
-import { appendFile, copyFile, mkdir, readFile, realpath, stat } from "fs/promises";
-import { dirname as dirname3, isAbsolute, join as join4, relative, resolve, sep } from "path";
+import { appendFile, copyFile, mkdir as mkdir2, readFile as readFile2, realpath, stat } from "fs/promises";
+import { dirname as dirname3, isAbsolute, join as join5, relative, resolve, sep } from "path";
 var WorktreeError = class extends Error {
   constructor(message) {
     super(message);
@@ -24186,7 +24763,7 @@ var GitWorktreeManager = class {
   }
   /** Where the worktree for an issue lives. */
   pathFor(issueId) {
-    return join4(this.root, normalizeIssueId(issueId));
+    return join5(this.root, normalizeIssueId(issueId));
   }
   git(args, cwd = this.repoRoot) {
     return this.run("git", args, { cwd, timeoutMs: GIT_TIMEOUT_MS });
@@ -24371,13 +24948,13 @@ var GitWorktreeManager = class {
         continue;
       }
       try {
-        await mkdir(dirname3(target), { recursive: true });
+        await mkdir2(dirname3(target), { recursive: true });
         await copyFile(source, target, constants.COPYFILE_EXCL);
         copied.push(file2);
-      } catch (error62) {
-        const code = error62.code;
+      } catch (error63) {
+        const code = error63.code;
         if (code !== "ENOENT" && code !== "EEXIST" && code !== "EISDIR") {
-          warnings.push(`could not copy ${file2}: ${error62.message}`);
+          warnings.push(`could not copy ${file2}: ${error63.message}`);
         }
       }
     }
@@ -24390,12 +24967,12 @@ var GitWorktreeManager = class {
     const entry = rel.split(sep).join("/");
     const ignored = await this.git(["check-ignore", "-q", `${entry}/probe`]);
     if (ignored.exitCode === 0) return false;
-    const gitignore = join4(this.repoRoot, ".gitignore");
+    const gitignore = join5(this.repoRoot, ".gitignore");
     let current = "";
     try {
-      current = await readFile(gitignore, "utf8");
-    } catch (error62) {
-      if (error62.code !== "ENOENT") throw error62;
+      current = await readFile2(gitignore, "utf8");
+    } catch (error63) {
+      if (error63.code !== "ENOENT") throw error63;
     }
     const separator = current === "" || current.endsWith("\n") ? "" : "\n";
     await appendFile(gitignore, `${separator}${entry}/
@@ -24403,6 +24980,159 @@ var GitWorktreeManager = class {
     return true;
   }
 };
+
+// src/core/duplicates.ts
+function words(title) {
+  return new Set(
+    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 1)
+  );
+}
+function titleSimilarity(a, b) {
+  const left = words(a);
+  const right = words(b);
+  if (left.size === 0 || right.size === 0) return 0;
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return shared / (left.size + right.size - shared);
+}
+var DUPLICATE_THRESHOLD = 0.5;
+function rankDuplicates(title, candidates) {
+  return candidates.map((issue2) => ({ issue: issue2, score: titleSimilarity(title, issue2.title) })).filter(({ score }) => score >= DUPLICATE_THRESHOLD).sort((x, y) => y.score - x.score).map(({ issue: issue2 }) => issue2);
+}
+
+// src/core/mining.ts
+var GAP_FILE_MARKER = "<!-- sentinel:mine v1 -->";
+var NEUTRAL_FEATURE_LABEL = "kind/feature";
+var MiningError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "MiningError";
+  }
+};
+var finding = external_exports.object({
+  title: external_exports.string().trim().min(1),
+  summary: external_exports.string().trim().min(1),
+  sources: external_exports.array(external_exports.string().trim().min(1)).default([]),
+  priority: external_exports.enum(["high", "medium", "low"]).optional()
+});
+var findingsSchema = external_exports.array(finding).min(1);
+var ghRepo = external_exports.object({
+  fullName: external_exports.string(),
+  url: external_exports.string(),
+  stargazersCount: external_exports.number(),
+  description: external_exports.string().nullish(),
+  language: external_exports.string().nullish(),
+  license: external_exports.object({ key: external_exports.string().nullish() }).nullish()
+});
+function parseRepoSearch(text2, minStars) {
+  let json2;
+  try {
+    json2 = JSON.parse(text2);
+  } catch {
+    throw new MiningError("gh printed output that is not JSON");
+  }
+  const parsed = external_exports.array(ghRepo).safeParse(json2);
+  if (!parsed.success) throw new MiningError("gh printed an unexpected search result");
+  return parsed.data.filter((repo) => repo.stargazersCount >= minStars).map((repo) => ({
+    fullName: repo.fullName,
+    url: repo.url,
+    stars: repo.stargazersCount,
+    description: repo.description ?? "",
+    language: repo.language ?? "",
+    license: repo.license?.key ?? ""
+  }));
+}
+function mergeFindings(findings) {
+  const kept = [];
+  for (const item of findings) {
+    const match = rankDuplicates(item.title, kept)[0];
+    if (match === void 0) {
+      kept.push({ ...item, sources: [...new Set(item.sources)] });
+    } else {
+      const index = kept.indexOf(match);
+      kept[index] = { ...match, sources: [.../* @__PURE__ */ new Set([...match.sources, ...item.sources])] };
+    }
+  }
+  return kept;
+}
+function renderGapFile(findings) {
+  const lines = [
+    "# Feature gaps",
+    "",
+    GAP_FILE_MARKER,
+    "",
+    "Approve a gap by changing `[ ]` to `[x]`, then run `sentinel mine create --approved <this file>`.",
+    "Delete the gaps you do not want. Nothing is filed until you approve it.",
+    "",
+    "## Gaps",
+    ""
+  ];
+  for (const item of findings) {
+    const priority = item.priority === void 0 ? "" : ` (priority: ${item.priority})`;
+    lines.push(`- [ ] **${item.title.replace(/\*\*/g, "")}**${priority}`);
+    lines.push(`  - ${item.summary.replace(/\r?\n/g, " ")}`);
+    if (item.sources.length > 0) lines.push(`  - Seen in: ${item.sources.join(", ")}`);
+  }
+  return `${lines.join("\n")}
+`;
+}
+function parseGapFile(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const gaps = [];
+  lines.forEach((line, index) => {
+    if (!line.startsWith("- [")) return;
+    const checkbox = line.slice(3, 4);
+    if (checkbox !== " " && checkbox.toLowerCase() !== "x" || line.slice(4, 6) !== "] ") return;
+    const rest = line.slice(6).trim();
+    if (!rest.startsWith("**")) return;
+    const close = rest.indexOf("**", 2);
+    if (close === -1) return;
+    const title = rest.slice(2, close).trim();
+    const priority = /\(priority: (high|medium|low)\)/.exec(rest.slice(close))?.[1];
+    let summary = "";
+    let sources = [];
+    let created;
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const detail = lines[next] ?? "";
+      if (!detail.startsWith("  - ")) break;
+      const text2 = detail.slice(4).trim();
+      if (text2.startsWith("Seen in:")) {
+        sources = text2.slice("Seen in:".length).split(",").map((s) => s.trim()).filter((s) => s !== "");
+      } else if (text2.startsWith("Created:")) {
+        created = text2.slice("Created:".length).trim();
+      } else if (summary === "") {
+        summary = text2;
+      }
+    }
+    if (title !== "") {
+      gaps.push({
+        title,
+        summary,
+        sources,
+        priority,
+        approved: checkbox !== " ",
+        created,
+        lineIndex: index
+      });
+    }
+  });
+  return gaps;
+}
+function markCreated(markdown, lineIndex, id) {
+  const lines = markdown.split("\n");
+  let at = lineIndex + 1;
+  while ((lines[at] ?? "").startsWith("  - ")) at += 1;
+  lines.splice(at, 0, `  - Created: ${id}`);
+  return lines.join("\n");
+}
+function issueDraftFor(gap) {
+  const body = [
+    gap.summary,
+    gap.sources.length > 0 ? `Seen in: ${gap.sources.join(", ")}` : "",
+    "_Found by `sentinel mine` and approved by a human._"
+  ].filter((part) => part !== "").join("\n\n");
+  return { title: gap.title, body, labels: [NEUTRAL_FEATURE_LABEL] };
+}
 
 // src/core/prd-state.ts
 var PrdError = class extends Error {
@@ -24420,7 +25150,7 @@ function evaluationsBefore(state, hash2) {
   if (state.lastHash === hash2) return Math.max(0, state.evaluations - 1);
   return cycleFinished(state) ? 0 : state.evaluations;
 }
-function recordEvaluation(state, slug, hash2, report, now) {
+function recordEvaluation(state, slug2, hash2, report, now) {
   if (state?.lastHash === hash2) return state;
   const entry = {
     at: now.toISOString(),
@@ -24430,7 +25160,7 @@ function recordEvaluation(state, slug, hash2, report, now) {
   };
   const previous = state === void 0 || cycleFinished(state) ? [] : state.history;
   return {
-    slug,
+    slug: slug2,
     evaluations: report.evaluation,
     lastHash: hash2,
     history: [...previous, entry].slice(-MAX_HISTORY)
@@ -24438,8 +25168,8 @@ function recordEvaluation(state, slug, hash2, report, now) {
 }
 
 // src/core/issue-tracker.ts
-import { readFile as readFile2, writeFile } from "fs/promises";
-import { join as join5 } from "path";
+import { readFile as readFile3, writeFile as writeFile2 } from "fs/promises";
+import { join as join6 } from "path";
 var LOCAL_TRACKER = "local";
 var TrackerError = class extends Error {
   constructor(message, kind = "invalid") {
@@ -24466,8 +25196,8 @@ var ALIASES = {
   files: LOCAL_TRACKER
 };
 function normalizeTracker(raw) {
-  const slug = raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
-  const resolved = ALIASES[slug] ?? slug;
+  const slug2 = raw.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const resolved = ALIASES[slug2] ?? slug2;
   if (!TRACKER_SLUG_PATTERN.test(resolved)) {
     throw new TrackerError(
       `invalid tracker "${raw}": use a lower-case slug such as github, jira, linear or local`
@@ -24580,15 +25310,15 @@ var LOCAL_COMMANDS = {
   "link-pr": 'sentinel issue comment <id> --body "PR: <url>", and "Fixes #<id>" in the PR body',
   close: "sentinel issue close <id>"
 };
-function describeTracker(section) {
-  const tracker = section.tracker === null ? null : normalizeTracker(section.tracker);
+function describeTracker(section2) {
+  const tracker = section2.tracker === null ? null : normalizeTracker(section2.tracker);
   const isLocal = tracker === LOCAL_TRACKER;
   return {
     tracker,
-    location: section.location,
-    notes: section.notes,
-    labelMap: section.labelMap,
-    ...isLocal ? { localDir: section.localDir } : {},
+    location: section2.location,
+    notes: section2.notes,
+    labelMap: section2.labelMap,
+    ...isLocal ? { localDir: section2.localDir } : {},
     verbs: TRACKER_VERBS.map(
       (v) => isLocal ? { ...v, command: LOCAL_COMMANDS[v.verb] ?? "" } : { ...v }
     )
@@ -24658,20 +25388,20 @@ async function detectTrackerHints(run, cwd) {
   };
 }
 async function saveTrackerChoice(cwd, repoRoot, files, choice) {
-  const path = await findRepoConfigPath(cwd, files) ?? join5(repoRoot, CONFIG_FILE_NAME);
+  const path = await findRepoConfigPath(cwd, files) ?? join6(repoRoot, CONFIG_FILE_NAME);
   let existing = {};
   let text2;
   try {
-    text2 = await readFile2(path, "utf8");
-  } catch (error62) {
-    if (error62.code !== "ENOENT") throw error62;
+    text2 = await readFile3(path, "utf8");
+  } catch (error63) {
+    if (error63.code !== "ENOENT") throw error63;
   }
   if (text2 !== void 0) {
     let parsed;
     try {
       parsed = JSON.parse(text2);
-    } catch (error62) {
-      const reason = error62 instanceof Error ? error62.message : String(error62);
+    } catch (error63) {
+      const reason = error63 instanceof Error ? error63.message : String(error63);
       throw new ConfigError(`${path} is not valid JSON: ${reason}`);
     }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -24696,23 +25426,13 @@ async function saveTrackerChoice(cwd, repoRoot, files, choice) {
     const problems = check2.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ");
     throw new ConfigError(`refusing to write ${path}: ${problems}`);
   }
-  await writeFile(path, `${JSON.stringify(next, null, 2)}
+  await writeFile2(path, `${JSON.stringify(next, null, 2)}
 `, "utf8");
   return path;
 }
 
-// src/core/provider-error.ts
-var ProviderError = class extends Error {
-  kind;
-  constructor(kind, message) {
-    super(message);
-    this.name = "ProviderError";
-    this.kind = kind;
-  }
-};
-
 // src/core/scaffold.ts
-import { mkdir as mkdir2, writeFile as writeFile2 } from "fs/promises";
+import { mkdir as mkdir3, writeFile as writeFile3 } from "fs/promises";
 import { dirname as dirname4, isAbsolute as isAbsolute2, relative as relative2, resolve as resolve2 } from "path";
 var ScaffoldError = class extends Error {
   constructor(message) {
@@ -24732,14 +25452,14 @@ function resolveInside(root, dir, file2) {
   return target;
 }
 async function writeNewFile(path, content, force) {
-  await mkdir2(dirname4(path), { recursive: true });
+  await mkdir3(dirname4(path), { recursive: true });
   try {
-    await writeFile2(path, content, { encoding: "utf8", flag: force ? "w" : "wx" });
-  } catch (error62) {
-    if (error62.code === "EEXIST") {
+    await writeFile3(path, content, { encoding: "utf8", flag: force ? "w" : "wx" });
+  } catch (error63) {
+    if (error63.code === "EEXIST") {
       throw new ScaffoldError(`${path} already exists (use --force to overwrite)`);
     }
-    throw error62;
+    throw error63;
   }
 }
 function pickTitle(title, fallback) {
@@ -24747,81 +25467,227 @@ function pickTitle(title, fallback) {
   return trimmed === void 0 || trimmed === "" ? fallback : trimmed;
 }
 
-// src/core/state.ts
-import { mkdir as mkdir3, readFile as readFile3, rename, rm, writeFile as writeFile3 } from "fs/promises";
-import { join as join6 } from "path";
-var NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}$/i;
-var StateError = class extends Error {
+// src/core/socratic-engine.ts
+var DOMAIN_FILE = ".sentinel/domain.json";
+var SetupError = class extends Error {
   constructor(message) {
     super(message);
-    this.name = "StateError";
+    this.name = "SetupError";
   }
 };
-var StateStore = class {
-  dir;
-  constructor(repoRoot) {
-    this.dir = join6(repoRoot, ".sentinel", "state");
+var PII_WORDS = /\b(pii|personal|personally|email|e-mail|name|address|phone|birth|ssn|passport|health|medical|patient|payment|card|iban|biometric|gdpr|hipaa|location|customer data)\b/i;
+var NONE_WORDS = /* @__PURE__ */ new Set(["none", "no", "n/a", "na", "nothing", "-"]);
+function isPiiLikely(answers) {
+  if (answers.pii === "yes") return true;
+  if (answers.pii === "no") return false;
+  return PII_WORDS.test(answers.data ?? "");
+}
+function isSubstantive(value) {
+  if (value === void 0) return false;
+  const text2 = value.trim().toLowerCase();
+  const bare = text2.endsWith(".") ? text2.slice(0, -1).trimEnd() : text2;
+  return bare !== "" && !NONE_WORDS.has(bare);
+}
+var QUESTIONS = [
+  // The four core questions.
+  {
+    id: "problem",
+    branch: "core",
+    kind: "text",
+    prompt: "What problem does this product solve, and why now?"
+  },
+  {
+    id: "users",
+    branch: "core",
+    kind: "text",
+    prompt: "Who are the primary users, and what role does each play?",
+    hint: "for example: customers, support agents, administrators"
+  },
+  {
+    id: "data",
+    branch: "core",
+    kind: "text",
+    prompt: "What data does it store or process?"
+  },
+  {
+    id: "scale",
+    branch: "core",
+    kind: "text",
+    prompt: "What scale do you expect (users, requests per second, data volume)?"
+  },
+  // SLAs and non-functional requirements.
+  {
+    id: "availability",
+    branch: "nfr",
+    kind: "text",
+    prompt: "What availability and latency targets must it meet?",
+    hint: "with numbers, for example 99.9% uptime and p95 under 300 ms"
+  },
+  {
+    id: "recovery",
+    branch: "nfr",
+    kind: "text",
+    prompt: "How much data loss and downtime is acceptable after a failure (RPO and RTO)?"
+  },
+  // Security boundaries.
+  {
+    id: "authentication",
+    branch: "security",
+    kind: "text",
+    prompt: "How do users and services authenticate?",
+    hint: "for example OIDC single sign-on, API keys, mTLS"
+  },
+  {
+    id: "authorization",
+    branch: "security",
+    kind: "text",
+    prompt: "Which roles exist, and what may each role do?"
+  },
+  {
+    id: "boundaries",
+    branch: "security",
+    kind: "text",
+    prompt: "Which parts are public, internal or admin-only, and where does untrusted input enter?"
+  },
+  // Core user journeys.
+  {
+    id: "journeys",
+    branch: "journeys",
+    kind: "text",
+    prompt: "Describe the three to five most important user journeys, one per line."
+  },
+  // Integrations.
+  {
+    id: "integrations",
+    branch: "integrations",
+    kind: "text",
+    prompt: 'Which external systems does it integrate with? Answer "none" if there are none.'
+  },
+  {
+    id: "integrationAuth",
+    branch: "integrations",
+    kind: "text",
+    prompt: "How does each integration authenticate, and what happens when it is down?",
+    when: (answers) => isSubstantive(answers.integrations)
+  },
+  // Compliance, triggered by personal data.
+  {
+    id: "pii",
+    branch: "compliance",
+    kind: "yesno",
+    prompt: "Does the system store or process personal data (PII)?",
+    when: (answers) => !PII_WORDS.test(answers.data ?? "") || answers.pii !== void 0
+  },
+  {
+    id: "regulations",
+    branch: "compliance",
+    kind: "text",
+    prompt: "Which regulations or standards apply (GDPR, HIPAA, PCI DSS, SOC 2, none)?",
+    when: isPiiLikely
+  },
+  {
+    id: "retention",
+    branch: "compliance",
+    kind: "text",
+    prompt: "How long is personal data kept, where is it stored, and how is it deleted on request?",
+    when: isPiiLikely
   }
-  pathFor(name) {
-    if (!NAME_PATTERN.test(name) || name.includes("..")) {
-      throw new StateError(`invalid state name "${name}"`);
+];
+var QUESTION_IDS = QUESTIONS.map((question) => question.id);
+function toPublic(question) {
+  const { when: _when, ...rest } = question;
+  return rest;
+}
+function unanswered(answers, question) {
+  return (answers[question.id] ?? "").trim() === "" && (question.when?.(answers) ?? true);
+}
+function nextQuestions(answers) {
+  const core = QUESTIONS.filter((q) => q.branch === "core" && unanswered(answers, q));
+  if (core.length > 0) return core;
+  return QUESTIONS.filter((q) => q.branch !== "core" && unanswered(answers, q));
+}
+function isComplete(answers) {
+  return nextQuestions(answers).length === 0;
+}
+var YES = /* @__PURE__ */ new Set(["yes", "y", "true", "1"]);
+var NO = /* @__PURE__ */ new Set(["no", "n", "false", "0"]);
+function normaliseYesNo(value) {
+  const lowered = value.trim().toLowerCase();
+  if (YES.has(lowered)) return "yes";
+  if (NO.has(lowered)) return "no";
+  return "unsure";
+}
+var answersSchema = external_exports.record(external_exports.string(), external_exports.string());
+function validateAnswers(input2) {
+  const parsed = answersSchema.safeParse(input2);
+  if (!parsed.success) {
+    return { ok: false, errors: ["answers must be a JSON object of question id to text"] };
+  }
+  const errors = [];
+  const answers = {};
+  for (const [id, raw] of Object.entries(parsed.data)) {
+    const question = QUESTIONS.find((q) => q.id === id);
+    if (question === void 0) {
+      errors.push(`unknown question "${id}"; known: ${QUESTION_IDS.join(", ")}`);
+      continue;
     }
-    return join6(this.dir, `${name}.json`);
-  }
-  async read(name) {
-    const path = this.pathFor(name);
-    let text2;
-    try {
-      text2 = await readFile3(path, "utf8");
-    } catch (error62) {
-      if (error62.code === "ENOENT") return void 0;
-      throw error62;
+    const text2 = raw.trim();
+    if (text2 === "") {
+      errors.push(`the answer to "${id}" is empty`);
+      continue;
     }
-    try {
-      return JSON.parse(text2);
-    } catch {
-      throw new StateError(`state file ${path} is corrupt; delete it to reset`);
-    }
+    answers[id] = question.kind === "yesno" ? normaliseYesNo(text2) : text2;
   }
-  /** Atomic write: temp file in the same directory, then rename. */
-  async write(name, value) {
-    const path = this.pathFor(name);
-    await mkdir3(this.dir, { recursive: true });
-    const temp = `${path}.${String(process.pid)}.${String(Date.now())}.tmp`;
-    await writeFile3(temp, `${JSON.stringify(value, null, 2)}
-`, "utf8");
-    try {
-      await rename(temp, path);
-    } catch (error62) {
-      await rm(temp, { force: true });
-      throw error62;
-    }
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, answers };
+}
+function buildDomain(answers, now) {
+  return {
+    version: 1,
+    updated: now.toISOString(),
+    complete: isComplete(answers),
+    compliance: isPiiLikely(answers),
+    answers
+  };
+}
+var domainSchema = external_exports.object({
+  version: external_exports.literal(1),
+  updated: external_exports.string(),
+  complete: external_exports.boolean(),
+  compliance: external_exports.boolean(),
+  answers: answersSchema
+});
+function parseDomain(text2, source) {
+  let json2;
+  try {
+    json2 = JSON.parse(text2);
+  } catch {
+    throw new SetupError(`${source} is not valid JSON`);
   }
-  async remove(name) {
-    await rm(this.pathFor(name), { force: true });
-  }
-};
+  const parsed = domainSchema.safeParse(json2);
+  if (!parsed.success) throw new SetupError(`${source} is not a sentinel domain file`);
+  return parsed.data;
+}
 
 // src/cli/safe.ts
 function guarded(deps, action) {
   return async (...args) => {
     try {
       await action(...args);
-    } catch (error62) {
-      if (error62 instanceof TrackerError) {
-        deps.stderr(`sentinel: ${error62.message}`);
-        deps.setExitCode(error62.kind === "unavailable" ? ExitCode.Provider : ExitCode.Failure);
-      } else if (error62 instanceof ConfigError) {
-        deps.stderr(`sentinel: ${error62.message}`);
+    } catch (error63) {
+      if (error63 instanceof TrackerError) {
+        deps.stderr(`sentinel: ${error63.message}`);
+        deps.setExitCode(error63.kind === "unavailable" ? ExitCode.Provider : ExitCode.Failure);
+      } else if (error63 instanceof ConfigError) {
+        deps.stderr(`sentinel: ${error63.message}`);
         deps.setExitCode(ExitCode.Config);
-      } else if (error62 instanceof ProviderError) {
-        deps.stderr(`sentinel: ${error62.message}`);
+      } else if (error63 instanceof ProviderError) {
+        deps.stderr(`sentinel: ${error63.message}`);
         deps.setExitCode(ExitCode.Provider);
-      } else if (error62 instanceof BranchNameError || error62 instanceof StateError || error62 instanceof PrdError || error62 instanceof ScaffoldError || error62 instanceof GuardrailError || error62 instanceof WorktreeError) {
-        deps.stderr(`sentinel: ${error62.message}`);
+      } else if (error63 instanceof BranchNameError || error63 instanceof StateError || error63 instanceof PrdError || error63 instanceof ScaffoldError || error63 instanceof MiningError || error63 instanceof GuardrailError || error63 instanceof SetupError || error63 instanceof WorktreeError) {
+        deps.stderr(`sentinel: ${error63.message}`);
         deps.setExitCode(ExitCode.Failure);
       } else {
-        throw error62;
+        throw error63;
       }
     }
   };
@@ -24886,6 +25752,51 @@ function registerBranch(program2, deps) {
   );
 }
 
+// src/cli/babysit.ts
+var EXIT = {
+  done: ExitCode.Ok,
+  wait: ExitCode.Ok,
+  rerun: ExitCode.Ok,
+  patch: ExitCode.Refine,
+  "give-up": ExitCode.Escalate
+};
+function registerBabysit(program2, deps) {
+  program2.command("babysit").description("Watch a pull request until CI is green, needs a fix, or sentinel gives up").argument("<pr>", "pull request number or URL").option("--once", "evaluate once and return, even while checks are running").option("--watch", "poll until there is something to do (the default)").option("--json", "output machine-readable JSON").action(
+    guarded(deps, async (ref, options) => {
+      const { config: config2 } = await loadCliConfig(deps);
+      const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
+      const host = new GitHubCodeHost({ run: deps.run, cwd: deps.cwd });
+      const result = await babysit(host, ref, new StateStore(root), {
+        settings: { maxAttempts: config2.babysit.maxAttempts },
+        pollIntervalSec: config2.babysit.pollIntervalSec,
+        timeoutMin: config2.babysit.timeoutMin,
+        once: options.once === true,
+        sleep: (ms) => new Promise((resolve7) => setTimeout(resolve7, ms)),
+        now: () => deps.now().getTime(),
+        onProgress: (message) => {
+          deps.stderr(`sentinel: ${message}`);
+        }
+      });
+      const output2 = {
+        action: result.action,
+        reason: result.reason,
+        pr: result.pr.url,
+        attempts: result.attempts,
+        packet: result.packet
+      };
+      deps.stdout(
+        options.json === true ? JSON.stringify(output2, null, 2) : [
+          `${result.action}: ${result.reason}`,
+          ...result.packet?.errors.slice(0, 10).map(
+            (e) => `  ${e.file ?? ""}${e.line === void 0 ? "" : `:${String(e.line)}`} ${e.message}`
+          ) ?? []
+        ].join("\n")
+      );
+      deps.setExitCode(EXIT[result.action]);
+    })
+  );
+}
+
 // src/cli/config.ts
 function registerConfig(program2, deps) {
   const config2 = program2.command("config").description("Inspect sentinel configuration");
@@ -24913,11 +25824,12 @@ function registerConfig(program2, deps) {
 
 // src/cli/deps.ts
 import { homedir } from "os";
+import { createInterface } from "readline/promises";
 
 // src/core/exec.ts
 import { spawn } from "child_process";
 var DEFAULT_TIMEOUT_MS = 15e3;
-var runCommand = (command2, args, options = {}) => new Promise((resolve5) => {
+var runCommand = (command2, args, options = {}) => new Promise((resolve7) => {
   let stdout = "";
   let stderr = "";
   let timedOut = false;
@@ -24926,7 +25838,7 @@ var runCommand = (command2, args, options = {}) => new Promise((resolve5) => {
     if (!settled) {
       settled = true;
       clearTimeout(timer);
-      resolve5({ ...result, timedOut });
+      resolve7({ ...result, timedOut });
     }
   };
   const child = spawn(command2, [...args], {
@@ -24947,12 +25859,12 @@ var runCommand = (command2, args, options = {}) => new Promise((resolve5) => {
   child.stderr.on("data", (chunk) => {
     stderr += chunk;
   });
-  child.on("error", (error62) => {
+  child.on("error", (error63) => {
     finish({
       exitCode: null,
       stdout,
-      stderr: stderr || error62.message,
-      notFound: error62.code === "ENOENT"
+      stderr: stderr || error63.message,
+      notFound: error63.code === "ENOENT"
     });
   });
   child.on("close", (code) => {
@@ -24962,39 +25874,47 @@ var runCommand = (command2, args, options = {}) => new Promise((resolve5) => {
 
 // src/core/fs.ts
 import { readdir, readFile as readFile4, stat as stat2 } from "fs/promises";
-function isNotFound(error62) {
-  const code = error62?.code;
+function isNotFound(error63) {
+  const code = error63?.code;
   return code === "ENOENT" || code === "ENOTDIR";
 }
 var nodeFiles = {
   async readText(path) {
     try {
       return await readFile4(path, "utf8");
-    } catch (error62) {
-      if (isNotFound(error62)) return void 0;
-      throw error62;
+    } catch (error63) {
+      if (isNotFound(error63)) return void 0;
+      throw error63;
     }
   },
   async exists(path) {
     try {
       await stat2(path);
       return true;
-    } catch (error62) {
-      if (isNotFound(error62)) return false;
-      throw error62;
+    } catch (error63) {
+      if (isNotFound(error63)) return false;
+      throw error63;
     }
   },
   async listDir(path) {
     try {
       return await readdir(path);
-    } catch (error62) {
-      if (isNotFound(error62)) return void 0;
-      throw error62;
+    } catch (error63) {
+      if (isNotFound(error63)) return void 0;
+      throw error63;
     }
   }
 };
 
 // src/cli/deps.ts
+async function askInTerminal(prompt) {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return await rl.question(prompt);
+  } finally {
+    rl.close();
+  }
+}
 function defaultDeps() {
   return {
     run: runCommand,
@@ -25011,7 +25931,9 @@ function defaultDeps() {
     cwd: process.cwd(),
     homeDir: homedir(),
     env: process.env,
-    now: () => /* @__PURE__ */ new Date()
+    now: () => /* @__PURE__ */ new Date(),
+    interactive: process.stdin.isTTY && process.stdout.isTTY,
+    ask: askInTerminal
   };
 }
 
@@ -25315,25 +26237,6 @@ function registerGuardrails(program2, deps) {
 import { readFile as readFile6 } from "fs/promises";
 import { isAbsolute as isAbsolute3, join as join9, resolve as resolve3 } from "path";
 
-// src/core/duplicates.ts
-function words(title) {
-  return new Set(
-    title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 1)
-  );
-}
-function titleSimilarity(a, b) {
-  const left = words(a);
-  const right = words(b);
-  if (left.size === 0 || right.size === 0) return 0;
-  let shared = 0;
-  for (const word of left) if (right.has(word)) shared += 1;
-  return shared / (left.size + right.size - shared);
-}
-var DUPLICATE_THRESHOLD = 0.5;
-function rankDuplicates(title, candidates) {
-  return candidates.map((issue2) => ({ issue: issue2, score: titleSimilarity(title, issue2.title) })).filter(({ score }) => score >= DUPLICATE_THRESHOLD).sort((x, y) => y.score - x.score).map(({ issue: issue2 }) => issue2);
-}
-
 // src/core/local-tracker.ts
 import { mkdir as mkdir5, readdir as readdir2, readFile as readFile5, writeFile as writeFile5 } from "fs/promises";
 import { join as join8 } from "path";
@@ -25374,9 +26277,9 @@ function splitFrontMatter(text2, path) {
   }
   return { fields, rest: normalized.slice(match[0].length) };
 }
-function parseComments(section) {
+function parseComments(section2) {
   const comments = [];
-  const parts = section.split(/^### (.+)$/m);
+  const parts = section2.split(/^### (.+)$/m);
   for (let i = 1; i < parts.length; i += 2) {
     comments.push({ at: (parts[i] ?? "").trim(), body: (parts[i + 1] ?? "").trim() });
   }
@@ -25428,9 +26331,9 @@ var LocalTracker = class {
     let names;
     try {
       names = await readdir2(this.dir);
-    } catch (error62) {
-      if (error62.code === "ENOENT") return [];
-      throw error62;
+    } catch (error63) {
+      if (error63.code === "ENOENT") return [];
+      throw error63;
     }
     return names.map((file2) => ({ file: file2, match: FILE_PATTERN.exec(file2) })).filter((e) => e.match !== null).map(({ file: file2, match }) => ({ id: Number(match[1]), file: file2 })).sort((a, b) => a.id - b.id);
   }
@@ -25472,8 +26375,8 @@ var LocalTracker = class {
     for (let attempt = 0; attempt < 5; attempt++) {
       const entries = await this.entries();
       const id = (entries.at(-1)?.id ?? 0) + 1 + attempt;
-      const slug = slugify(title);
-      const path = join8(this.dir, slug === "" ? `${String(id)}.md` : `${String(id)}-${slug}.md`);
+      const slug2 = slugify2(title);
+      const path = join8(this.dir, slug2 === "" ? `${String(id)}.md` : `${String(id)}-${slug2}.md`);
       const issue2 = {
         id,
         title,
@@ -25486,8 +26389,8 @@ var LocalTracker = class {
       try {
         await writeFile5(path, renderLocalIssue(issue2), { encoding: "utf8", flag: "wx" });
         return { ...issue2, path };
-      } catch (error62) {
-        if (error62.code !== "EEXIST") throw error62;
+      } catch (error63) {
+        if (error63.code !== "EEXIST") throw error63;
       }
     }
     throw new TrackerError(`could not allocate a new issue id in ${this.dir}`);
@@ -25788,166 +26691,160 @@ function registerIssue(program2, deps) {
   }
 }
 
-// src/cli/pr.ts
-import { isAbsolute as isAbsolute4, join as join10 } from "path";
-
-// src/core/hosts/github.ts
-function ghError(result, action) {
-  if (result.notFound) {
-    return new ProviderError(
-      "unavailable",
-      "the GitHub CLI (gh) was not found; install it from https://cli.github.com"
-    );
-  }
-  if (result.timedOut)
-    return new ProviderError("unavailable", `gh timed out while trying to ${action}`);
-  const detail = (result.stderr || result.stdout).trim();
-  if (/gh auth login|not logged in|authentication|GH_TOKEN|HTTP 401|bad credentials/i.test(detail)) {
-    return new ProviderError(
-      "auth",
-      `GitHub authentication failed: run \`gh auth login\` (${detail.split("\n")[0] ?? ""})`
-    );
-  }
-  if (/could not resolve|not found|HTTP 404|no pull requests? found/i.test(detail)) {
-    return new ProviderError(
-      "not-found",
-      `could not ${action}: ${detail.split("\n")[0] ?? "not found"}`
-    );
-  }
-  return new ProviderError("failed", `could not ${action}: ${detail || "gh exited with an error"}`);
+// src/cli/mine.ts
+import { readFile as readFile7, writeFile as writeFile6 } from "fs/promises";
+import { isAbsolute as isAbsolute4, join as join10, resolve as resolve4 } from "path";
+var DEFAULT_OUT = "docs/feature-gaps.md";
+var GH_TIMEOUT_MS2 = 6e4;
+function positiveInt(value, name) {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new MiningError(`${name} must be a whole number`);
+  return n;
 }
-var PR_FIELDS = "number,url,title,state,isDraft,headRefName,baseRefName";
-var GH_TIMEOUT_MS = 6e4;
-var MAX_LOG_CHARS = 1e5;
-var ghPr = external_exports.object({
-  number: external_exports.number(),
-  url: external_exports.string(),
-  title: external_exports.string(),
-  state: external_exports.string(),
-  isDraft: external_exports.boolean().default(false),
-  headRefName: external_exports.string(),
-  baseRefName: external_exports.string()
-});
-var ghCheck = external_exports.object({
-  name: external_exports.string(),
-  bucket: external_exports.string().default("pending"),
-  workflow: external_exports.string().nullish(),
-  link: external_exports.string().nullish()
-});
-function toPullRequest(raw) {
-  const state = raw.state.toUpperCase();
-  return {
-    number: raw.number,
-    url: raw.url,
-    title: raw.title,
-    state: state === "MERGED" ? "merged" : state === "CLOSED" ? "closed" : "open",
-    isDraft: raw.isDraft,
-    head: raw.headRefName,
-    base: raw.baseRefName
-  };
-}
-var BUCKETS = ["pass", "fail", "pending", "skipped", "cancelled"];
-function toBucket(value) {
-  if (value === "skipping") return "skipped";
-  if (value === "cancel") return "cancelled";
-  return BUCKETS.includes(value) ? value : "pending";
-}
-var GitHubCodeHost = class {
-  constructor(options) {
-    this.options = options;
-  }
-  type = "github";
-  async gh(args, action, acceptExitCodes = [0]) {
-    const repoArgs = this.options.repo === void 0 ? [] : ["--repo", this.options.repo];
-    const result = await this.options.run("gh", [...args, ...repoArgs], {
-      cwd: this.options.cwd,
-      timeoutMs: GH_TIMEOUT_MS
-    });
-    if (result.exitCode === null || !acceptExitCodes.includes(result.exitCode)) {
-      throw ghError(result, action);
-    }
-    return result.stdout;
-  }
-  json(schema, text2, action) {
-    try {
-      const parsed = schema.safeParse(JSON.parse(text2));
-      if (parsed.success) return parsed.data;
-    } catch {
-    }
-    throw new ProviderError("failed", `could not ${action}: unexpected gh output`);
-  }
-  async createPullRequest(pr) {
-    const args = [
-      "pr",
-      "create",
-      "--title",
-      pr.title,
-      "--body",
-      pr.body,
-      "--head",
-      pr.head,
-      "--base",
-      pr.base
-    ];
-    if (pr.draft === true) args.push("--draft");
-    const out = await this.gh(args, "create the pull request");
-    const url2 = /https:\/\/\S+\/pull\/\d+/.exec(out)?.[0];
-    if (url2 === void 0) {
-      throw new ProviderError(
-        "failed",
-        `pull request created but gh printed no URL: ${out.trim()}`
-      );
-    }
-    return this.getPullRequest(url2);
-  }
-  async getPullRequest(ref) {
-    const out = await this.gh(["pr", "view", ref, "--json", PR_FIELDS], `read pull request ${ref}`);
-    return toPullRequest(this.json(ghPr, out, `read pull request ${ref}`));
-  }
-  async listChecks(ref) {
-    const out = await this.gh(
-      ["pr", "checks", ref, "--json", "name,bucket,workflow,link"],
-      `list checks of ${ref}`,
-      [0, 1, 8]
-    );
-    if (out.trim() === "") return [];
-    return this.json(external_exports.array(ghCheck), out, `list checks of ${ref}`).map((c) => ({
-      name: c.name,
-      bucket: toBucket(c.bucket),
-      workflow: c.workflow ?? "",
-      link: c.link ?? "",
-      runId: /\/runs\/(\d+)/.exec(c.link ?? "")?.[1]
-    }));
-  }
-  async getFailedLogs(runId) {
-    const id = requireRunId(runId);
-    const out = await this.gh(["run", "view", id, "--log-failed"], `read failed logs of run ${id}`);
-    return out.length > MAX_LOG_CHARS ? `\u2026(truncated)
-${out.slice(-MAX_LOG_CHARS)}` : out;
-  }
-  async rerunFailed(runId) {
-    const id = requireRunId(runId);
-    await this.gh(["run", "rerun", id, "--failed"], `re-run failed jobs of run ${id}`);
-  }
-  async comment(ref, body) {
-    await this.gh(["pr", "comment", ref, "--body", body], `comment on ${ref}`);
-  }
-  async hasMergedPullRequest(branch) {
-    const out = await this.gh(
-      ["pr", "list", "--head", branch, "--state", "merged", "--json", "number", "--limit", "1"],
-      `look up merged pull requests of ${branch}`
-    );
-    return this.json(external_exports.array(external_exports.object({ number: external_exports.number() })), out, "parse merged pull requests").length > 0;
-  }
-};
-function requireRunId(value) {
-  const id = /^\d+$/.test(value) ? value : /\/runs\/(\d+)/.exec(value)?.[1];
-  if (id === void 0)
-    throw new ProviderError("failed", `"${value}" is not a workflow run id or run URL`);
-  return id;
+function registerMine(program2, deps) {
+  const mine = program2.command("mine").description("Find feature gaps in comparable projects");
+  mine.command("search").description("Find popular comparable repositories with gh (sorted by stars)").argument("<query...>", "search terms").option("--min-stars <n>", "drop repositories with fewer stars", "500").option("--limit <n>", "how many repositories to ask gh for", "10").option("--language <name>", "only this language").option("--json", "output machine-readable JSON").action(
+    guarded(
+      deps,
+      async (query, options) => {
+        const minStars = positiveInt(options.minStars, "--min-stars");
+        const limit = positiveInt(options.limit, "--limit");
+        const args = [
+          "search",
+          "repos",
+          ...query,
+          "--sort",
+          "stars",
+          "--order",
+          "desc",
+          "--limit",
+          String(Math.min(Math.max(limit, 1), 50)),
+          "--json",
+          "fullName,description,stargazersCount,url,language,license"
+        ];
+        if (options.language !== void 0) args.push("--language", options.language);
+        const result = await deps.run("gh", args, { cwd: deps.cwd, timeoutMs: GH_TIMEOUT_MS2 });
+        if (result.exitCode !== 0) throw ghError(result, "search repositories");
+        const repos = parseRepoSearch(result.stdout, minStars);
+        deps.stdout(
+          options.json === true ? JSON.stringify(repos, null, 2) : repos.length === 0 ? "no repositories matched" : repos.map((r) => `${String(r.stars)}	${r.fullName}	${r.description}`).join("\n")
+        );
+      }
+    )
+  );
+  mine.command("draft").description("Write the gap list that a human approves, from findings you collected").requiredOption(
+    "--findings <file>",
+    'JSON array of {"title","summary","sources"?,"priority"?} objects'
+  ).option("--out <file>", "where to write the gap list", DEFAULT_OUT).option("--force", "overwrite an existing gap list").option("--json", "output machine-readable JSON").action(
+    guarded(
+      deps,
+      async (options) => {
+        let json2;
+        try {
+          json2 = JSON.parse(await readFile7(resolve4(deps.cwd, options.findings), "utf8"));
+        } catch {
+          throw new MiningError(`${options.findings} is missing or not valid JSON`);
+        }
+        const parsed = findingsSchema.safeParse(json2);
+        if (!parsed.success) {
+          const detail = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+          throw new MiningError(
+            `${options.findings} is not a list of findings: ${detail.join("; ")}`
+          );
+        }
+        const findings = mergeFindings(parsed.data);
+        const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
+        const path = resolveInside(root, ".", options.out);
+        await writeNewFile(path, renderGapFile(findings), options.force === true);
+        deps.stdout(
+          options.json === true ? JSON.stringify({ path, gaps: findings.length }, null, 2) : `${path}
+${String(findings.length)} gaps written; tick the ones to file, then run mine create`
+        );
+      }
+    )
+  );
+  mine.command("create").description("File the approved gaps as issues, skipping likely duplicates").requiredOption("--approved <file>", "the gap list, with approved gaps ticked [x]").option(
+    "--candidates <file>",
+    'JSON of existing issues ({"id","title"}), listed with your own tracker tools'
+  ).option("--json", "output machine-readable JSON").action(
+    guarded(deps, async (options) => {
+      const { config: config2 } = await loadCliConfig(deps);
+      const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
+      const gapPath = resolve4(deps.cwd, options.approved);
+      let markdown = await deps.files.readText(gapPath);
+      if (markdown === void 0)
+        throw new MiningError(`gap list not found: ${options.approved}`);
+      const tracker = config2.issueProvider.tracker;
+      const isLocal = tracker !== null && normalizeTracker(tracker) === LOCAL_TRACKER;
+      const localDir = config2.issueProvider.localDir;
+      const local = isLocal ? new LocalTracker(isAbsolute4(localDir) ? localDir : join10(root, localDir), deps.now) : void 0;
+      let candidates = [];
+      if (options.candidates !== void 0) {
+        candidates = parseCandidates(
+          await readFile7(resolve4(deps.cwd, options.candidates), "utf8"),
+          options.candidates
+        );
+      } else if (local !== void 0) {
+        candidates = (await local.list({ status: "all" })).map((i) => ({
+          id: String(i.id),
+          title: i.title
+        }));
+      } else {
+        deps.stderr(
+          "sentinel: no --candidates given, so duplicates cannot be checked; list the existing issues with your tracker tools and pass them"
+        );
+      }
+      const gaps = parseGapFile(markdown);
+      const toCreate = [];
+      const skipped = [];
+      const created = [];
+      for (const gap of [...gaps].sort((a, b) => b.lineIndex - a.lineIndex)) {
+        if (!gap.approved || gap.created !== void 0) continue;
+        const duplicates = rankDuplicates(gap.title, candidates);
+        if (duplicates.length > 0) {
+          skipped.push({ title: gap.title, duplicateOf: duplicates });
+          continue;
+        }
+        const draft = issueDraftFor(gap);
+        if (local === void 0) {
+          toCreate.push(draft);
+        } else {
+          const made = await local.create({
+            title: draft.title,
+            body: draft.body,
+            labels: [...draft.labels]
+          });
+          created.push({ title: draft.title, id: String(made.id) });
+          markdown = markCreated(markdown, gap.lineIndex, `#${String(made.id)}`);
+        }
+      }
+      if (created.length > 0) await writeFile6(gapPath, markdown, "utf8");
+      const result = {
+        tracker: tracker ?? null,
+        toCreate: toCreate.reverse(),
+        created: created.reverse(),
+        skippedDuplicates: skipped.reverse()
+      };
+      if (options.json === true) {
+        deps.stdout(JSON.stringify(result, null, 2));
+      } else {
+        for (const item of result.created) deps.stdout(`created #${item.id}: ${item.title}`);
+        for (const item of result.toCreate)
+          deps.stdout(`to file with your tracker tools: ${item.title}`);
+        for (const item of result.skippedDuplicates) {
+          deps.stdout(
+            `skipped (similar to ${item.duplicateOf.map((d) => d.id).join(", ")}): ${item.title}`
+          );
+        }
+        if (gaps.every((g) => !g.approved))
+          deps.stdout("nothing approved: tick a gap with [x] first");
+      }
+    })
+  );
 }
 
 // src/cli/pr.ts
+import { isAbsolute as isAbsolute5, join as join11 } from "path";
 function issueReference(tracker, issueId, issueUrl) {
   const id = issueId.trim().replace(/^#/, "");
   if (tracker === "github") return `Closes #${id}`;
@@ -25965,7 +26862,7 @@ function registerPr(program2, deps) {
       if (tracker === LOCAL_TRACKER) {
         const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
         const dir = config2.issueProvider.localDir;
-        local = new LocalTracker(isAbsolute4(dir) ? dir : join10(root, dir), deps.now);
+        local = new LocalTracker(isAbsolute5(dir) ? dir : join11(root, dir), deps.now);
         await local.get(options.issue);
       }
       let head = options.head;
@@ -26018,8 +26915,8 @@ function registerPr(program2, deps) {
 }
 
 // src/cli/prd.ts
-import { createHash } from "crypto";
-import { basename, extname, resolve as resolve4 } from "path";
+import { createHash as createHash2 } from "crypto";
+import { basename, extname, resolve as resolve5 } from "path";
 
 // src/templates/prd-template.ts
 var PRD_TEMPLATE = `# PRD: {{TITLE}}
@@ -26551,19 +27448,19 @@ function formatRubric() {
 }
 
 // src/cli/prd.ts
-var EXIT = {
+var EXIT2 = {
   accept: ExitCode.Ok,
   refine: ExitCode.Refine,
   score: ExitCode.Refine,
   escalate: ExitCode.Escalate
 };
 function slugFor(file2, explicit) {
-  const slug = slugify(explicit ?? basename(file2, extname(file2)), 60);
-  if (slug === "") throw new PrdError("cannot derive a slug; pass --slug");
-  return slug;
+  const slug2 = slugify2(explicit ?? basename(file2, extname(file2)), 60);
+  if (slug2 === "") throw new PrdError("cannot derive a slug; pass --slug");
+  return slug2;
 }
 async function readScores(path, deps) {
-  const text2 = await deps.files.readText(resolve4(deps.cwd, path));
+  const text2 = await deps.files.readText(resolve5(deps.cwd, path));
   if (text2 === void 0) throw new PrdError(`scores file not found: ${path}`);
   let json2;
   try {
@@ -26580,8 +27477,8 @@ async function readScores(path, deps) {
   }
   return parsed.data;
 }
-function formatReport(report, slug) {
-  const lines = [`PRD ${slug}: ${report.nextAction.toUpperCase()}`];
+function formatReport(report, slug2) {
+  const lines = [`PRD ${slug2}: ${report.nextAction.toUpperCase()}`];
   lines.push(
     `  ${String(report.stats.functionalRequirements)} functional and ${String(report.stats.nonFunctionalRequirements)} non-functional requirements`
   );
@@ -26613,15 +27510,15 @@ function registerPrd(program2, deps) {
     guarded(
       deps,
       async (file2, options) => {
-        const markdown = await deps.files.readText(resolve4(deps.cwd, file2));
+        const markdown = await deps.files.readText(resolve5(deps.cwd, file2));
         if (markdown === void 0) throw new PrdError(`PRD file not found: ${file2}`);
         const scores = options.scores === void 0 ? void 0 : await readScores(options.scores, deps);
-        const slug = slugFor(file2, options.slug);
+        const slug2 = slugFor(file2, options.slug);
         const { config: config2 } = await loadCliConfig(deps);
         const store = new StateStore(await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd);
-        const stateName = `prd-${slug}`;
+        const stateName = `prd-${slug2}`;
         const previous = await store.read(stateName);
-        const hash2 = createHash("sha256").update(markdown).update(JSON.stringify(scores ?? null)).digest("hex");
+        const hash2 = createHash2("sha256").update(markdown).update(JSON.stringify(scores ?? null)).digest("hex");
         const report = validatePrd(markdown, {
           scores,
           config: config2,
@@ -26630,13 +27527,13 @@ function registerPrd(program2, deps) {
         if (scores !== void 0) {
           await store.write(
             stateName,
-            recordEvaluation(previous, slug, hash2, report, deps.now())
+            recordEvaluation(previous, slug2, hash2, report, deps.now())
           );
         }
         deps.stdout(
-          options.json === true ? JSON.stringify({ slug, ...report }, null, 2) : formatReport(report, slug)
+          options.json === true ? JSON.stringify({ slug: slug2, ...report }, null, 2) : formatReport(report, slug2)
         );
-        deps.setExitCode(EXIT[report.nextAction]);
+        deps.setExitCode(EXIT2[report.nextAction]);
       }
     )
   );
@@ -26644,19 +27541,19 @@ function registerPrd(program2, deps) {
     guarded(
       deps,
       async (rawSlug, options) => {
-        const slug = slugify(rawSlug, 60);
-        if (slug === "") throw new PrdError(`"${rawSlug}" cannot be turned into a slug`);
+        const slug2 = slugify2(rawSlug, 60);
+        if (slug2 === "") throw new PrdError(`"${rawSlug}" cannot be turned into a slug`);
         const { config: config2 } = await loadCliConfig(deps);
         const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
-        const path = resolveInside(root, config2.prd.dir, `${slug}.md`);
+        const path = resolveInside(root, config2.prd.dir, `${slug2}.md`);
         const content = fillTemplate(PRD_TEMPLATE, {
           TITLE: pickTitle(options.title, rawSlug.trim()),
-          SLUG: slug,
+          SLUG: slug2,
           ISSUE: options.issue === void 0 ? "none" : `#${normalizeIssueId(options.issue)}`,
           DATE: deps.now().toISOString().slice(0, 10)
         });
         await writeNewFile(path, content, options.force === true);
-        deps.stdout(options.json === true ? JSON.stringify({ path, slug }, null, 2) : path);
+        deps.stdout(options.json === true ? JSON.stringify({ path, slug: slug2 }, null, 2) : path);
       }
     )
   );
@@ -26664,10 +27561,10 @@ function registerPrd(program2, deps) {
     deps.stdout(formatRubric());
   });
   prd.command("status").description("Show the iteration state of a PRD").argument("<slug>", "PRD slug").option("--json", "output machine-readable JSON").action(
-    guarded(deps, async (slug, options) => {
+    guarded(deps, async (slug2, options) => {
       const store = new StateStore(await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd);
-      const state = await store.read(`prd-${slug}`);
-      if (state === void 0) throw new PrdError(`no evaluations recorded for "${slug}"`);
+      const state = await store.read(`prd-${slug2}`);
+      if (state === void 0) throw new PrdError(`no evaluations recorded for "${slug2}"`);
       const { config: config2 } = await loadCliConfig(deps);
       const last = state.history.at(-1);
       const remaining = Math.max(
@@ -26760,6 +27657,446 @@ function registerRfc(program2, deps) {
   );
 }
 
+// src/cli/setup.ts
+import { mkdir as mkdir6, writeFile as writeFile7 } from "fs/promises";
+import { basename as basename2, dirname as dirname6, join as join12, resolve as resolve6 } from "path";
+
+// src/core/readme-renderer.ts
+var MAX_ITEMS = 6;
+function listItems(text2) {
+  if (!isSubstantive(text2)) return [];
+  const source = text2 ?? "";
+  const parts = source.includes("\n") ? source.split("\n") : source.split(/[;,]/);
+  return parts.map((part) => part.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim()).filter((part) => part !== "").slice(0, MAX_ITEMS);
+}
+function mermaidLabel(text2) {
+  const cleaned = text2.replace(/[\r\n]+/g, " ").replace(/["[\]{}()<>|\\`#;&]/g, "").replace(/\s+/g, " ").trim();
+  const cut = cleaned.length > 40 ? `${cleaned.slice(0, 39).trimEnd()}\u2026` : cleaned;
+  return cut === "" ? "unnamed" : cut;
+}
+function node2(id, label) {
+  return `  ${id}["${mermaidLabel(label)}"]`;
+}
+function contextDiagram(name, answers) {
+  const users = listItems(answers.users);
+  const systems = listItems(answers.integrations);
+  const lines = ["flowchart LR", node2("system", name)];
+  (users.length > 0 ? users : ["Users"]).forEach((user, index) => {
+    lines.push(node2(`u${String(index)}`, user), `  u${String(index)} --> system`);
+  });
+  systems.forEach((integration, index) => {
+    lines.push(node2(`x${String(index)}`, integration), `  system --> x${String(index)}`);
+  });
+  return lines.join("\n");
+}
+function containerDiagram(name, projects) {
+  const lines = ["flowchart TB", `  subgraph system["${mermaidLabel(name)}"]`];
+  projects.forEach((project, index) => {
+    const frameworks = project.frameworks.length > 0 ? ` ${project.frameworks.join(", ")}` : "";
+    const label = `${project.path === "." ? name : project.path}: ${project.language}${frameworks}`;
+    lines.push(node2(`c${String(index)}`, label));
+  });
+  if (projects.length === 0) lines.push(node2("c0", "Application"));
+  lines.push("  end", node2("store", "Data store"));
+  const count = Math.max(projects.length, 1);
+  for (let index = 0; index < count; index += 1) lines.push(`  c${String(index)} --> store`);
+  return lines.join("\n");
+}
+function section(title, body) {
+  return body === void 0 || body.trim() === "" ? [] : [`## ${title}`, "", body.trim(), ""];
+}
+function bullets(text2) {
+  const items = listItems(text2);
+  return items.length === 0 ? void 0 : items.map((item) => `- ${item}`).join("\n");
+}
+function renderReadme(input2) {
+  const { name, answers, projects } = input2;
+  const compliance = isPiiLikely(answers) ? [answers.regulations, answers.retention].filter((v) => v !== void 0).join("\n\n") : void 0;
+  const parts = [
+    `# ${name}`,
+    "",
+    ...section("Problem", answers.problem),
+    ...section("Users", bullets(answers.users)),
+    ...section("Core user journeys", bullets(answers.journeys)),
+    ...section("Data", answers.data),
+    ...section(
+      "Scale and service levels",
+      [answers.scale, answers.availability, answers.recovery].filter((v) => v !== void 0).join("\n\n")
+    ),
+    ...section(
+      "Security",
+      [
+        answers.authentication && `**Authentication.** ${answers.authentication}`,
+        answers.authorization && `**Authorisation.** ${answers.authorization}`,
+        answers.boundaries && `**Boundaries.** ${answers.boundaries}`
+      ].filter((v) => typeof v === "string").join("\n\n")
+    ),
+    ...section("Integrations", bullets(answers.integrations)),
+    ...section("Compliance", compliance),
+    "## Architecture",
+    "",
+    "### System context",
+    "",
+    "```mermaid",
+    contextDiagram(name, answers),
+    "```",
+    "",
+    "### Containers",
+    "",
+    "```mermaid",
+    containerDiagram(name, projects),
+    "```",
+    "",
+    "---",
+    "",
+    "_Generated by `sentinel setup` from `.sentinel/domain.json`._",
+    ""
+  ];
+  return parts.join("\n");
+}
+
+// src/core/workflows.ts
+var TESTS_WORKFLOW_PATH = ".github/workflows/sentinel-tests.yml";
+var LOAD_WORKFLOW_PATH = ".github/workflows/sentinel-load.yml";
+var COMMANDS = {
+  node: {
+    unit: "npm test",
+    integration: "npm run test:integration",
+    e2e: "npm run test:e2e",
+    load: "k6 run load/smoke.js"
+  },
+  python: {
+    unit: "pytest tests/unit",
+    integration: "pytest tests/integration",
+    e2e: "pytest tests/e2e",
+    load: "locust --headless -f load/locustfile.py -u 20 -r 5 -t 1m"
+  },
+  go: {
+    unit: "go test ./...",
+    integration: "go test -tags=integration ./...",
+    e2e: "go test -tags=e2e ./...",
+    load: "k6 run load/smoke.js"
+  },
+  rust: {
+    unit: "cargo test --lib",
+    integration: "cargo test --test integration",
+    e2e: "cargo test --test e2e",
+    load: "k6 run load/smoke.js"
+  },
+  java: {
+    unit: "mvn -B test",
+    integration: "mvn -B verify -Pintegration",
+    e2e: "mvn -B verify -Pe2e",
+    load: "k6 run load/smoke.js"
+  },
+  dotnet: {
+    unit: "dotnet test --filter Category=Unit",
+    integration: "dotnet test --filter Category=Integration",
+    e2e: "dotnet test --filter Category=E2E",
+    load: "k6 run load/smoke.js"
+  },
+  ruby: {
+    unit: "bundle exec rspec spec/unit",
+    integration: "bundle exec rspec spec/integration",
+    e2e: "bundle exec rspec spec/e2e",
+    load: "k6 run load/smoke.js"
+  },
+  php: {
+    unit: "vendor/bin/phpunit --testsuite unit",
+    integration: "vendor/bin/phpunit --testsuite integration",
+    e2e: "vendor/bin/phpunit --testsuite e2e",
+    load: "k6 run load/smoke.js"
+  }
+};
+function tierCommand(project, tier, testing) {
+  return testing[tier] ?? COMMANDS[project.ecosystem][tier];
+}
+function installStep(project) {
+  switch (project.ecosystem) {
+    case "node": {
+      const pm = project.packageManager ?? "npm";
+      const cache = pm === "bun" ? [] : [`          cache: ${pm}`];
+      const setup = pm === "pnpm" ? ["      - uses: pnpm/action-setup@v4"] : pm === "bun" ? ["      - uses: oven-sh/setup-bun@v2"] : [];
+      const install = pm === "pnpm" ? "pnpm install --frozen-lockfile" : pm === "yarn" ? "yarn install --frozen-lockfile" : pm === "bun" ? "bun install --frozen-lockfile" : "npm ci";
+      return [
+        ...setup,
+        "      - uses: actions/setup-node@v5",
+        "        with:",
+        "          node-version: 22",
+        ...cache,
+        `      - run: ${install}`
+      ];
+    }
+    case "python":
+      return [
+        "      - uses: actions/setup-python@v5",
+        "        with:",
+        "          python-version: '3.12'",
+        "      - run: |",
+        "          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi",
+        "          pip install pytest"
+      ];
+    case "go":
+      return [
+        "      - uses: actions/setup-go@v5",
+        "        with:",
+        "          go-version-file: go.mod"
+      ];
+    case "rust":
+      return ["      - uses: dtolnay/rust-toolchain@stable"];
+    case "java":
+      return [
+        "      - uses: actions/setup-java@v4",
+        "        with:",
+        "          distribution: temurin",
+        "          java-version: '21'"
+      ];
+    case "dotnet":
+      return [
+        "      - uses: actions/setup-dotnet@v4",
+        "        with:",
+        "          dotnet-version: '8.0.x'"
+      ];
+    case "ruby":
+      return ["      - uses: ruby/setup-ruby@v1", "        with:", "          bundler-cache: true"];
+    case "php":
+      return [
+        "      - uses: shivammathur/setup-php@v2",
+        "        with:",
+        "          php-version: '8.3'",
+        "      - run: composer install --no-interaction --prefer-dist"
+      ];
+  }
+}
+function extraSteps(project, tier, command2) {
+  if (tier === "e2e") {
+    if (project.ecosystem === "node") return ["      - run: npx playwright install --with-deps"];
+    if (project.ecosystem === "python") return ["      - run: playwright install --with-deps"];
+  }
+  if (tier === "load") {
+    if (command2.startsWith("k6 ")) return ["      - uses: grafana/setup-k6-action@v1"];
+    if (command2.startsWith("locust ")) return ["      - run: pip install locust"];
+  }
+  return [];
+}
+function slug(path) {
+  if (path === ".") return "";
+  return `-${path.split(/[^a-zA-Z0-9]+/).filter((part) => part !== "").join("-")}`;
+}
+function job(project, tier, command2, single) {
+  const id = `${tier}${single ? "" : slug(project.path)}`;
+  const label = single ? tier : `${tier} (${project.path})`;
+  const lines = [`  ${id}:`, `    name: ${label}`, "    runs-on: ubuntu-latest"];
+  if (tier === "load") lines.push("    timeout-minutes: 30");
+  if (project.path !== ".") {
+    lines.push("    defaults:", "      run:", `        working-directory: ${project.path}`);
+  }
+  lines.push(
+    "    steps:",
+    "      - uses: actions/checkout@v5",
+    ...installStep(project),
+    ...extraSteps(project, tier, command2),
+    `      - run: ${command2}`
+  );
+  return lines;
+}
+function workflow(name, triggers, tiers, projects, config2) {
+  const single = projects.length === 1;
+  const lines = [
+    `name: ${name}`,
+    "",
+    "# Generated by `sentinel setup`. Edit freely: sentinel never rewrites this file.",
+    "",
+    "on:",
+    ...triggers.map((t) => `  ${t}`),
+    "",
+    "permissions:",
+    "  contents: read",
+    "",
+    "jobs:"
+  ];
+  const jobs = [];
+  for (const tier of tiers) {
+    for (const project of projects) {
+      jobs.push(job(project, tier, tierCommand(project, tier, config2.testing), single));
+    }
+  }
+  lines.push(...jobs.flatMap((j, index) => index === 0 ? j : ["", ...j]));
+  return `${lines.join("\n")}
+`;
+}
+function renderWorkflows(projects, config2) {
+  return [
+    {
+      path: TESTS_WORKFLOW_PATH,
+      content: workflow(
+        "Tests",
+        ["push:", `    branches: [${config2.codeHost.defaultBranch}]`, "pull_request:"],
+        ["unit", "integration", "e2e"],
+        projects,
+        config2
+      )
+    },
+    {
+      path: LOAD_WORKFLOW_PATH,
+      content: workflow(
+        "Load tests",
+        ["workflow_dispatch:", "schedule:", "  - cron: '17 3 * * 1'"],
+        ["load"],
+        projects,
+        config2
+      )
+    }
+  ];
+}
+
+// src/cli/setup.ts
+async function readAnswersFile(path, deps) {
+  const text2 = await deps.files.readText(resolve6(deps.cwd, path));
+  if (text2 === void 0) throw new SetupError(`answers file not found: ${path}`);
+  let json2;
+  try {
+    json2 = JSON.parse(text2);
+  } catch {
+    throw new SetupError(`${path} is not valid JSON`);
+  }
+  const checked = validateAnswers(json2);
+  if (!checked.ok) throw new SetupError(`${path}: ${checked.errors.join("; ")}`);
+  return checked.answers;
+}
+async function askInTerminal2(known, deps) {
+  const ask = deps.ask;
+  if (ask === void 0) return {};
+  const collected = {};
+  const asked = /* @__PURE__ */ new Set();
+  for (; ; ) {
+    const open2 = nextQuestions({ ...known, ...collected }).filter((q) => !asked.has(q.id));
+    if (open2.length === 0) break;
+    for (const question of open2) {
+      asked.add(question.id);
+      const hint = question.hint === void 0 ? "" : ` (${question.hint})`;
+      const reply = await ask(`${question.prompt}${hint}
+> `);
+      if (reply.trim() !== "") collected[question.id] = reply.trim();
+    }
+  }
+  const checked = validateAnswers(collected);
+  return checked.ok ? checked.answers : {};
+}
+async function refuseToOverwrite(root, relPath, deps) {
+  if (await deps.files.exists(join12(root, relPath))) {
+    throw new ScaffoldError(`${relPath} already exists (use --force to overwrite)`);
+  }
+}
+function registerSetup(program2, deps) {
+  program2.command("setup").description(
+    "Phase 0: record the domain (questions and answers), then write test workflows and a README"
+  ).option("--questions", "print the open questions and the stack report, change nothing").option("--answers <file>", "JSON file of question id to answer; merged into the domain file").option("--stack <ecosystem>", `stack to use in an empty repo: ${ECOSYSTEMS.join(", ")}`).option("--workflows", "write the GitHub test workflows").option("--readme", "write README.md from the domain answers").option("--name <name>", "project name for the README (default: the folder name)").option("--force", "overwrite files that already exist").option("--dry-run", "report what would be written without writing").option("--json", "output machine-readable JSON").action(
+    guarded(deps, async (options) => {
+      const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
+      const { config: config2 } = await loadCliConfig(deps);
+      const dryRun = options.dryRun === true;
+      const domainPath = join12(root, DOMAIN_FILE);
+      if (options.stack !== void 0 && !ECOSYSTEMS.includes(options.stack)) {
+        throw new SetupError(
+          `unknown stack "${options.stack}"; choose one of ${ECOSYSTEMS.join(", ")}`
+        );
+      }
+      const existingText = await deps.files.readText(domainPath);
+      const existing = existingText === void 0 ? void 0 : parseDomain(existingText, DOMAIN_FILE);
+      let answers = existing?.answers ?? {};
+      let incoming = {};
+      if (options.answers !== void 0) {
+        incoming = await readAnswersFile(options.answers, deps);
+      } else if (deps.interactive === true && options.questions !== true && options.workflows !== true && options.readme !== true) {
+        incoming = await askInTerminal2(answers, deps);
+      }
+      const changed = Object.keys(incoming).length > 0;
+      answers = { ...answers, ...incoming };
+      let domainWritten = false;
+      if (changed && options.questions !== true) {
+        if (!dryRun) {
+          await mkdir6(dirname6(domainPath), { recursive: true });
+          await writeFile7(
+            domainPath,
+            `${JSON.stringify(buildDomain(answers, deps.now()), null, 2)}
+`,
+            "utf8"
+          );
+        }
+        domainWritten = true;
+      }
+      const stack = await analyze(root, deps.files);
+      let projects = stack.projects;
+      if (stack.empty && options.stack !== void 0) {
+        projects = [plannedProject(options.stack)];
+      }
+      const files = [];
+      if (options.workflows === true) {
+        if (projects.length === 0) {
+          throw new SetupError(
+            stack.empty ? "the repository is empty: confirm a stack with the user and pass --stack <ecosystem>" : "no recognised project found to build workflows for"
+          );
+        }
+        const workflows = renderWorkflows(projects, config2);
+        if (options.force !== true) {
+          for (const workflow2 of workflows) await refuseToOverwrite(root, workflow2.path, deps);
+        }
+        for (const workflow2 of workflows) {
+          if (!dryRun) {
+            await writeNewFile(
+              resolveInside(root, ".", workflow2.path),
+              workflow2.content,
+              options.force === true
+            );
+          }
+          files.push(workflow2.path);
+        }
+      }
+      if (options.readme === true) {
+        if (answers.problem === void 0) {
+          throw new SetupError("answer the core questions first: the README is built from them");
+        }
+        if (options.force !== true) await refuseToOverwrite(root, "README.md", deps);
+        const content = renderReadme({
+          name: options.name ?? basename2(root),
+          answers,
+          projects
+        });
+        if (!dryRun) await writeNewFile(join12(root, "README.md"), content, options.force === true);
+        files.push("README.md");
+      }
+      const complete = isComplete(answers);
+      const next = nextQuestions(answers).map(toPublic);
+      const result = {
+        dryRun,
+        domain: { path: DOMAIN_FILE, written: domainWritten, complete },
+        next,
+        stack: {
+          empty: stack.empty,
+          projects,
+          proposal: stack.empty && options.stack === void 0
+        },
+        files
+      };
+      if (options.json === true) {
+        deps.stdout(JSON.stringify(result, null, 2));
+      } else {
+        const prefix = dryRun ? "(dry run) " : "";
+        const lines = [
+          `${prefix}domain: ${complete ? "complete" : `${String(next.length)} open question(s)`}${domainWritten ? ` (saved to ${DOMAIN_FILE})` : ""}`,
+          ...next.map((q) => `  - [${q.branch}] ${q.id}: ${q.prompt}`),
+          "",
+          formatStackReport(stack),
+          ...files.map((f) => `${prefix}wrote ${f}`)
+        ];
+        deps.stdout(lines.join("\n"));
+      }
+      if (!complete && options.questions !== true) deps.setExitCode(ExitCode.Refine);
+    })
+  );
+}
+
 // src/cli/worktree.ts
 async function createManager(deps) {
   const top = await deps.run("git", ["rev-parse", "--show-toplevel"], { cwd: deps.cwd });
@@ -26830,8 +28167,8 @@ function registerWorktree(program2, deps) {
           if (await manager.isMergedLocally(branch)) return true;
           try {
             return await host.hasMergedPullRequest(branch);
-          } catch (error62) {
-            hostFailure ??= error62 instanceof Error ? error62.message : String(error62);
+          } catch (error63) {
+            hostFailure ??= error63 instanceof Error ? error63.message : String(error63);
             return false;
           }
         }
@@ -26864,13 +28201,16 @@ function createProgram(deps = defaultDeps()) {
   });
   registerDoctor(program2, deps);
   registerAnalyze(program2, deps);
+  registerBabysit(program2, deps);
   registerBranch(program2, deps);
   registerConfig(program2, deps);
   registerGuardrails(program2, deps);
   registerIssue(program2, deps);
+  registerMine(program2, deps);
   registerPr(program2, deps);
   registerPrd(program2, deps);
   registerRfc(program2, deps);
+  registerSetup(program2, deps);
   registerWorktree(program2, deps);
   return program2;
 }
@@ -26886,12 +28226,12 @@ async function main(argv, deps = defaultDeps()) {
   const program2 = createProgram(trackedDeps);
   try {
     await program2.parseAsync([...argv]);
-  } catch (error62) {
-    if (error62 instanceof CommanderError) {
-      exitCode = error62.exitCode;
+  } catch (error63) {
+    if (error63 instanceof CommanderError) {
+      exitCode = error63.exitCode;
       deps.setExitCode(exitCode);
     } else {
-      throw error62;
+      throw error63;
     }
   }
   return exitCode;
@@ -26900,8 +28240,8 @@ async function main(argv, deps = defaultDeps()) {
 // src/bin/sentinel.ts
 try {
   await main(process.argv);
-} catch (error62) {
-  process.stderr.write(`sentinel: ${error62 instanceof Error ? error62.message : String(error62)}
+} catch (error63) {
+  process.stderr.write(`sentinel: ${error63 instanceof Error ? error63.message : String(error63)}
 `);
   process.exitCode = 1;
 }

@@ -1,5 +1,16 @@
 # @robert-nagy/sentinel
 
+## 0.3.0
+
+### Minor Changes
+
+- 7a216b9: Add `sentinel babysit <pr> [--once]`: reads CI results through `gh`, parses failed logs (tsc, eslint, vitest/jest, pytest, go, dotnet, cargo, generic stack traces) into a failure packet with a stable signature, re-runs a suspected infrastructure failure once, hands real failures to the agent (exit 2), and gives up with a PR comment (exit 3) after the attempt budget, three fixes of the same failure, or the timeout.
+- ffdd409: Add `sentinel guardrails write`: writes a managed guardrail block to `AGENTS.md` (idempotent, `--dry-run`, CRLF-safe) and an `@AGENTS.md` pointer to an existing `CLAUDE.md`. The plugin ships the same rules as an always-on Cursor rule, and skill files are linted (frontmatter, no hard-coded tracker, every named command exists in the bundle).
+- b3a10b9: Add `sentinel mine search|draft|create`: `search` lists popular comparable repositories through `gh`; `draft` turns the agent's findings into an approval list (`docs/feature-gaps.md`); `create` files only the ticked gaps, skipping likely duplicates, either in the local tracker or as a list for the agent to file with its own tracker tools.
+- 2416c0e: Package sentinel as a plugin marketplace (ADR-0006): the repository root is a catalog for Claude Code, VS Code / Copilot, Codex and Cursor, and the CLI ships as a single dependency-free `scripts/sentinel.mjs` inside every skill. Adds a placeholder `sentinel-doctor` skill; the config JSON Schema is now committed under `schema/`.
+- 425285b: Add `sentinel setup`: a question bank (core questions plus SLA, security, journey, integration and compliance follow-ups) whose answers are saved to `.sentinel/domain.json`, empty-repo stack proposal data, stack-parameterised GitHub test workflows (unit, integration and e2e on push and pull request; load on demand or weekly) and a README renderer with Mermaid context and container diagrams. Works from an answers file for agents or interactively in a terminal.
+- d6807a6: Add the `sentinel-prd`, `sentinel-sdlc` and `sentinel-sdlc-auto` skills and the `sentinel-reviewer` sub-agent. Each skill repeats the guardrails and reaches the issue tracker only through `sentinel issue resolve`.
+
 ## 0.2.0
 
 ### Minor Changes
