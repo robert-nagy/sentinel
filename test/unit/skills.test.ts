@@ -110,11 +110,13 @@ describe('sub-agents', () => {
     ? readdirSync(agentsDir).filter((file) => file.endsWith('.md'))
     : [];
 
-  it.each(agents)('%s has frontmatter and does not hard-code a tracker', (file) => {
-    const text = readFileSync(join(agentsDir, file), 'utf8');
-    expect(frontmatter(text)?.name).toBe(file.replace(/\.md$/, ''));
-    for (const [pattern, label] of TRACKER_PATTERNS) {
-      expect(pattern.test(text), `${label} in ${file}`).toBe(false);
+  it('have frontmatter and do not hard-code a tracker', () => {
+    for (const file of agents) {
+      const text = readFileSync(join(agentsDir, file), 'utf8');
+      expect(frontmatter(text)?.name).toBe(file.replace(/\.md$/, ''));
+      for (const [pattern, label] of TRACKER_PATTERNS) {
+        expect(pattern.test(text), `${label} in ${file}`).toBe(false);
+      }
     }
   });
 });
