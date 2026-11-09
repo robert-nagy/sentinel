@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { runCommand } from '../../src/core/exec.js';
+import { GUARDRAIL_RULES } from '../../src/core/guardrails.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const pluginDir = join(root, 'plugins', 'sentinel');
@@ -45,8 +46,10 @@ export function commandChains(text: string): string[][] {
         .split(/\s+/);
       const chain: string[] = [];
       for (const word of words) {
-        if (!/^[a-z][a-z-]*$/.test(word)) break;
-        chain.push(word);
+        const match = /^([a-z][a-z-]*)([`.,:;)]*)$/.exec(word);
+        if (match?.[1] === undefined) break;
+        chain.push(match[1]);
+        if (match[2] !== '') break;
       }
       if (chain.length > 0) chains.push(chain);
       from = line.indexOf(marker, from + marker.length);
@@ -79,6 +82,10 @@ describe('skill files', () => {
       const description = meta?.description ?? '';
       expect(description.length).toBeGreaterThan(0);
       expect(description.length).toBeLessThanOrEqual(1024);
+    });
+
+    it.skipIf(name === 'sentinel-doctor')('repeats every guardrail', () => {
+      for (const rule of GUARDRAIL_RULES) expect(text, `${name} lacks: ${rule}`).toContain(rule);
     });
 
     it('does not hard-code a tracker', () => {
@@ -127,6 +134,9 @@ describe('commandChains', () => {
       commandChains('Run `node scripts/sentinel.mjs prd validate docs/x.md --json` then done'),
     ).toEqual([['prd', 'validate']]);
     expect(commandChains('node scripts/sentinel.mjs rfc new <issue-id>')).toEqual([['rfc', 'new']]);
+    expect(commandChains('Run `node scripts/sentinel.mjs issue describe` and follow it')).toEqual([
+      ['issue', 'describe'],
+    ]);
     expect(commandChains('no commands here')).toEqual([]);
   });
 });

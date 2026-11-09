@@ -1257,7 +1257,7 @@ var require_command = __commonJS({
         this._outputConfiguration = {
           writeOut: (str) => process2.stdout.write(str),
           writeErr: (str) => process2.stderr.write(str),
-          outputError: (str, write) => write(str),
+          outputError: (str, write2) => write2(str),
           getOutHelpWidth: () => process2.stdout.isTTY ? process2.stdout.columns : void 0,
           getErrHelpWidth: () => process2.stderr.isTTY ? process2.stderr.columns : void 0,
           getOutHasColors: () => useColor() ?? (process2.stdout.isTTY && process2.stdout.hasColors?.()),
@@ -3238,11 +3238,11 @@ Expecting one of '${allowedValues.join("', '")}'`);
           hasColors = this._outputConfiguration.getOutHasColors();
           helpWidth = this._outputConfiguration.getOutHelpWidth();
         }
-        const write = (str) => {
+        const write2 = (str) => {
           if (!hasColors) str = this._outputConfiguration.stripColor(str);
           return baseWrite(str);
         };
-        return { error: error62, write, hasColors, helpWidth };
+        return { error: error62, write: write2, hasColors, helpWidth };
       }
       /**
        * Output help information for this command.
@@ -24071,6 +24071,61 @@ var ExitCode = {
   Config: 5
 };
 
+// src/core/guardrails.ts
+var GUARDRAIL_RULES = [
+  "Never commit or push to the default branch; work on a branch named by `sentinel branch name`.",
+  "Never force-push.",
+  "Never merge a pull request; a human merges.",
+  "During an SDLC run, never edit files outside the issue worktree.",
+  "Reach the issue tracker only through the answer of `sentinel issue resolve`: when it says `ask`, ask the user, and never write issues to a tracker it did not return.",
+  "Stop for human approval wherever a sentinel skill says STOP (RFC approval, mined issue list)."
+];
+var BLOCK_START_PREFIX = "<!-- sentinel:managed";
+var BLOCK_END = "<!-- /sentinel:managed -->";
+var CLAUDE_POINTER = "@AGENTS.md";
+var GuardrailError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "GuardrailError";
+  }
+};
+function renderGuardrailBlock(version2) {
+  return [
+    `${BLOCK_START_PREFIX} v${version2} -->`,
+    "## Sentinel guardrails",
+    "",
+    "Managed by `sentinel guardrails write`; edits inside this block are overwritten.",
+    "",
+    ...GUARDRAIL_RULES.map((rule) => `- ${rule}`),
+    BLOCK_END
+  ].join("\n");
+}
+function withEol(text2, eol) {
+  return eol === "\n" ? text2 : text2.replace(/\n/g, eol);
+}
+function applyGuardrailBlock(existing, block) {
+  if (existing === void 0 || existing.trim() === "") return `${block}
+`;
+  const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+  const start = existing.indexOf(BLOCK_START_PREFIX);
+  const end = existing.indexOf(BLOCK_END);
+  if (start === -1 && end === -1) {
+    return `${existing.trimEnd()}${eol}${eol}${withEol(block, eol)}${eol}`;
+  }
+  if (start === -1 || end === -1 || end < start) {
+    throw new GuardrailError(
+      "AGENTS.md has an unbalanced sentinel:managed block; fix or remove the markers and run again"
+    );
+  }
+  return existing.slice(0, start) + withEol(block, eol) + existing.slice(end + BLOCK_END.length);
+}
+function applyClaudePointer(existing) {
+  if (existing.split(/\r?\n/).some((line) => line.trim() === CLAUDE_POINTER)) return existing;
+  const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+  const body = existing.trimEnd();
+  return body === "" ? `${CLAUDE_POINTER}${eol}` : `${body}${eol}${eol}${CLAUDE_POINTER}${eol}`;
+}
+
 // src/core/git-worktree-manager.ts
 import { constants } from "fs";
 import { appendFile, copyFile, mkdir, readFile, realpath, stat } from "fs/promises";
@@ -24762,7 +24817,7 @@ function guarded(deps, action) {
       } else if (error62 instanceof ProviderError) {
         deps.stderr(`sentinel: ${error62.message}`);
         deps.setExitCode(ExitCode.Provider);
-      } else if (error62 instanceof BranchNameError || error62 instanceof StateError || error62 instanceof PrdError || error62 instanceof ScaffoldError || error62 instanceof WorktreeError) {
+      } else if (error62 instanceof BranchNameError || error62 instanceof StateError || error62 instanceof PrdError || error62 instanceof ScaffoldError || error62 instanceof GuardrailError || error62 instanceof WorktreeError) {
         deps.stderr(`sentinel: ${error62.message}`);
         deps.setExitCode(ExitCode.Failure);
       } else {
@@ -25218,9 +25273,47 @@ function registerDoctor(program2, deps) {
   });
 }
 
+// src/cli/guardrails.ts
+import { mkdir as mkdir4, writeFile as writeFile4 } from "fs/promises";
+import { dirname as dirname5, join as join7 } from "path";
+async function write(path, content) {
+  await mkdir4(dirname5(path), { recursive: true });
+  await writeFile4(path, content, "utf8");
+}
+function registerGuardrails(program2, deps) {
+  const guardrails = program2.command("guardrails").description("Repo-level agent guardrails");
+  guardrails.command("write").description("Write the managed guardrail block to AGENTS.md (and an @AGENTS.md pointer)").option("--dry-run", "report what would change without writing").option("--json", "output machine-readable JSON").action(
+    guarded(deps, async (options) => {
+      const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
+      const agentsPath = join7(root, "AGENTS.md");
+      const claudePath = join7(root, "CLAUDE.md");
+      const dryRun = options.dryRun === true;
+      const agentsBefore = await deps.files.readText(agentsPath);
+      const agentsAfter = applyGuardrailBlock(agentsBefore, renderGuardrailBlock(VERSION));
+      const agents = agentsBefore === void 0 ? "created" : agentsBefore === agentsAfter ? "unchanged" : "updated";
+      if (agents !== "unchanged" && !dryRun) await write(agentsPath, agentsAfter);
+      const claudeBefore = await deps.files.readText(claudePath);
+      let claude = "absent";
+      if (claudeBefore !== void 0) {
+        const claudeAfter = applyClaudePointer(claudeBefore);
+        claude = claudeAfter === claudeBefore ? "unchanged" : "updated";
+        if (claude === "updated" && !dryRun) await write(claudePath, claudeAfter);
+      }
+      const result = { dryRun, agentsMd: agents, claudeMd: claude, path: agentsPath };
+      if (options.json === true) {
+        deps.stdout(JSON.stringify(result, null, 2));
+      } else {
+        const prefix = dryRun ? "(dry run) " : "";
+        deps.stdout(`${prefix}AGENTS.md: ${agents}`);
+        deps.stdout(`${prefix}CLAUDE.md: ${claude}`);
+      }
+    })
+  );
+}
+
 // src/cli/issue.ts
 import { readFile as readFile6 } from "fs/promises";
-import { isAbsolute as isAbsolute3, join as join8, resolve as resolve3 } from "path";
+import { isAbsolute as isAbsolute3, join as join9, resolve as resolve3 } from "path";
 
 // src/core/duplicates.ts
 function words(title) {
@@ -25242,8 +25335,8 @@ function rankDuplicates(title, candidates) {
 }
 
 // src/core/local-tracker.ts
-import { mkdir as mkdir4, readdir as readdir2, readFile as readFile5, writeFile as writeFile4 } from "fs/promises";
-import { join as join7 } from "path";
+import { mkdir as mkdir5, readdir as readdir2, readFile as readFile5, writeFile as writeFile5 } from "fs/promises";
+import { join as join8 } from "path";
 var FILE_PATTERN = /^(\d{1,9})(?:-[a-z0-9-]*)?\.md$/;
 var COMMENTS_HEADING = "## Comments";
 function parseLocalId(id) {
@@ -25352,7 +25445,7 @@ var LocalTracker = class {
         `several files claim local issue #${String(wanted)}: ${matches.map((m) => m.file).join(", ")}`
       );
     }
-    return join7(this.dir, matches[0]?.file ?? "");
+    return join8(this.dir, matches[0]?.file ?? "");
   }
   async get(id) {
     const path = await this.pathOf(id);
@@ -25363,7 +25456,7 @@ var LocalTracker = class {
     const needle = query.text?.toLowerCase();
     const issues = await Promise.all(
       (await this.entries()).map(async ({ file: file2 }) => {
-        const path = join7(this.dir, file2);
+        const path = join8(this.dir, file2);
         return parseLocalIssue(await readFile5(path, "utf8"), path);
       })
     );
@@ -25374,13 +25467,13 @@ var LocalTracker = class {
   async create(input2) {
     const title = input2.title.trim();
     if (title === "") throw new TrackerError("an issue needs a title");
-    await mkdir4(this.dir, { recursive: true });
+    await mkdir5(this.dir, { recursive: true });
     const labels = [...new Set(input2.labels ?? [])];
     for (let attempt = 0; attempt < 5; attempt++) {
       const entries = await this.entries();
       const id = (entries.at(-1)?.id ?? 0) + 1 + attempt;
       const slug = slugify(title);
-      const path = join7(this.dir, slug === "" ? `${String(id)}.md` : `${String(id)}-${slug}.md`);
+      const path = join8(this.dir, slug === "" ? `${String(id)}.md` : `${String(id)}-${slug}.md`);
       const issue2 = {
         id,
         title,
@@ -25391,7 +25484,7 @@ var LocalTracker = class {
         comments: []
       };
       try {
-        await writeFile4(path, renderLocalIssue(issue2), { encoding: "utf8", flag: "wx" });
+        await writeFile5(path, renderLocalIssue(issue2), { encoding: "utf8", flag: "wx" });
         return { ...issue2, path };
       } catch (error62) {
         if (error62.code !== "EEXIST") throw error62;
@@ -25402,7 +25495,7 @@ var LocalTracker = class {
   async update(id, change) {
     const issue2 = await this.get(id);
     const next = change(issue2);
-    await writeFile4(issue2.path, renderLocalIssue(next), "utf8");
+    await writeFile5(issue2.path, renderLocalIssue(next), "utf8");
     return { ...next, path: issue2.path };
   }
   async comment(id, body) {
@@ -25510,7 +25603,7 @@ async function localTracker(deps, config2) {
   }
   const dir = config2.issueProvider.localDir;
   const root = await repoRootOf(deps);
-  return new LocalTracker(isAbsolute3(dir) ? dir : join8(root, dir), deps.now);
+  return new LocalTracker(isAbsolute3(dir) ? dir : join9(root, dir), deps.now);
 }
 function printIssue(deps, issue2, json2) {
   if (json2 === true) {
@@ -25696,7 +25789,7 @@ function registerIssue(program2, deps) {
 }
 
 // src/cli/pr.ts
-import { isAbsolute as isAbsolute4, join as join9 } from "path";
+import { isAbsolute as isAbsolute4, join as join10 } from "path";
 
 // src/core/hosts/github.ts
 function ghError(result, action) {
@@ -25872,7 +25965,7 @@ function registerPr(program2, deps) {
       if (tracker === LOCAL_TRACKER) {
         const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
         const dir = config2.issueProvider.localDir;
-        local = new LocalTracker(isAbsolute4(dir) ? dir : join9(root, dir), deps.now);
+        local = new LocalTracker(isAbsolute4(dir) ? dir : join10(root, dir), deps.now);
         await local.get(options.issue);
       }
       let head = options.head;
@@ -26773,6 +26866,7 @@ function createProgram(deps = defaultDeps()) {
   registerAnalyze(program2, deps);
   registerBranch(program2, deps);
   registerConfig(program2, deps);
+  registerGuardrails(program2, deps);
   registerIssue(program2, deps);
   registerPr(program2, deps);
   registerPrd(program2, deps);
