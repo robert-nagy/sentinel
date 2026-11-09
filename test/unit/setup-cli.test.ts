@@ -6,6 +6,14 @@ import { main } from '../../src/cli/index.js';
 import { runCommand } from '../../src/core/exec.js';
 import { nodeFiles } from '../../src/core/fs.js';
 
+interface SetupResult {
+  dryRun: boolean;
+  domain: { written: boolean; complete: boolean };
+  next: { id: string; branch: string }[];
+  stack: { empty: boolean; proposal: boolean };
+  files: string[];
+}
+
 let repo: string;
 beforeEach(async () => {
   repo = await mkdtemp(join(tmpdir(), 'sentinel-setup-'));
@@ -37,7 +45,7 @@ function cli(extra: { interactive?: boolean; replies?: string[] } = {}) {
   return {
     out,
     codes,
-    json: () => JSON.parse(out.join('')) as Record<string, any>,
+    json: () => JSON.parse(out.join('')) as SetupResult,
     run: (...args: string[]) => main(['node', 'sentinel', ...args], deps),
   };
 }
@@ -45,14 +53,16 @@ function cli(extra: { interactive?: boolean; replies?: string[] } = {}) {
 const core = { problem: 'P', users: 'U', data: 'D', scale: 'S' };
 const writeJson = (name: string, value: unknown) => writeFile(join(repo, name), JSON.stringify(value), 'utf8');
 const domain = async () =>
-  JSON.parse(await readFile(join(repo, '.sentinel', 'domain.json'), 'utf8')) as Record<string, any>;
+  JSON.parse(await readFile(join(repo, '.sentinel', 'domain.json'), 'utf8')) as {
+    answers: Record<string, string>;
+  };
 
 describe('sentinel setup', () => {
   it('lists the open questions and an empty-stack proposal without writing', async () => {
     const { run, json, codes } = cli();
     await run('setup', '--questions', '--json');
     const result = json();
-    expect(result.next.map((q: { id: string }) => q.id)).toEqual(['problem', 'users', 'data', 'scale']);
+    expect(result.next.map((q) => q.id)).toEqual(['problem', 'users', 'data', 'scale']);
     expect(result.stack).toMatchObject({ empty: true, proposal: true });
     expect(codes).toEqual([]);
     await expect(domain()).rejects.toThrow();
