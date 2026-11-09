@@ -131,7 +131,11 @@ export function parseGapFile(markdown: string): Gap[] {
       if (!detail.startsWith('  - ')) break;
       const text = detail.slice(4).trim();
       if (text.startsWith('Seen in:')) {
-        sources = text.slice('Seen in:'.length).split(',').map((s) => s.trim()).filter((s) => s !== '');
+        sources = text
+          .slice('Seen in:'.length)
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s !== '');
       } else if (text.startsWith('Created:')) {
         created = text.slice('Created:'.length).trim();
       } else if (summary === '') {
@@ -139,7 +143,15 @@ export function parseGapFile(markdown: string): Gap[] {
       }
     }
     if (title !== '') {
-      gaps.push({ title, summary, sources, priority, approved: checkbox !== ' ', created, lineIndex: index });
+      gaps.push({
+        title,
+        summary,
+        sources,
+        priority,
+        approved: checkbox !== ' ',
+        created,
+        lineIndex: index,
+      });
     }
   });
   return gaps;

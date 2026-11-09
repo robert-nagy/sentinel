@@ -16,21 +16,51 @@ import {
 } from '../../src/core/mining.js';
 
 const findings: Finding[] = [
-  { title: 'Offline mode', summary: 'Works without a network.', sources: ['a/one'], priority: 'high' },
+  {
+    title: 'Offline mode',
+    summary: 'Works without a network.',
+    sources: ['a/one'],
+    priority: 'high',
+  },
   { title: 'Dark theme', summary: 'A dark colour scheme.', sources: ['b/two', 'a/one'] },
 ];
 
 describe('parseRepoSearch', () => {
   const text = JSON.stringify([
-    { fullName: 'a/big', url: 'u1', stargazersCount: 9000, description: 'd', language: 'Go', license: { key: 'mit' } },
-    { fullName: 'a/small', url: 'u2', stargazersCount: 10, description: null, language: null, license: null },
+    {
+      fullName: 'a/big',
+      url: 'u1',
+      stargazersCount: 9000,
+      description: 'd',
+      language: 'Go',
+      license: { key: 'mit' },
+    },
+    {
+      fullName: 'a/small',
+      url: 'u2',
+      stargazersCount: 10,
+      description: null,
+      language: null,
+      license: null,
+    },
   ]);
 
   it('keeps repositories above the star floor and fills missing fields', () => {
     expect(parseRepoSearch(text, 500)).toEqual([
-      { fullName: 'a/big', url: 'u1', stars: 9000, description: 'd', language: 'Go', license: 'mit' },
+      {
+        fullName: 'a/big',
+        url: 'u1',
+        stars: 9000,
+        description: 'd',
+        language: 'Go',
+        license: 'mit',
+      },
     ]);
-    expect(parseRepoSearch(text, 0)[1]).toMatchObject({ description: '', language: '', license: '' });
+    expect(parseRepoSearch(text, 0)[1]).toMatchObject({
+      description: '',
+      language: '',
+      license: '',
+    });
   });
 
   it('rejects output that is not a repository list', () => {
@@ -55,12 +85,25 @@ describe('gap file', () => {
   it('round-trips findings as unticked gaps', () => {
     const gaps = parseGapFile(renderGapFile(findings));
     expect(gaps.map((g) => g.title)).toEqual(['Offline mode', 'Dark theme']);
-    expect(gaps[0]).toMatchObject({ priority: 'high', approved: false, sources: ['a/one'], summary: 'Works without a network.' });
+    expect(gaps[0]).toMatchObject({
+      priority: 'high',
+      approved: false,
+      sources: ['a/one'],
+      summary: 'Works without a network.',
+    });
     expect(gaps[1]?.sources).toEqual(['b/two', 'a/one']);
   });
 
   it('reads ticked boxes and Created lines, and ignores other text', () => {
-    const md = ['# Notes', '- [x] **Offline mode**', '  - s', '  - Created: #4', '- [X] **Dark theme**', '- [ ] plain item', '- [x] **Unclosed'].join('\n');
+    const md = [
+      '# Notes',
+      '- [x] **Offline mode**',
+      '  - s',
+      '  - Created: #4',
+      '- [X] **Dark theme**',
+      '- [ ] plain item',
+      '- [x] **Unclosed',
+    ].join('\n');
     const gaps = parseGapFile(md);
     expect(gaps).toHaveLength(2);
     expect(gaps[0]).toMatchObject({ approved: true, created: '#4' });
@@ -86,7 +129,13 @@ describe('sentinel mine', () => {
     await rm(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
-  const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '', notFound: false, timedOut: false });
+  const ok = (stdout: string) => ({
+    exitCode: 0,
+    stdout,
+    stderr: '',
+    notFound: false,
+    timedOut: false,
+  });
   function cli(run: CommandRunner = () => Promise.resolve(ok(''))) {
     const out: string[] = [];
     const err: string[] = [];
@@ -106,19 +155,30 @@ describe('sentinel mine', () => {
     return { out, err, run: (...args: string[]) => main(['node', 'sentinel', ...args], deps) };
   }
   const useTracker = (tracker: string) =>
-    writeFile(join(repo, 'sentinel.config.json'), JSON.stringify({ issueProvider: { tracker } }), 'utf8');
+    writeFile(
+      join(repo, 'sentinel.config.json'),
+      JSON.stringify({ issueProvider: { tracker } }),
+      'utf8',
+    );
 
   it('search asks gh for repositories sorted by stars and filters them', async () => {
     const calls: string[][] = [];
     const run: CommandRunner = (_c, args) => {
       calls.push([...args]);
       return Promise.resolve(
-        ok(JSON.stringify([{ fullName: 'a/big', url: 'u', stargazersCount: 900, description: 'd' }, { fullName: 'a/tiny', url: 'u', stargazersCount: 3 }])),
+        ok(
+          JSON.stringify([
+            { fullName: 'a/big', url: 'u', stargazersCount: 900, description: 'd' },
+            { fullName: 'a/tiny', url: 'u', stargazersCount: 3 },
+          ]),
+        ),
       );
     };
     const { run: sentinel, out } = cli(run);
     await sentinel('mine', 'search', 'task', 'tracker', '--json');
-    expect(calls[0]).toEqual(expect.arrayContaining(['search', 'repos', 'task', 'tracker', '--sort', 'stars']));
+    expect(calls[0]).toEqual(
+      expect.arrayContaining(['search', 'repos', 'task', 'tracker', '--sort', 'stars']),
+    );
     expect((JSON.parse(out.join('')) as unknown[]).length).toBe(1);
   });
 
@@ -127,7 +187,9 @@ describe('sentinel mine', () => {
     const first = cli();
     await first.run('mine', 'draft', '--findings', 'findings.json', '--json');
     expect(JSON.parse(first.out.join('')) as unknown).toMatchObject({ gaps: 2 });
-    expect(await readFile(join(repo, 'docs', 'feature-gaps.md'), 'utf8')).toContain('- [ ] **Offline mode**');
+    expect(await readFile(join(repo, 'docs', 'feature-gaps.md'), 'utf8')).toContain(
+      '- [ ] **Offline mode**',
+    );
 
     const codes: number[] = [];
     const second = cli();
@@ -149,7 +211,9 @@ describe('sentinel mine', () => {
     await mkdir(join(repo, 'docs'), { recursive: true });
     await writeFile(
       join(repo, 'docs', 'feature-gaps.md'),
-      renderGapFile(findings).replace('- [ ] **Offline mode**', '- [x] **Offline mode**').replace('- [ ] **Dark theme**', '- [x] **Dark theme**'),
+      renderGapFile(findings)
+        .replace('- [ ] **Offline mode**', '- [x] **Offline mode**')
+        .replace('- [ ] **Dark theme**', '- [x] **Dark theme**'),
       'utf8',
     );
     // An open local issue already covers dark theme.
@@ -179,11 +243,28 @@ describe('sentinel mine', () => {
       renderGapFile(findings).replace('- [ ] **Offline mode**', '- [x] **Offline mode**'),
       'utf8',
     );
-    await writeFile(join(repo, 'existing.json'), JSON.stringify([{ id: 'PROJ-1', title: 'Something else' }]), 'utf8');
+    await writeFile(
+      join(repo, 'existing.json'),
+      JSON.stringify([{ id: 'PROJ-1', title: 'Something else' }]),
+      'utf8',
+    );
     const { run, out } = cli();
-    await run('mine', 'create', '--approved', 'docs/feature-gaps.md', '--candidates', 'existing.json', '--json');
-    const result = JSON.parse(out.join('')) as { toCreate: { title: string; labels: string[] }[]; created: unknown[] };
-    expect(result.toCreate).toEqual([expect.objectContaining({ title: 'Offline mode', labels: ['kind/feature'] })]);
+    await run(
+      'mine',
+      'create',
+      '--approved',
+      'docs/feature-gaps.md',
+      '--candidates',
+      'existing.json',
+      '--json',
+    );
+    const result = JSON.parse(out.join('')) as {
+      toCreate: { title: string; labels: string[] }[];
+      created: unknown[];
+    };
+    expect(result.toCreate).toEqual([
+      expect.objectContaining({ title: 'Offline mode', labels: ['kind/feature'] }),
+    ]);
     expect(result.created).toEqual([]);
   });
 

@@ -73,7 +73,9 @@ export function registerMine(program: Command, deps: CliDeps): void {
               ? JSON.stringify(repos, null, 2)
               : repos.length === 0
                 ? 'no repositories matched'
-                : repos.map((r) => `${String(r.stars)}\t${r.fullName}\t${r.description}`).join('\n'),
+                : repos
+                    .map((r) => `${String(r.stars)}\t${r.fullName}\t${r.description}`)
+                    .join('\n'),
           );
         },
       ),
@@ -102,7 +104,9 @@ export function registerMine(program: Command, deps: CliDeps): void {
           const parsed = findingsSchema.safeParse(json);
           if (!parsed.success) {
             const detail = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
-            throw new MiningError(`${options.findings} is not a list of findings: ${detail.join('; ')}`);
+            throw new MiningError(
+              `${options.findings} is not a list of findings: ${detail.join('; ')}`,
+            );
           }
           const findings = mergeFindings(parsed.data);
           const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
@@ -121,7 +125,10 @@ export function registerMine(program: Command, deps: CliDeps): void {
     .command('create')
     .description('File the approved gaps as issues, skipping likely duplicates')
     .requiredOption('--approved <file>', 'the gap list, with approved gaps ticked [x]')
-    .option('--candidates <file>', 'JSON of existing issues ({"id","title"}), listed with your own tracker tools')
+    .option(
+      '--candidates <file>',
+      'JSON of existing issues ({"id","title"}), listed with your own tracker tools',
+    )
     .option('--json', 'output machine-readable JSON')
     .action(
       guarded(deps, async (options: { approved: string; candidates?: string; json?: boolean }) => {
@@ -129,7 +136,8 @@ export function registerMine(program: Command, deps: CliDeps): void {
         const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
         const gapPath = resolve(deps.cwd, options.approved);
         let markdown = await deps.files.readText(gapPath);
-        if (markdown === undefined) throw new MiningError(`gap list not found: ${options.approved}`);
+        if (markdown === undefined)
+          throw new MiningError(`gap list not found: ${options.approved}`);
 
         const tracker = config.issueProvider.tracker;
         const isLocal = tracker !== null && normalizeTracker(tracker) === LOCAL_TRACKER;
@@ -171,7 +179,11 @@ export function registerMine(program: Command, deps: CliDeps): void {
           if (local === undefined) {
             toCreate.push(draft);
           } else {
-            const made = await local.create({ title: draft.title, body: draft.body, labels: [...draft.labels] });
+            const made = await local.create({
+              title: draft.title,
+              body: draft.body,
+              labels: [...draft.labels],
+            });
             created.push({ title: draft.title, id: String(made.id) });
             markdown = markCreated(markdown, gap.lineIndex, `#${String(made.id)}`);
           }
@@ -188,11 +200,15 @@ export function registerMine(program: Command, deps: CliDeps): void {
           deps.stdout(JSON.stringify(result, null, 2));
         } else {
           for (const item of result.created) deps.stdout(`created #${item.id}: ${item.title}`);
-          for (const item of result.toCreate) deps.stdout(`to file with your tracker tools: ${item.title}`);
+          for (const item of result.toCreate)
+            deps.stdout(`to file with your tracker tools: ${item.title}`);
           for (const item of result.skippedDuplicates) {
-            deps.stdout(`skipped (similar to ${item.duplicateOf.map((d) => d.id).join(', ')}): ${item.title}`);
+            deps.stdout(
+              `skipped (similar to ${item.duplicateOf.map((d) => d.id).join(', ')}): ${item.title}`,
+            );
           }
-          if (gaps.every((g) => !g.approved)) deps.stdout('nothing approved: tick a gap with [x] first');
+          if (gaps.every((g) => !g.approved))
+            deps.stdout('nothing approved: tick a gap with [x] first');
         }
       }),
     );
