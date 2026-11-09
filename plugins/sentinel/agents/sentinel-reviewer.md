@@ -20,7 +20,18 @@ Check each of these and report only real problems:
 Reply with JSON only:
 
 ```json
-{"findings": [{"severity": "high|medium|low", "category": "injection", "file": "path", "line": 1, "summary": "what is wrong", "fix": "how to fix it"}]}
+{
+  "findings": [
+    {
+      "severity": "high|medium|low",
+      "category": "injection",
+      "file": "path",
+      "line": 1,
+      "summary": "what is wrong",
+      "fix": "how to fix it"
+    }
+  ]
+}
 ```
 
 Use `{"findings": []}` when nothing is wrong.
