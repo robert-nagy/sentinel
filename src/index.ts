@@ -119,3 +119,11 @@ export {
   applyGuardrailBlock,
   renderGuardrailBlock,
 } from './core/guardrails.js';
+export { parseFailureLog, type FailureError, type FailurePacket } from './core/log-parser.js';
+export {
+  babysit,
+  babysitStep,
+  type BabysitAction,
+  type BabysitResult,
+  type BabysitState,
+} from './core/pr-babysitter.js';
