@@ -2,6 +2,7 @@ import { BranchNameError } from '../core/branch-namer.js';
 import { ConfigError } from '../core/config.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { WorktreeError } from '../core/git-worktree-manager.js';
+import { PrdError } from '../core/prd-state.js';
 import { TrackerError } from '../core/issue-tracker.js';
 import { ProviderError } from '../core/provider-error.js';
 import { StateError } from '../core/state.js';
@@ -28,6 +29,7 @@ export function guarded<Args extends unknown[]>(
       } else if (
         error instanceof BranchNameError ||
         error instanceof StateError ||
+        error instanceof PrdError ||
         error instanceof WorktreeError
       ) {
         deps.stderr(`sentinel: ${error.message}`);
