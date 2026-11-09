@@ -58,7 +58,7 @@ export function commandChains(text: string): string[][] {
 const TRACKER_PATTERNS: readonly [RegExp, string][] = [
   [/\b(?:gh|glab) issue\b/, 'gh/glab issue'],
   [/\baz boards\b/, 'az boards'],
-  [/api\.github\.com\/repos\/[^\s]*issues/, 'GitHub issues REST call'],
+  [/\/repos\/\S*\/issues\b/, 'GitHub issues REST call'],
   [/\/rest\/api\/\d/, 'Jira REST call'],
 ];
 
