@@ -43,7 +43,7 @@ Add this repository as a plugin marketplace in your tool, then install the `sent
 
 | Tool              | How                                                                                              |
 | ----------------- | ------------------------------------------------------------------------------------------------ |
-| Claude Code       | `/plugin marketplace add robert-nagy/sentinel`, then `/plugin install sentinel@robert-nagy`         |
+| Claude Code       | `/plugin marketplace add robert-nagy/sentinel`, then `/plugin install sentinel@robert-nagy`      |
 | VS Code / Copilot | add `robert-nagy/sentinel` under `chat.plugins.marketplaces`, then install from the Plugins page |
 | Codex             | `codex plugin marketplace add robert-nagy/sentinel`                                              |
 | Cursor            | from Cursor's marketplace once listed; until then a team marketplace or a local plugin folder    |
