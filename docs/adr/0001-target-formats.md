@@ -1,6 +1,9 @@
 # ADR-0001: Target tool configuration formats
 
-- **Status:** Accepted
+- **Status:** Superseded in part by [ADR-0006](0006-marketplace-distribution.md): sentinel no
+  longer writes these files through `sentinel init` adapters; it is installed as a plugin. The
+  table stays as a record of where each tool reads skills, instructions and sub-agents, and is
+  still the reference for the `AGENTS.md` / `CLAUDE.md` guardrail block.
 - **Date:** 2026-11-02
 - **Context source:** format research run during planning (see `docs/PLAN.md` §6)
 

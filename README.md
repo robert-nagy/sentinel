@@ -6,22 +6,26 @@
 
 **Agentic product & software development lifecycle governance for AI coding tools.**
 
-sentinel installs skills, guardrails and deterministic tooling into Claude Code, Claude Desktop,
-Cursor, VS Code / GitHub Copilot, OpenCode and any tool that reads `AGENTS.md` / `.agents/skills`.
-Your agent then runs a governed workflow: from bootstrapping a repo, through PRDs that must
+sentinel is a plugin that adds skills, guardrails and deterministic tooling to Claude Code,
+VS Code / GitHub Copilot, Codex and Cursor. Your agent then runs a governed workflow: from bootstrapping a repo, through PRDs that must
 pass a quality gate, to issue → isolated worktree → RFC → test-driven implementation → PR →
 CI babysitting.
 
-> **Status: early development (M0 — foundation).** Only `sentinel --version` and
-> `sentinel doctor`, `sentinel branch name` and `sentinel config` exist today. See [the implementation plan](docs/PLAN.md) for the roadmap.
+> **Status: early development.** The deterministic CLI exists (M0–M2); the skills and the
+> plugin marketplace described below are planned, not shipped. See
+> [the implementation plan](docs/PLAN.md) for the roadmap.
+>
+> **Distribution is changing.** sentinel will be installed from a plugin marketplace in this
+> repository instead of npm ([ADR-0006](docs/adr/0006-marketplace-distribution.md)). Until that
+> lands, run the CLI from a local build (see [Development](#development)).
 
 ## Design in one paragraph
 
 sentinel never calls an LLM itself ([ADR-0002](docs/adr/0002-no-llm-calls.md)). The agent you
 already use does the reasoning. sentinel provides the workflows as Agent Skills
-([ADR-0003](docs/adr/0003-skills-as-canonical-workflows.md)), plus a CLI and MCP server whose
-commands enforce the rules in code: quality thresholds, retry caps, branch naming, never pushing
-to the default branch.
+([ADR-0003](docs/adr/0003-skills-as-canonical-workflows.md)), plus a CLI whose commands enforce
+the rules in code: quality thresholds, retry caps, branch naming, never pushing to the default
+branch. The CLI is bundled inside each skill, so installing the plugin is the whole setup.
 
 ## Requirements
 
@@ -33,28 +37,43 @@ No issue-tracker credentials: your agent reaches the tracker with the connection
 (an MCP server or CLI for GitHub, Jira, Linear, Azure DevOps…). See
 [ADR-0005](docs/adr/0005-agent-native-issue-trackers.md).
 
+## Install (planned)
+
+Add this repository as a plugin marketplace in your tool, then install the `sentinel` plugin.
+
+| Tool              | How                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| Claude Code       | `/plugin marketplace add robert-nagy/sentinel`, then `/plugin install sentinel@sentinel`         |
+| VS Code / Copilot | add `robert-nagy/sentinel` under `chat.plugins.marketplaces`, then install from the Plugins page |
+| Codex             | `codex plugin marketplace add robert-nagy/sentinel`                                              |
+| Cursor            | from Cursor's marketplace once listed; until then a team marketplace or a local plugin folder    |
+
+OpenCode, Claude Desktop and plain `.agents/skills` setups are not supported for now.
+
 ## Usage (current)
 
+The commands below use `sentinel` from a local build (`npm run build && npm link`).
+
 ```sh
-npx @robert-nagy/sentinel doctor          # check your environment
-npx @robert-nagy/sentinel doctor --json   # machine-readable output
+sentinel doctor          # check your environment
+sentinel doctor --json   # machine-readable output
 ```
 
 `doctor` exits `0` when no check fails (warnings are allowed) and `1` otherwise.
 
 ```sh
-npx @robert-nagy/sentinel branch name --issue 42 --title "Add login page"   # feat/42-add-login-page
-npx @robert-nagy/sentinel config show      # effective config (defaults + global + repo)
-npx @robert-nagy/sentinel config schema    # JSON Schema for sentinel.config.json
+sentinel branch name --issue 42 --title "Add login page"   # feat/42-add-login-page
+sentinel config show      # effective config (defaults + global + repo)
+sentinel config schema    # JSON Schema for sentinel.config.json
 ```
 
 ### Issue trackers
 
 ```sh
-npx @robert-nagy/sentinel issue resolve --available linear,github   # use | ask | fallback | unavailable
-npx @robert-nagy/sentinel issue use linear --location "team ENG" --label kind/bug=Bug
-npx @robert-nagy/sentinel issue describe   # what the agent should do, and how labels map
-npx @robert-nagy/sentinel issue duplicates "Add login page" --candidates candidates.json
+sentinel issue resolve --available linear,github   # use | ask | fallback | unavailable
+sentinel issue use linear --location "team ENG" --label kind/bug=Bug
+sentinel issue describe   # what the agent should do, and how labels map
+sentinel issue duplicates "Add login page" --candidates candidates.json
 ```
 
 `resolve` decides which tracker to use: the configured one; otherwise the only reachable one when
@@ -75,7 +94,8 @@ npm run test:e2e     # run the built CLI (build first)
 npm link             # put a local `sentinel` on your PATH
 ```
 
-Add a changeset (`npm run changeset`) for every user-facing change.
+Add a changeset (`npm run changeset`) for every user-facing change. Changesets drive the version
+and changelog only; releases are git tags, not npm publishes.
 
 ## Documentation
 

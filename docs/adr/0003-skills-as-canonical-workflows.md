@@ -1,6 +1,10 @@
 # ADR-0003: Agent Skills are the canonical workflow format
 
-- **Status:** Accepted
+- **Status:** Accepted; amended by [ADR-0006](0006-marketplace-distribution.md). Skills remain
+  the canonical workflow format. Two decisions below are superseded: skills are no longer
+  copied into `.agents/skills/` and `.claude/skills/` (they ship in a plugin), and the
+  `{{SENTINEL}}` / `npx` pinning is replaced by a bundled CLI inside each skill. Claude Desktop
+  is no longer a target.
 - **Date:** 2026-11-02
 
 ## Context
