@@ -140,3 +140,14 @@ export {
 } from './core/socratic-engine.js';
 export { renderWorkflows, type GeneratedWorkflow } from './core/workflows.js';
 export { renderReadme } from './core/readme-renderer.js';
+export {
+  MiningError,
+  issueDraftFor,
+  mergeFindings,
+  parseGapFile,
+  parseRepoSearch,
+  renderGapFile,
+  type Finding,
+  type Gap,
+  type Repo,
+} from './core/mining.js';
