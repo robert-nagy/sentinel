@@ -455,7 +455,7 @@ _Was "Jira & Azure DevOps trackers (≈4 days)"; replaced by ADR-0005._
 ### M8 — Hardening & 0.1.0 release (≈2–3 days)
 
 - [ ] E2E: install the plugin from a local marketplace on 3 OSes → run each skill's bundled CLI → assert versions match; dogfood one real issue through `/sentinel-sdlc` to a green PR on this repo.
-- [ ] Docs: README (install per tool, quickstart, config reference, tracker setup), CONTRIBUTING, SECURITY.md, CODE_OF_CONDUCT.
+- [x] Docs: README (install per tool, quickstart, config reference, tracker setup), CONTRIBUTING, SECURITY.md, CODE_OF_CONDUCT.
 - [ ] Submit the plugin to Cursor's marketplace.
 - [ ] Release `0.1.0`: version PR → tag `v0.1.0` → GitHub Release.
 
