@@ -414,7 +414,7 @@ Done on the `docs/marketplace-distribution` branch once this plan is approved.
 
 ### M3 — Skills & guardrails (≈3 days)
 
-- [ ] Write the 6 skills + `sentinel-reviewer` in `plugins/sentinel/`; skills call `node scripts/sentinel.mjs`.
+- [ ] Write `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto` and the `sentinel-reviewer` sub-agent in `plugins/sentinel/`; skills call `node scripts/sentinel.mjs`. The other three skills ship with the milestone that adds their CLI command (`sentinel-setup` in M5b, `sentinel-babysit` and `sentinel-mine` in M6b), because the lint test below rejects a skill that names a command the bundle lacks. Until M6b, `sentinel-sdlc` ends by opening the PR and telling the user to watch CI.
 - [ ] `sentinel guardrails write`: managed block in `AGENTS.md`, `CLAUDE.md` pointer when that file exists; `--dry-run`; idempotent.
 - [ ] Cursor always-on guardrail rule shipped in the plugin (`rules/sentinel-guardrails.mdc`).
 - [ ] Skills use only the neutral tracker verbs and `issue resolve`; a lint test fails if a skill hard-codes `gh issue`, `glab issue` or a tracker REST call.
@@ -428,14 +428,18 @@ _No longer on the critical path: skills carry the CLI (ADR-0006). Packaging is a
 - [ ] Integration test via the SDK client (spawn, list, call every tool).
 - [ ] Decide per-tool MCP packaging (plugin-root placeholder differs per tool); manual smoke test in Claude Code, VS Code, Codex and Cursor.
 
-### M5 — Phase 0: `sentinel-setup` (≈3 days)
+### M5 — Phase 0: `sentinel-setup` (≈3 days core + 1 day skill)
+
+_M5a (core, no skill, can start now): the checklist items below. M5b (skill): `sentinel-setup` SKILL.md once `sentinel setup` is in the bundle._
 
 - [ ] Socratic engine + question bank + `.sentinel/domain.json`.
 - [ ] Empty-state detection; stack proposal flow.
 - [ ] Stack-parameterised GitHub workflow templates (4 tiers as separate jobs; load tests on `workflow_dispatch`/schedule only).
 - [ ] README renderer with Mermaid; bootstrap PR via branch-namer + code host.
 
-### M6 — Babysitter & mining (≈3–4 days)
+### M6 — Babysitter & mining (≈3–4 days core + 1 day skills)
+
+_M6a (core, no skills, can start now): the checklist items below. M6b (skills): `sentinel-babysit` and `sentinel-mine` once `babysit` and `mine` are in the bundle._
 
 - [ ] `log-parser.ts` + fixtures for each toolchain.
 - [ ] `pr-babysitter.ts` state machine, `--once` / `--watch`, flaky re-run, signature dedupe, give-up comment.
@@ -454,6 +458,54 @@ _Was "Jira & Azure DevOps trackers (≈4 days)"; replaced by ADR-0005._
 - [ ] Docs: README (install per tool, quickstart, config reference, tracker setup), CONTRIBUTING, SECURITY.md, CODE_OF_CONDUCT.
 - [ ] Submit the plugin to Cursor's marketplace.
 - [ ] Release `0.1.0`: version PR → tag `v0.1.0` → GitHub Release.
+
+### Sequencing: what can run in parallel
+
+Only M3's skills and M5b/M6b depend on each other through the bundle; the deterministic cores (M5a, M6a) depend only on M1/M2 and can start now.
+
+```mermaid
+flowchart LR
+  done["M0 to M2.5 (done)"] --> M3["M3: guardrails, lint, reviewer, prd/sdlc skills"]
+  done --> M6a["M6a: log-parser, babysitter, mine CLI"]
+  done --> M5a["M5a: socratic engine, setup CLI, templates"]
+  M3 --> M6b["M6b: babysit + mine skills"]
+  M6a --> M6b
+  M3 --> M5b["M5b: sentinel-setup skill"]
+  M5a --> M5b
+  M6b --> M7["M7: tracker smoke tests"]
+  M7 --> M8["M8: hardening, 0.1.0"]
+  M5b --> M8
+  M4["M4: MCP (deferred past 0.1)"] -.-> M8
+```
+
+**Why the split.** A skill may only name CLI commands that exist in the committed bundle, and the bundle changes only in the version PR or in a PR whose skills need a new command (ADR-0006). So _core_ PRs (code, tests, no skill) never touch the 1 MB bundle copies and merge freely in parallel. _Skill_ PRs rebuild the bundle, so they are merged one at a time; after any merge, a conflict in a generated file is resolved by re-running `npm run build:plugin`.
+
+| Shared file                               | Parallel-PR risk                                  | Handling                                    |
+| ----------------------------------------- | ------------------------------------------------- | ------------------------------------------- |
+| `src/cli/index.ts`, `src/index.ts`        | one added line each; trivial conflicts            | rebase before merge                         |
+| `docs/PLAN.md` checkboxes                 | trivial conflicts                                 | tick in the PR that does the work           |
+| `plugins/sentinel/skills/*/scripts/*.mjs` | every skill PR changes all copies; real conflicts | skill PRs sequential; resolve by rebuilding |
+| `.changeset/*.md`                         | none (one file per PR)                            | —                                           |
+
+**Recommended: two lanes** (the limit is review and merge bandwidth, not typing).
+
+```mermaid
+gantt
+  title Two-lane plan (working days from M3 start)
+  dateFormat YYYY-MM-DD
+  axisFormat day %d
+  section Lane A (critical path)
+  M3 guardrails, lint, reviewer, 3 skills :a1, 2026-11-10, 3d
+  M6b babysit and mine skills            :a2, after a1, 1d
+  M5b setup skill                        :a3, after a2, 1d
+  M7 tracker smoke tests                 :a4, after a3, 1d
+  M8 hardening and 0.1.0                 :a5, after a4, 3d
+  section Lane B (cores, no bundle changes)
+  M6a log-parser, babysitter, mine CLI   :b1, 2026-11-10, 4d
+  M5a socratic engine, setup CLI         :b2, after b1, 3d
+```
+
+Lane B's M6a finishes before Lane A needs it (M6b). M5a lands before M5b but is the lane's tail, so M5b waits one or two days at most. Sequential delivery takes about 17 working days; two lanes take about 10. A third lane (M5a alongside M6a) saves about three more days but doubles the open PRs to review; it is worth it only if reviews are fast.
 
 **Total ≈ 4 weeks for one developer.** M0–M3 (with M2.5) is the minimum usable product: config, branches, worktrees, PRD validation, and the skills installable from the marketplace.
 
