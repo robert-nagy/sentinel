@@ -5,6 +5,7 @@ import { registerBranch } from './branch.js';
 import { registerConfig } from './config.js';
 import { defaultDeps, type CliDeps } from './deps.js';
 import { registerDoctor } from './doctor.js';
+import { registerGuardrails } from './guardrails.js';
 import { registerIssue } from './issue.js';
 import { registerPr } from './pr.js';
 import { registerPrd } from './prd.js';
@@ -38,6 +39,7 @@ export function createProgram(deps: CliDeps = defaultDeps()): Command {
   registerAnalyze(program, deps);
   registerBranch(program, deps);
   registerConfig(program, deps);
+  registerGuardrails(program, deps);
   registerIssue(program, deps);
   registerPr(program, deps);
   registerPrd(program, deps);

@@ -112,3 +112,10 @@ export { PRD_TEMPLATE } from './templates/prd-template.js';
 export { RFC_TEMPLATE } from './templates/rfc-template.js';
 export { RUBRIC, formatRubric } from './templates/prd-rubric.js';
 export { ScaffoldError, fillTemplate } from './core/scaffold.js';
+export {
+  GUARDRAIL_RULES,
+  GuardrailError,
+  applyClaudePointer,
+  applyGuardrailBlock,
+  renderGuardrailBlock,
+} from './core/guardrails.js';
