@@ -375,38 +375,38 @@ Each milestone ends with a merged PR on `main` and green CI on **ubuntu, macOS a
 
 ### M0 — Foundation (≈1–2 days)
 
-- [ ] `package.json` (`@robert-nagy/sentinel`, `bin`, `engines.node >=22`, `files`, `exports`), TS strict, tsup, vitest, eslint/prettier, MIT LICENSE.
-- [ ] Sentinel's own CI: `ci.yml` (3-OS matrix), `security.yml` (CodeQL + `npm audit` + dependency review), `publish.yml` (changesets + provenance; replaced by `release.yml` in M2.5).
-- [ ] CLI skeleton + `doctor` (node, git, gh, auth, Windows `core.longpaths`).
-- [ ] ADR-0001 target formats (from the 2026-11-02 research), ADR-0002 "no LLM calls", ADR-0003 "skills as the canonical workflow format", ADR-0004 "issueProvider ≠ codeHost".
+- [x] `package.json` (`@robert-nagy/sentinel`, `bin`, `engines.node >=22`, `files`, `exports`), TS strict, tsup, vitest, eslint/prettier, MIT LICENSE.
+- [x] Sentinel's own CI: `ci.yml` (3-OS matrix), `security.yml` (CodeQL + `npm audit` + dependency review), `publish.yml` (changesets + provenance; replaced by `release.yml` in M2.5).
+- [x] CLI skeleton + `doctor` (node, git, gh, auth, Windows `core.longpaths`).
+- [x] ADR-0001 target formats (from the 2026-11-02 research), ADR-0002 "no LLM calls", ADR-0003 "skills as the canonical workflow format", ADR-0004 "issueProvider ≠ codeHost".
 
 ### M1 — Deterministic core (≈4 days)
 
-- [ ] `config.ts` + schema + JSON Schema publishing + global/repo merge (OS-specific paths).
-- [ ] `exec.ts`, `state.ts`.
-- [ ] `branch-namer.ts`: exhaustive tests (unicode, long titles, Jira keys, invalid refs).
-- [ ] `stack-analyzer.ts`: fixtures for ~9 ecosystems + the empty repo.
-- [ ] `git-worktree-manager.ts`: integration tests with real git and a bare origin, on all 3 OSes.
+- [x] `config.ts` + schema + JSON Schema publishing + global/repo merge (OS-specific paths).
+- [x] `exec.ts`, `state.ts`.
+- [x] `branch-namer.ts`: exhaustive tests (unicode, long titles, Jira keys, invalid refs).
+- [x] `stack-analyzer.ts`: fixtures for ~9 ecosystems + the empty repo.
+- [x] `git-worktree-manager.ts`: integration tests with real git and a bare origin, on all 3 OSes.
 - [x] ~~`issue-provider.ts` + `providers/github.ts` + `providers/custom.ts`~~ (merged in #11, replaced by the line below per ADR-0005); `code-host.ts` + `hosts/github.ts`.
-- [ ] `issue-tracker.ts` (intent config, slug aliases, remote forge detection, resolution rule, describe) + `local-tracker.ts` + `duplicates.ts`.
-- [ ] CLI: `analyze`, `branch`, `worktree`, `issue`, `pr create`.
+- [x] `issue-tracker.ts` (intent config, slug aliases, remote forge detection, resolution rule, describe) + `local-tracker.ts` + `duplicates.ts`.
+- [x] CLI: `analyze`, `branch`, `worktree`, `issue`, `pr create`.
 
 ### M2 — PRD & RFC quality loop (≈3 days)
 
-- [ ] `prd-template.md` (IEEE 29148-aligned), `rfc-template.md`, rubric reference.
-- [ ] `prd-validator.ts`: structure, ambiguity lint, caps, mean + floor, iteration state, escalation, exit codes.
-- [ ] `prd new|validate|status`, `rfc new`.
-- [ ] Golden tests: good / borderline / bad PRDs → expected scores, gaps and actions.
+- [x] `prd-template.md` (IEEE 29148-aligned), `rfc-template.md`, rubric reference.
+- [x] `prd-validator.ts`: structure, ambiguity lint, caps, mean + floor, iteration state, escalation, exit codes.
+- [x] `prd new|validate|status`, `rfc new`.
+- [x] Golden tests: good / borderline / bad PRDs → expected scores, gaps and actions.
 
 ### M2.5 — Distribution switch (≈2 days) _(ADR-0006)_
 
-Done on the `docs/marketplace-distribution` branch once this plan is approved.
+Implemented in #16 to #19. Still open: the npm deprecation and recording the per-tool install results in ADR-0006.
 
 - [x] `package.json`: `"private": true`; remove `publishConfig`, `prepack`, the `release` script and the `files` list; add `build:plugin` and `check:plugin`.
 - [x] Bundle: a second tsup entry producing one dependency-free `sentinel.mjs` (no code splitting, dependencies inlined, version injected).
 - [x] `scripts/build-plugin.js`: copy the bundle into every `plugins/sentinel/skills/*/scripts/`, stamp the version into the manifests, generate the derived manifests, write `schema/config.json`. `--check` mode exits non-zero on drift.
 - [x] Plugin skeleton: `.claude-plugin/marketplace.json`, `plugins/sentinel/.claude-plugin/plugin.json`, generated `plugins/sentinel/plugin.json`, `.agents/plugins/marketplace.json`, `.cursor-plugin/marketplace.json`, and one placeholder skill (`sentinel-doctor`) to prove the path end to end.
-- [ ] Workflows: delete `publish.yml`; add `release.yml` (changesets version PR that also runs `build:plugin`; on merge, tag `vX.Y.Z` and create the GitHub Release). Remove the `SENTINEL_RELEASE_ENABLED` variable and the npm trusted-publisher entry.
+- [x] Workflows: delete `publish.yml`; add `release.yml` (changesets version PR that also runs `build:plugin`; on merge, tag `vX.Y.Z` and create the GitHub Release). Remove the `SENTINEL_RELEASE_ENABLED` variable and the npm trusted-publisher entry.
 - [x] CI: replace the "Pack & install" job with "Plugin smoke test" (run the committed bundle from a copied skill folder: `node plugins/sentinel/skills/sentinel-doctor/scripts/sentinel.mjs --version` and `doctor` from a temp dir on 3 OSes); add `check:plugin` and `claude plugin validate` (advisory); `--verify-fresh` guards the release tag.
 - [x] Config `$schema` URL → `https://raw.githubusercontent.com/robert-nagy/sentinel/v<version>/schema/config.json`; commit `schema/config.json`.
 - [ ] Check npmjs.com: if `@robert-nagy/sentinel` exists, `npm deprecate` it with a pointer to the marketplace. Delete the `ci/staged-publishing` branch if it only served npm publishing.
@@ -414,11 +414,11 @@ Done on the `docs/marketplace-distribution` branch once this plan is approved.
 
 ### M3 — Skills & guardrails (≈3 days)
 
-- [ ] Write `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto` and the `sentinel-reviewer` sub-agent in `plugins/sentinel/`; skills call `node scripts/sentinel.mjs`. The other three skills ship with the milestone that adds their CLI command (`sentinel-setup` in M5b, `sentinel-babysit` and `sentinel-mine` in M6b), because the lint test below rejects a skill that names a command the bundle lacks. Until M6b, `sentinel-sdlc` ends by opening the PR and telling the user to watch CI.
-- [ ] `sentinel guardrails write`: managed block in `AGENTS.md`, `CLAUDE.md` pointer when that file exists; `--dry-run`; idempotent.
-- [ ] Cursor always-on guardrail rule shipped in the plugin (`rules/sentinel-guardrails.mdc`).
-- [ ] Skills use only the neutral tracker verbs and `issue resolve`; a lint test fails if a skill hard-codes `gh issue`, `glab issue` or a tracker REST call.
-- [ ] Lint tests: skill frontmatter is valid Agent Skills; every CLI command a skill mentions exists in the committed bundle.
+- [x] Write `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto` and the `sentinel-reviewer` sub-agent in `plugins/sentinel/`; skills call `node scripts/sentinel.mjs`. The other three skills ship with the milestone that adds their CLI command (`sentinel-setup` in M5b, `sentinel-babysit` and `sentinel-mine` in M6b), because the lint test below rejects a skill that names a command the bundle lacks. Until M6b, `sentinel-sdlc` ends by opening the PR and telling the user to watch CI.
+- [x] `sentinel guardrails write`: managed block in `AGENTS.md`, `CLAUDE.md` pointer when that file exists; `--dry-run`; idempotent.
+- [x] Cursor always-on guardrail rule shipped in the plugin (`rules/sentinel-guardrails.mdc`).
+- [x] Skills use only the neutral tracker verbs and `issue resolve`; a lint test fails if a skill hard-codes `gh issue`, `glab issue` or a tracker REST call.
+- [x] Lint tests: skill frontmatter is valid Agent Skills; every CLI command a skill mentions exists in the committed bundle.
 
 ### M4 — MCP server (≈2 days) — proposed: defer until after 0.1
 
@@ -442,9 +442,9 @@ _M5a (core, no skill, can start now): the checklist items below. M5b (skill): `s
 
 _M6a (core, no skills, can start now): the checklist items below. M6b (skills): `sentinel-babysit` and `sentinel-mine` once `babysit` and `mine` are in the bundle._
 
-- [ ] `log-parser.ts` + fixtures for each toolchain.
-- [ ] `pr-babysitter.ts` state machine, `--once` / `--watch`, flaky re-run, signature dedupe, give-up comment.
-- [ ] `sentinel mine` search → draft → approved-create, with dedupe via `findDuplicates`.
+- [x] `log-parser.ts` + fixtures for each toolchain.
+- [x] `pr-babysitter.ts` state machine, `--once` / `--watch`, flaky re-run, signature dedupe, give-up comment.
+- [x] `sentinel mine` search → draft → approved-create, with dedupe via `findDuplicates`.
 
 ### M7 — Tracker coverage, without clients (≈1 day)
 
