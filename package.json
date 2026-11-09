@@ -1,6 +1,6 @@
 {
   "name": "@robert-nagy/sentinel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Agentic PDLC/SDLC governance for AI coding tools: skills, guardrails and deterministic tooling for Claude Code, Cursor, VS Code/Copilot, OpenCode and more.",
   "keywords": [
