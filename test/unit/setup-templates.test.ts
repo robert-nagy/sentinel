@@ -32,7 +32,9 @@ describe('renderWorkflows', () => {
     };
     const project = plannedProject('go');
     expect(tierCommand(project, 'unit', config.testing)).toBe('make unit');
-    expect(tierCommand(project, 'integration', config.testing)).toBe('go test -tags=integration ./...');
+    expect(tierCommand(project, 'integration', config.testing)).toBe(
+      'go test -tags=integration ./...',
+    );
     expect(renderWorkflows([project], config)[tests]?.content).toContain('      - run: make unit');
   });
 

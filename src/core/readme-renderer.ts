@@ -85,9 +85,12 @@ export function renderReadme(input: ReadmeInput): string {
     ...section('Users', bullets(answers.users)),
     ...section('Core user journeys', bullets(answers.journeys)),
     ...section('Data', answers.data),
-    ...section('Scale and service levels', [answers.scale, answers.availability, answers.recovery]
-      .filter((v) => v !== undefined)
-      .join('\n\n')),
+    ...section(
+      'Scale and service levels',
+      [answers.scale, answers.availability, answers.recovery]
+        .filter((v) => v !== undefined)
+        .join('\n\n'),
+    ),
     ...section(
       'Security',
       [

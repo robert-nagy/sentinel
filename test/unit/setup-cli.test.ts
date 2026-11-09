@@ -51,7 +51,8 @@ function cli(extra: { interactive?: boolean; replies?: string[] } = {}) {
 }
 
 const core = { problem: 'P', users: 'U', data: 'D', scale: 'S' };
-const writeJson = (name: string, value: unknown) => writeFile(join(repo, name), JSON.stringify(value), 'utf8');
+const writeJson = (name: string, value: unknown) =>
+  writeFile(join(repo, name), JSON.stringify(value), 'utf8');
 const domain = async () =>
   JSON.parse(await readFile(join(repo, '.sentinel', 'domain.json'), 'utf8')) as {
     answers: Record<string, string>;
@@ -127,7 +128,9 @@ describe('sentinel setup', () => {
       '.github/workflows/sentinel-tests.yml',
       '.github/workflows/sentinel-load.yml',
     ]);
-    expect(await readFile(join(repo, '.github/workflows/sentinel-tests.yml'), 'utf8')).toContain('go test ./...');
+    expect(await readFile(join(repo, '.github/workflows/sentinel-tests.yml'), 'utf8')).toContain(
+      'go test ./...',
+    );
 
     const again = cli();
     await again.run('setup', '--workflows', '--stack', 'go');
@@ -140,11 +143,17 @@ describe('sentinel setup', () => {
   });
 
   it('uses the detected stack in an existing project', async () => {
-    await writeFile(join(repo, 'package.json'), JSON.stringify({ name: 'x', devDependencies: {} }), 'utf8');
+    await writeFile(
+      join(repo, 'package.json'),
+      JSON.stringify({ name: 'x', devDependencies: {} }),
+      'utf8',
+    );
     await writeFile(join(repo, 'pnpm-lock.yaml'), '', 'utf8');
     const { run } = cli();
     await run('setup', '--workflows');
-    expect(await readFile(join(repo, '.github/workflows/sentinel-tests.yml'), 'utf8')).toContain('pnpm install');
+    expect(await readFile(join(repo, '.github/workflows/sentinel-tests.yml'), 'utf8')).toContain(
+      'pnpm install',
+    );
   });
 
   it('writes a README from the answers, and needs the core answers first', async () => {

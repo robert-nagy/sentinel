@@ -129,11 +129,7 @@ function installStep(project: ProjectReport): string[] {
         "          dotnet-version: '8.0.x'",
       ];
     case 'ruby':
-      return [
-        '      - uses: ruby/setup-ruby@v1',
-        '        with:',
-        '          bundler-cache: true',
-      ];
+      return ['      - uses: ruby/setup-ruby@v1', '        with:', '          bundler-cache: true'];
     case 'php':
       return [
         '      - uses: shivammathur/setup-php@v2',
@@ -160,12 +156,7 @@ function slug(path: string): string {
   return path === '.' ? '' : `-${path.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
 }
 
-function job(
-  project: ProjectReport,
-  tier: TestTier,
-  command: string,
-  single: boolean,
-): string[] {
+function job(project: ProjectReport, tier: TestTier, command: string, single: boolean): string[] {
   const id = `${tier}${single ? '' : slug(project.path)}`;
   const label = single ? tier : `${tier} (${project.path})`;
   const lines = [`  ${id}:`, `    name: ${label}`, '    runs-on: ubuntu-latest'];

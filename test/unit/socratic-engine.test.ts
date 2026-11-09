@@ -49,7 +49,9 @@ describe('nextQuestions', () => {
   it('asks the PII question when the data answer does not say, and follows the answer', () => {
     expect(ids(core)).toContain('pii');
     expect(ids(core)).not.toContain('regulations');
-    expect(ids({ ...core, pii: 'yes' })).toEqual(expect.arrayContaining(['regulations', 'retention']));
+    expect(ids({ ...core, pii: 'yes' })).toEqual(
+      expect.arrayContaining(['regulations', 'retention']),
+    );
     expect(isPiiLikely({ ...core, data: 'customer data', pii: 'no' })).toBe(false);
   });
 
