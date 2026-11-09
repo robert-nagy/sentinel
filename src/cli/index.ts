@@ -8,6 +8,7 @@ import { registerDoctor } from './doctor.js';
 import { registerIssue } from './issue.js';
 import { registerPr } from './pr.js';
 import { registerPrd } from './prd.js';
+import { registerRfc } from './rfc.js';
 import { registerWorktree } from './worktree.js';
 
 export type { CliDeps } from './deps.js';
@@ -40,6 +41,7 @@ export function createProgram(deps: CliDeps = defaultDeps()): Command {
   registerIssue(program, deps);
   registerPr(program, deps);
   registerPrd(program, deps);
+  registerRfc(program, deps);
   registerWorktree(program, deps);
 
   return program;

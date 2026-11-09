@@ -108,3 +108,7 @@ export {
   type Scores,
 } from './core/prd-validator.js';
 export { PrdError, evaluationsBefore, recordEvaluation, type PrdState } from './core/prd-state.js';
+export { PRD_TEMPLATE } from './templates/prd-template.js';
+export { RFC_TEMPLATE } from './templates/rfc-template.js';
+export { RUBRIC, formatRubric } from './templates/prd-rubric.js';
+export { ScaffoldError, fillTemplate } from './core/scaffold.js';
