@@ -3,7 +3,7 @@
 //   node scripts/build-plugin.js --check         committed plugin is internally consistent (every PR)
 //   node scripts/build-plugin.js --verify-fresh  committed bundle equals a fresh build (release only)
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { URL, fileURLToPath } from 'node:url';
 import { buildPlugin, checkConsistency, verifyFresh } from './plugin-lib.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
