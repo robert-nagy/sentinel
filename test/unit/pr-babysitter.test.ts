@@ -21,12 +21,13 @@ const PR: PullRequest = {
   base: 'main',
 };
 
-const check = (bucket: CheckBucket, runId: string | undefined = '100'): CheckRun => ({
+/** A check; `runId` null means it has no GitHub Actions run behind it. */
+const check = (bucket: CheckBucket, runId: string | null = '100'): CheckRun => ({
   name: 'ci',
   bucket,
   workflow: 'CI',
-  link: runId === undefined ? '' : `https://github.com/o/r/actions/runs/${runId}/job/1`,
-  runId,
+  link: runId === null ? '' : `https://github.com/o/r/actions/runs/${runId}/job/1`,
+  runId: runId ?? undefined,
 });
 
 const TSC_LOG = 'ci\tbuild\t2026-01-01T00:00:00Z src/a.ts(1,1): error TS2322: bad type';
@@ -161,7 +162,7 @@ describe('babysitStep', () => {
 
   it('gives up on failing checks that have no Actions run', async () => {
     const host = new FakeHost();
-    host.checks = [check('fail', undefined)];
+    host.checks = [check('fail', null)];
     const result = await babysitStep(host, PR, undefined, settings);
     expect(result.action).toBe('give-up');
     expect(host.comments[0]).toContain('not GitHub Actions');
