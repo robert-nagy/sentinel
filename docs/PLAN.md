@@ -300,7 +300,7 @@ There is no installer. Users add this repository as a marketplace in their tool 
 
 | Tool                  | Catalog                                             | Plugin manifest                               | Install                                                                                             |
 | --------------------- | --------------------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Claude Code**       | `.claude-plugin/marketplace.json` (source of truth) | `plugins/sentinel/.claude-plugin/plugin.json` | `/plugin marketplace add robert-nagy/sentinel` → `/plugin install sentinel@sentinel`                |
+| **Claude Code**       | `.claude-plugin/marketplace.json` (source of truth) | `plugins/sentinel/.claude-plugin/plugin.json` | `/plugin marketplace add robert-nagy/sentinel` → `/plugin install sentinel@robert-nagy`                |
 | **VS Code / Copilot** | the Claude catalog                                  | `plugins/sentinel/plugin.json` (generated)    | add `robert-nagy/sentinel` under `chat.plugins.marketplaces`, or _Chat: Install Plugin from Source_ |
 | **Codex**             | `.agents/plugins/marketplace.json` (generated)      | `plugins/sentinel/plugin.json` (generated)    | `codex plugin marketplace add robert-nagy/sentinel`                                                 |
 | **Cursor**            | `.cursor-plugin/marketplace.json` (generated)       | `plugins/sentinel/plugin.json` (generated)    | Cursor marketplace once listed; until then a team marketplace or `~/.cursor/plugins/local/sentinel` |
