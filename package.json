@@ -1,6 +1,7 @@
 {
   "name": "@robert-nagy/sentinel",
   "version": "0.1.0",
+  "private": true,
   "description": "Agentic PDLC/SDLC governance for AI coding tools: skills, guardrails and deterministic tooling for Claude Code, Cursor, VS Code/Copilot, OpenCode and more.",
   "keywords": [
     "sdlc",
@@ -35,18 +36,8 @@
     },
     "./package.json": "./package.json"
   },
-  "files": [
-    "dist",
-    "schema",
-    "README.md",
-    "LICENSE"
-  ],
   "engines": {
     "node": ">=22"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
   },
   "scripts": {
     "build": "tsup",
@@ -62,8 +53,7 @@
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "npm run build && changeset publish",
-    "prepack": "npm run build"
+    "release": "changeset tag"
   },
   "dependencies": {
     "commander": "^14.0.0",

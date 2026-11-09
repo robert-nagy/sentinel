@@ -1,0 +1,46 @@
+name: Release
+
+# Changesets flow: on every push to main, either opens/updates a
+# "chore: version packages" PR (when unreleased changesets exist) or, once that
+# PR is merged, tags the new version (vX.Y.Z) and creates a GitHub Release.
+#
+# Nothing is published to npm: sentinel is distributed as a plugin marketplace
+# from this repository (docs/adr/0006-marketplace-distribution.md).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Version or tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - uses: changesets/action@v1
+        with:
+          version: npm run version-packages
+          # `changeset tag` creates the vX.Y.Z tag for the private package; the
+          # action pushes it and creates the GitHub Release.
+          publish: npm run release
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
