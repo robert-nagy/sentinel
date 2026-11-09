@@ -25,7 +25,9 @@ describe('applyGuardrailBlock', () => {
 
   it('appends after existing text and keeps it', () => {
     const result = applyGuardrailBlock('# Project\n\nBe nice.\n', block);
-    expect(result.startsWith('# Project\n\nBe nice.\n\n<!-- sentinel:managed v1.2.3 -->')).toBe(true);
+    expect(result.startsWith('# Project\n\nBe nice.\n\n<!-- sentinel:managed v1.2.3 -->')).toBe(
+      true,
+    );
     expect(result.endsWith(`${BLOCK_END}\n`)).toBe(true);
   });
 
