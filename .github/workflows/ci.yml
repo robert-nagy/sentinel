@@ -53,8 +53,8 @@ jobs:
       - name: E2E tests (built CLI)
         run: npm run test:e2e
 
-  package:
-    name: Pack & install (${{ matrix.os }})
+  smoke:
+    name: Smoke test built CLI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -70,15 +70,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Pack tarball
-        run: |
-          npm pack
-          tar -tzf robert-nagy-sentinel-*.tgz
-      - name: Install tarball globally
-        run: npm install --global ./robert-nagy-sentinel-*.tgz
-      - name: Smoke test installed binary
+      - run: npm run build
+      # sentinel is not published to npm (ADR-0006), so there is no tarball to
+      # install. Run the built CLI from outside the repository, the way a
+      # plugin install will invoke it.
+      - name: Run the built CLI from another directory
         working-directory: ${{ runner.temp }}
+        env:
+          SENTINEL_BIN: ${{ github.workspace }}/dist/bin/sentinel.js
         run: |
-          sentinel --version
-          sentinel --help
-          sentinel doctor
+          node "$SENTINEL_BIN" --version
+          node "$SENTINEL_BIN" --help
+          node "$SENTINEL_BIN" doctor
