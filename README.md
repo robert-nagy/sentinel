@@ -196,7 +196,13 @@ sentinel prd validate docs/prd/login.md --scores scores.json
 sentinel rfc new 42                  # docs/rfcs/issue-42.md
 sentinel pr create --issue 42 --title "Add login page"
 sentinel guardrails write            # managed block in AGENTS.md
+sentinel setup --questions --json    # open domain questions and the detected stack
+sentinel babysit 17 --once --json    # one look at a PR's CI: wait, done, patch or give-up
+sentinel mine search "task tracker"  # popular comparable repositories
 ```
+
+The `setup`, `babysit` and `mine` commands are built, but the skills that drive them are still
+to come (table above).
 
 Run `sentinel --help` for the full list.
 

@@ -1,6 +1,6 @@
 # ADR-0006: sentinel is distributed as a plugin marketplace, not an npm package
 
-- **Status:** Proposed (plan under review; implementation follows on the same branch)
+- **Status:** Accepted. Implemented in M2.5 (#18, #19); the install smoke test passed in Claude Code, VS Code, Codex and Cursor (reported by the maintainer, 2026-11-09). Per-tool detail still to be recorded under Open items.
 - **Date:** 2026-11-09
 - **Supersedes:** the adapter half of [ADR-0001](0001-target-formats.md) and the copy/pin
   decisions of [ADR-0003](0003-skills-as-canonical-workflows.md)
