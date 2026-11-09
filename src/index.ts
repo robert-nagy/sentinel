@@ -127,3 +127,16 @@ export {
   type BabysitResult,
   type BabysitState,
 } from './core/pr-babysitter.js';
+export {
+  QUESTIONS,
+  SetupError,
+  buildDomain,
+  isComplete,
+  isPiiLikely,
+  nextQuestions,
+  validateAnswers,
+  type Answers,
+  type DomainFile,
+} from './core/socratic-engine.js';
+export { renderWorkflows, type GeneratedWorkflow } from './core/workflows.js';
+export { renderReadme } from './core/readme-renderer.js';
