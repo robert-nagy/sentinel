@@ -432,10 +432,11 @@ _No longer on the critical path: skills carry the CLI (ADR-0006). Packaging is a
 
 _M5a (core, no skill, can start now): the checklist items below. M5b (skill): `sentinel-setup` SKILL.md once `sentinel setup` is in the bundle._
 
-- [ ] Socratic engine + question bank + `.sentinel/domain.json`.
-- [ ] Empty-state detection; stack proposal flow.
-- [ ] Stack-parameterised GitHub workflow templates (4 tiers as separate jobs; load tests on `workflow_dispatch`/schedule only).
-- [ ] README renderer with Mermaid; bootstrap PR via branch-namer + code host.
+- [x] Socratic engine + question bank + `.sentinel/domain.json` (M5a; the terminal mode uses `node:readline`, not `@inquirer/prompts`, to keep the bundle dependency-free).
+- [x] Empty-state detection; stack proposal flow (M5a: `sentinel setup --questions --json` reports `stack.proposal`; `--stack <ecosystem>` confirms it).
+- [x] Stack-parameterised GitHub workflow templates (4 tiers as separate jobs; load tests on `workflow_dispatch`/schedule only) (M5a: `setup --workflows`).
+- [x] README renderer with Mermaid (M5a: `setup --readme`).
+- [ ] Bootstrap PR via branch-namer + code host (M5b: the skill drives `branch name`, `worktree add` and `pr create`).
 
 ### M6 — Babysitter & mining (≈3–4 days core + 1 day skills)
 

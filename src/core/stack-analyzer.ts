@@ -579,3 +579,29 @@ export function installCommands(
   }
   return commands;
 }
+
+export const ECOSYSTEMS = Object.keys(SPECS) as readonly Ecosystem[];
+
+/**
+ * A project of a stack that is not in the repository yet (an empty repo whose stack the user
+ * confirmed): every tier is "missing" with the ecosystem's recommendation.
+ */
+export function plannedProject(
+  ecosystem: Ecosystem,
+  path = '.',
+  packageManager: string | null = null,
+): ProjectReport {
+  const spec = SPECS[ecosystem];
+  const tiers = spec.tiers(packageManager);
+  const tests = Object.fromEntries(
+    TEST_TIERS.map((tier) => [
+      tier,
+      {
+        detected: null,
+        recommended: tiers[tier].recommended,
+        install: tiers[tier].install,
+      } satisfies TierReport,
+    ]),
+  ) as Record<TestTier, TierReport>;
+  return { path, ecosystem, language: spec.language, packageManager, frameworks: [], tests };
+}

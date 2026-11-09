@@ -8,6 +8,7 @@ import { PrdError } from '../core/prd-state.js';
 import { TrackerError } from '../core/issue-tracker.js';
 import { ProviderError } from '../core/provider-error.js';
 import { ScaffoldError } from '../core/scaffold.js';
+import { SetupError } from '../core/socratic-engine.js';
 import { StateError } from '../core/state.js';
 import type { CliDeps } from './deps.js';
 
@@ -36,6 +37,7 @@ export function guarded<Args extends unknown[]>(
         error instanceof ScaffoldError ||
         error instanceof MiningError ||
         error instanceof GuardrailError ||
+        error instanceof SetupError ||
         error instanceof WorktreeError
       ) {
         deps.stderr(`sentinel: ${error.message}`);
