@@ -3,7 +3,16 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'coverage/', 'node_modules/', '.worktrees/'] },
+  {
+    ignores: [
+      'dist/',
+      'dist-bundle/',
+      'plugins/**/scripts/sentinel.mjs',
+      'coverage/',
+      'node_modules/',
+      '.worktrees/',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,

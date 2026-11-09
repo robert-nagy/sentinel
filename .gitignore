@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-bundle/
 coverage/
 *.tgz
 .worktrees/
@@ -9,5 +10,3 @@ coverage/
 .env
 .env.*
 !.env.example
-
-schema/
