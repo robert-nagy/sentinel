@@ -480,12 +480,12 @@ flowchart LR
 
 **Why the split.** A skill may only name CLI commands that exist in the committed bundle, and the bundle changes only in the version PR or in a PR whose skills need a new command (ADR-0006). So _core_ PRs (code, tests, no skill) never touch the 1 MB bundle copies and merge freely in parallel. _Skill_ PRs rebuild the bundle, so they are merged one at a time; after any merge, a conflict in a generated file is resolved by re-running `npm run build:plugin`.
 
-| Shared file                                | Parallel-PR risk                                  | Handling                                    |
-| ------------------------------------------ | ------------------------------------------------- | ------------------------------------------- |
-| `src/cli/index.ts`, `src/index.ts`         | one added line each; trivial conflicts            | rebase before merge                         |
-| `docs/PLAN.md` checkboxes                  | trivial conflicts                                 | tick in the PR that does the work           |
-| `plugins/sentinel/skills/*/scripts/*.mjs`  | every skill PR changes all copies; real conflicts | skill PRs sequential; resolve by rebuilding |
-| `.changeset/*.md`                          | none (one file per PR)                            | —                                           |
+| Shared file                               | Parallel-PR risk                                  | Handling                                    |
+| ----------------------------------------- | ------------------------------------------------- | ------------------------------------------- |
+| `src/cli/index.ts`, `src/index.ts`        | one added line each; trivial conflicts            | rebase before merge                         |
+| `docs/PLAN.md` checkboxes                 | trivial conflicts                                 | tick in the PR that does the work           |
+| `plugins/sentinel/skills/*/scripts/*.mjs` | every skill PR changes all copies; real conflicts | skill PRs sequential; resolve by rebuilding |
+| `.changeset/*.md`                         | none (one file per PR)                            | —                                           |
 
 **Recommended: two lanes** (the limit is review and merge bandwidth, not typing).
 
