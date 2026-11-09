@@ -93,7 +93,9 @@ const eslint: Detector = (lines) => {
     }
     const m = /^\s+(\d+):\d+\s+error\s+(.+?)(?:\s{2,}(\S+))?$/.exec(text);
     if (m && file !== undefined) {
-      found.push(error(file, m[1], m[3] === undefined ? (m[2] ?? '') : `${m[3]}: ${m[2] ?? ''}`, text));
+      found.push(
+        error(file, m[1], m[3] === undefined ? (m[2] ?? '') : `${m[3]}: ${m[2] ?? ''}`, text),
+      );
     }
   }
   return found;
@@ -122,7 +124,12 @@ const vitestJest: Detector = (lines) => {
     const last = found.at(-1);
     const detail = /^\s*(?:AssertionError|TypeError|ReferenceError|Error): (.+)$/.exec(text);
     if (last !== undefined && detail && !last.message.includes(': ')) {
-      found[found.length - 1] = error(last.file, last.line, `${last.message}: ${detail[1] ?? ''}`, last.excerpt);
+      found[found.length - 1] = error(
+        last.file,
+        last.line,
+        `${last.message}: ${detail[1] ?? ''}`,
+        last.excerpt,
+      );
     }
     const stack = /^\s*❯ (\S+):(\d+):\d+/.exec(text);
     if (last !== undefined && stack && last.line === undefined) {
@@ -136,7 +143,10 @@ const pytest: Detector = (lines) => {
   const found: FailureError[] = [];
   for (const text of lines) {
     const m = /^FAILED (\S+?)::(\S+)(?: - (.+))?$/.exec(text);
-    if (m) found.push(error(m[1], undefined, m[3] === undefined ? (m[2] ?? '') : `${m[2] ?? ''} - ${m[3]}`, text));
+    if (m)
+      found.push(
+        error(m[1], undefined, m[3] === undefined ? (m[2] ?? '') : `${m[2] ?? ''} - ${m[3]}`, text),
+      );
   }
   return found;
 };
@@ -156,7 +166,14 @@ const cargo: Detector = (lines) => {
     const m = /^error(?:\[(E\d+)\])?: (.+)$/.exec(text);
     if (!m || (m[2] ?? '').startsWith('could not compile')) return;
     const where = /^\s*--> (.+):(\d+):\d+$/.exec(lines[index + 1] ?? '');
-    found.push(error(where?.[1], where?.[2], m[1] === undefined ? (m[2] ?? '') : `${m[1]}: ${m[2] ?? ''}`, text));
+    found.push(
+      error(
+        where?.[1],
+        where?.[2],
+        m[1] === undefined ? (m[2] ?? '') : `${m[1]}: ${m[2] ?? ''}`,
+        text,
+      ),
+    );
   });
   return found;
 };
@@ -200,7 +217,9 @@ function signatureOf(toolchain: string, errors: readonly FailureError[]): string
 export function parseFailureLog(log: string, jobsHint: readonly string[] = []): FailurePacket {
   const lines = toLines(log);
   const texts = lines.map((l) => l.text);
-  const jobs = [...new Set([...jobsHint, ...lines.map((l) => l.job).filter((j) => j !== undefined)])];
+  const jobs = [
+    ...new Set([...jobsHint, ...lines.map((l) => l.job).filter((j) => j !== undefined)]),
+  ];
 
   let toolchain = 'unknown';
   let errors: FailureError[] = [];

@@ -69,8 +69,12 @@ const settings = { maxAttempts: 5 };
 describe('babysitStep', () => {
   it('finishes when the pull request is merged or closed', async () => {
     const host = new FakeHost();
-    expect((await babysitStep(host, { ...PR, state: 'merged' }, undefined, settings)).action).toBe('done');
-    expect((await babysitStep(host, { ...PR, state: 'closed' }, undefined, settings)).action).toBe('done');
+    expect((await babysitStep(host, { ...PR, state: 'merged' }, undefined, settings)).action).toBe(
+      'done',
+    );
+    expect((await babysitStep(host, { ...PR, state: 'closed' }, undefined, settings)).action).toBe(
+      'done',
+    );
   });
 
   it('waits with no checks and while checks run', async () => {
@@ -188,7 +192,12 @@ describe('babysit', () => {
     const states = [[check('pending')], [check('pending')], [check('pass')]];
     host.listChecks = () => Promise.resolve(states.shift() ?? [check('pass')]);
     const progress: string[] = [];
-    const result = await babysit(host, '7', new StateStore(root), options({ onProgress: (m) => progress.push(m) }));
+    const result = await babysit(
+      host,
+      '7',
+      new StateStore(root),
+      options({ onProgress: (m) => progress.push(m) }),
+    );
     expect(result.action).toBe('done');
     expect(progress).toHaveLength(2);
   });

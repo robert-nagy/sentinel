@@ -39,7 +39,10 @@ function initialState(pr: number): BabysitState {
 function describe(packet: FailurePacket): string {
   const lines = packet.errors
     .slice(0, 5)
-    .map((e) => `- ${e.file === undefined ? '' : `${e.file}${e.line === undefined ? '' : `:${String(e.line)}`}: `}${e.message}`);
+    .map(
+      (e) =>
+        `- ${e.file === undefined ? '' : `${e.file}${e.line === undefined ? '' : `:${String(e.line)}`}: `}${e.message}`,
+    );
   return lines.join('\n');
 }
 
@@ -64,11 +67,13 @@ export async function babysitStep(
 
   if (pr.state === 'merged') return result('done', 'the pull request is merged', state);
   if (pr.state === 'closed') return result('done', 'the pull request is closed', state);
-  if (state.gaveUp) return result('give-up', 'sentinel already gave up on this pull request', state);
+  if (state.gaveUp)
+    return result('give-up', 'sentinel already gave up on this pull request', state);
 
   const checks: CheckRun[] = await host.listChecks(String(pr.number));
   if (checks.length === 0) return result('wait', 'no checks reported yet', state);
-  if (checks.some((c) => c.bucket === 'pending')) return result('wait', 'checks are still running', state);
+  if (checks.some((c) => c.bucket === 'pending'))
+    return result('wait', 'checks are still running', state);
 
   const failed = checks.filter((c) => c.bucket === 'fail' || c.bucket === 'cancelled');
   if (failed.length === 0) return result('done', 'all checks passed', state);
@@ -76,12 +81,22 @@ export async function babysitStep(
   const runIds = [...new Set(failed.map((c) => c.runId).filter((id) => id !== undefined))].sort();
   if (runIds.length === 0) {
     const names = failed.map((c) => c.name).join(', ');
-    return giveUp(host, pr, state, `failing checks are not GitHub Actions runs, so there are no logs to read: ${names}`, undefined, result);
+    return giveUp(
+      host,
+      pr,
+      state,
+      `failing checks are not GitHub Actions runs, so there are no logs to read: ${names}`,
+      undefined,
+      result,
+    );
   }
 
   const logs: string[] = [];
   for (const id of runIds.slice(0, MAX_LOG_RUNS)) logs.push(await host.getFailedLogs(id));
-  const packet = parseFailureLog(logs.join('\n'), failed.map((c) => c.name));
+  const packet = parseFailureLog(
+    logs.join('\n'),
+    failed.map((c) => c.name),
+  );
 
   const known = state.signatures[packet.signature] ?? { seen: 0, reran: false };
   const sameRuns = runIds.join(',') === state.lastRunIds.join(',');
@@ -99,7 +114,12 @@ export async function babysitStep(
       afterRerun: true,
       signatures: { ...state.signatures, [packet.signature]: { seen: 1, reran: true } },
     };
-    return result('rerun', 'the failure looks like an infrastructure problem: re-ran the failed jobs once', next, packet);
+    return result(
+      'rerun',
+      'the failure looks like an infrastructure problem: re-ran the failed jobs once',
+      next,
+      packet,
+    );
   }
 
   const seen = known.seen + 1;
@@ -112,12 +132,31 @@ export async function babysitStep(
     signatures: { ...state.signatures, [packet.signature]: { seen, reran: known.reran } },
   };
   if (attempts > settings.maxAttempts) {
-    return giveUp(host, pr, next, `${String(settings.maxAttempts)} fix attempts did not make CI green`, packet, result);
+    return giveUp(
+      host,
+      pr,
+      next,
+      `${String(settings.maxAttempts)} fix attempts did not make CI green`,
+      packet,
+      result,
+    );
   }
   if (seen > SAME_SIGNATURE_LIMIT) {
-    return giveUp(host, pr, next, `the same failure survived ${String(SAME_SIGNATURE_LIMIT)} fixes`, packet, result);
+    return giveUp(
+      host,
+      pr,
+      next,
+      `the same failure survived ${String(SAME_SIGNATURE_LIMIT)} fixes`,
+      packet,
+      result,
+    );
   }
-  return result('patch', `CI failed (attempt ${String(attempts)} of ${String(settings.maxAttempts)})`, next, packet);
+  return result(
+    'patch',
+    `CI failed (attempt ${String(attempts)} of ${String(settings.maxAttempts)})`,
+    next,
+    packet,
+  );
 }
 
 async function giveUp(
@@ -162,12 +201,21 @@ export async function babysit(
   for (;;) {
     const pr = await host.getPullRequest(ref);
     const name = `babysit-pr-${String(pr.number)}`;
-    const result = await babysitStep(host, pr, await store.read<BabysitState>(name), options.settings);
+    const result = await babysitStep(
+      host,
+      pr,
+      await store.read<BabysitState>(name),
+      options.settings,
+    );
     await store.write(name, result.state);
     if (options.once || (result.action !== 'wait' && result.action !== 'rerun')) return result;
     options.onProgress?.(`${result.action}: ${result.reason}`);
     if (options.now() - started > options.timeoutMin * 60_000) {
-      return { ...result, action: 'give-up', reason: `timed out after ${String(options.timeoutMin)} minutes` };
+      return {
+        ...result,
+        action: 'give-up',
+        reason: `timed out after ${String(options.timeoutMin)} minutes`,
+      };
     }
     await options.sleep(options.pollIntervalSec * 1000);
   }

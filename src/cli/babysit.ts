@@ -50,7 +50,15 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
         deps.stdout(
           options.json === true
             ? JSON.stringify(output, null, 2)
-            : [`${result.action}: ${result.reason}`, ...(result.packet?.errors.slice(0, 10).map((e) => `  ${e.file ?? ''}${e.line === undefined ? '' : `:${String(e.line)}`} ${e.message}`) ?? [])].join('\n'),
+            : [
+                `${result.action}: ${result.reason}`,
+                ...(result.packet?.errors
+                  .slice(0, 10)
+                  .map(
+                    (e) =>
+                      `  ${e.file ?? ''}${e.line === undefined ? '' : `:${String(e.line)}`} ${e.message}`,
+                  ) ?? []),
+              ].join('\n'),
         );
         deps.setExitCode(EXIT[result.action]);
       }),

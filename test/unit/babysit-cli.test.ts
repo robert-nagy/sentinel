@@ -15,14 +15,30 @@ afterEach(async () => {
   await rm(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '', notFound: false, timedOut: false });
+const ok = (stdout: string) => ({
+  exitCode: 0,
+  stdout,
+  stderr: '',
+  notFound: false,
+  timedOut: false,
+});
 
 function fakeGh(checks: object[], log = ''): CommandRunner {
   return (_command, args) => {
     const text = args.join(' ');
     if (text.startsWith('pr view')) {
       return Promise.resolve(
-        ok(JSON.stringify({ number: 7, url: 'https://github.com/o/r/pull/7', title: 't', state: 'OPEN', isDraft: false, headRefName: 'feat/7', baseRefName: 'main' })),
+        ok(
+          JSON.stringify({
+            number: 7,
+            url: 'https://github.com/o/r/pull/7',
+            title: 't',
+            state: 'OPEN',
+            isDraft: false,
+            headRefName: 'feat/7',
+            baseRefName: 'main',
+          }),
+        ),
       );
     }
     if (text.startsWith('pr checks')) return Promise.resolve(ok(JSON.stringify(checks)));
@@ -62,16 +78,23 @@ describe('sentinel babysit', () => {
 
   it('exits 2 with a failure packet when a fix is needed', async () => {
     const log = 'ci\tbuild\t2026-01-01T00:00:00Z src/a.ts(1,1): error TS2322: bad';
-    const { run, out, codes } = cli(fakeGh([{ name: 'ci', bucket: 'fail', workflow: 'CI', link }], log));
+    const { run, out, codes } = cli(
+      fakeGh([{ name: 'ci', bucket: 'fail', workflow: 'CI', link }], log),
+    );
     await run('babysit', '7', '--once', '--json');
-    const result = JSON.parse(out.join('')) as { action: string; packet: { errors: { file: string }[] } };
+    const result = JSON.parse(out.join('')) as {
+      action: string;
+      packet: { errors: { file: string }[] };
+    };
     expect(result.action).toBe('patch');
     expect(result.packet.errors[0]?.file).toBe('src/a.ts');
     expect(codes.at(-1)).toBe(2);
   });
 
   it('exits 0 with action wait while checks run in once mode', async () => {
-    const { run, out, codes } = cli(fakeGh([{ name: 'ci', bucket: 'pending', workflow: 'CI', link }]));
+    const { run, out, codes } = cli(
+      fakeGh([{ name: 'ci', bucket: 'pending', workflow: 'CI', link }]),
+    );
     await run('babysit', '7', '--once');
     expect(out.join('\n')).toContain('wait: checks are still running');
     expect(codes.at(-1)).toBe(0);
