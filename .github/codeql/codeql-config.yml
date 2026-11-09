@@ -1,0 +1,6 @@
+name: sentinel CodeQL config
+# The committed plugin bundle is generated from src/ and the (audited) dependencies zod and
+# commander. src/ is analysed directly, so the bundle only adds third-party noise such as zod's
+# JIT `new Function`.
+paths-ignore:
+  - plugins/**/scripts/sentinel.mjs

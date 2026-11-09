@@ -195,7 +195,13 @@ export function buildBundle(root) {
 
 function writeIfChanged(root, relPath, text) {
   const target = join(root, relPath);
-  if (existsSync(target) && readFileSync(target, 'utf8') === text) return;
+  let current;
+  try {
+    current = readFileSync(target, 'utf8');
+  } catch {
+    current = undefined;
+  }
+  if (current === text) return;
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, text, 'utf8');
 }
