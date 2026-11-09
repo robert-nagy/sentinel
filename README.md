@@ -38,11 +38,11 @@ already has (an MCP server or CLI for GitHub, Jira, Linear, Azure DevOps…). Se
 
 This repository is a plugin marketplace. Add it in your tool, then install the `sentinel` plugin.
 
-| Tool              | How                                                                                                         |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- |
-| Claude Code       | `/plugin marketplace add robert-nagy/sentinel`, then `/plugin install sentinel@robert-nagy`                 |
-| Codex             | `codex plugin marketplace add robert-nagy/sentinel`, then install `sentinel` from the plugin list           |
-| VS Code / Copilot | add `robert-nagy/sentinel` under the `chat.plugins.marketplaces` setting, or run _Chat: Install Plugin from Source_ |
+| Tool              | How                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Claude Code       | `/plugin marketplace add robert-nagy/sentinel`, then `/plugin install sentinel@robert-nagy`                             |
+| Codex             | `codex plugin marketplace add robert-nagy/sentinel`, then install `sentinel` from the plugin list                       |
+| VS Code / Copilot | add `robert-nagy/sentinel` under the `chat.plugins.marketplaces` setting, or run _Chat: Install Plugin from Source_     |
 | Cursor            | until sentinel is listed in Cursor's marketplace, copy or link `plugins/sentinel` to `~/.cursor/plugins/local/sentinel` |
 
 OpenCode, Claude Desktop and plain `.agents/skills` setups are not supported for now. The VS Code
@@ -64,14 +64,14 @@ support them.
    `sentinel-sdlc-auto` does the same without the approval stop, for runs you explicitly want
    unattended.
 
-| Skill                | Status      | What it does                                                         |
-| -------------------- | ----------- | -------------------------------------------------------------------- |
-| `sentinel-doctor`    | shipped     | Checks that sentinel can run here                                    |
-| `sentinel-prd`       | shipped     | Drafts and validates a PRD                                           |
-| `sentinel-sdlc`      | shipped     | Issue to pull request, with an RFC approval stop                     |
-| `sentinel-sdlc-auto` | shipped     | Same, without the approval stop                                      |
-| `sentinel-setup`     | coming soon | Bootstraps a repository: domain questions, test tiers, CI workflows  |
-| `sentinel-babysit`   | coming soon | Watches a pull request's CI and fixes failures until green          |
+| Skill                | Status      | What it does                                                           |
+| -------------------- | ----------- | ---------------------------------------------------------------------- |
+| `sentinel-doctor`    | shipped     | Checks that sentinel can run here                                      |
+| `sentinel-prd`       | shipped     | Drafts and validates a PRD                                             |
+| `sentinel-sdlc`      | shipped     | Issue to pull request, with an RFC approval stop                       |
+| `sentinel-sdlc-auto` | shipped     | Same, without the approval stop                                        |
+| `sentinel-setup`     | coming soon | Bootstraps a repository: domain questions, test tiers, CI workflows    |
+| `sentinel-babysit`   | coming soon | Watches a pull request's CI and fixes failures until green             |
 | `sentinel-mine`      | coming soon | Finds feature gaps in comparable projects and files issues on approval |
 
 The shipped skills end by opening the pull request. Watching CI is yours until `sentinel-babysit`
@@ -96,13 +96,13 @@ Skills describe tracker work as neutral verbs (`get`, `list`, `create`, `comment
 `link-pr`, `close`) and your agent carries them out with whatever tool reaches your tracker.
 sentinel only decides **which** tracker to use, in code:
 
-| Situation                                                      | `sentinel issue resolve` says | Then                                       |
-| -------------------------------------------------------------- | ----------------------------- | ------------------------------------------ |
-| A tracker is configured and reachable (or not reported)        | `use`                         | use it                                     |
-| Configured, but the agent reports it unreachable               | `unavailable` (exit 4)        | tell the user which connection is missing  |
-| Nothing configured, exactly one reachable, no conflict         | `use`                         | offer to save it (`sentinel issue use`)    |
-| Several reachable, or the only one conflicts with the remote   | `ask`                         | ask the user once and save the answer      |
-| None reachable                                                 | `fallback`                    | use the local tracker                      |
+| Situation                                                    | `sentinel issue resolve` says | Then                                      |
+| ------------------------------------------------------------ | ----------------------------- | ----------------------------------------- |
+| A tracker is configured and reachable (or not reported)      | `use`                         | use it                                    |
+| Configured, but the agent reports it unreachable             | `unavailable` (exit 4)        | tell the user which connection is missing |
+| Nothing configured, exactly one reachable, no conflict       | `use`                         | offer to save it (`sentinel issue use`)   |
+| Several reachable, or the only one conflicts with the remote | `ask`                         | ask the user once and save the answer     |
+| None reachable                                               | `fallback`                    | use the local tracker                     |
 
 The local tracker keeps issues as Markdown files under `docs/issues/`.
 
@@ -141,30 +141,30 @@ are rejected, and invalid configuration exits with code `5`. A JSON Schema for e
 committed at [`schema/config.json`](schema/config.json); `sentinel config show` prints the effective
 configuration and `sentinel config path` the files that contributed.
 
-| Key                          | Default                              | Meaning                                                       |
-| ---------------------------- | ------------------------------------ | ------------------------------------------------------------- |
-| `issueProvider.tracker`      | `null`                               | Tracker slug (`github`, `jira`, `linear`, `local`…); `null` resolves on first use |
-| `issueProvider.location`     | `null`                               | Where the work lives inside the tracker                       |
-| `issueProvider.notes`        | `null`                               | Free-form guidance for the agent                              |
-| `issueProvider.labelMap`     | `{}`                                 | Neutral label → the tracker's own label, type or status       |
-| `issueProvider.localDir`     | `docs/issues`                        | Directory of the local tracker                                |
-| `codeHost.type`              | `github`                             | Only `github` is supported                                    |
-| `codeHost.defaultBranch`     | `main`                               | Branch worktrees start from and PRs target                    |
-| `branches.feature`           | `feat/{issue_id}-{slug}`             | Branch template for features                                  |
-| `branches.bugfix`            | `fix/{issue_id}`                     | Branch template for bug fixes                                 |
-| `branches.hotfix`            | `hotfix/{issue_id}-{slug}`           | Branch template for hotfixes                                  |
-| `branches.refactor`          | `refactor/{issue_id}-{slug}`         | Branch template for refactors                                 |
-| `worktrees.root`             | `.worktrees`                         | Directory for per-issue worktrees (added to `.gitignore`)     |
-| `worktrees.copyFiles`        | `[".env.example"]`                   | Files copied into a new worktree, never overwriting           |
-| `prd.dir`                    | `docs/prd`                           | Where PRDs are written                                        |
-| `prd.threshold`              | `85`                                 | Minimum mean score to accept a PRD                            |
-| `prd.dimensionFloor`         | `70`                                 | Minimum score for each dimension (must not exceed threshold)  |
-| `prd.maxRefinements`         | `3`                                  | Failed refinement passes before escalating                    |
-| `rfc.dir`                    | `docs/rfcs`                          | Where RFCs are written                                        |
-| `babysit.maxAttempts`        | `5`                                  | Fix attempts before giving up                                 |
-| `babysit.pollIntervalSec`    | `30`                                 | Seconds between CI polls                                      |
-| `babysit.timeoutMin`         | `60`                                 | Minutes before giving up on a pending run                     |
-| `testing.unit`, `.integration`, `.e2e`, `.load` | `null`            | Command for each test tier                                    |
+| Key                                             | Default                      | Meaning                                                                           |
+| ----------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------- |
+| `issueProvider.tracker`                         | `null`                       | Tracker slug (`github`, `jira`, `linear`, `local`…); `null` resolves on first use |
+| `issueProvider.location`                        | `null`                       | Where the work lives inside the tracker                                           |
+| `issueProvider.notes`                           | `null`                       | Free-form guidance for the agent                                                  |
+| `issueProvider.labelMap`                        | `{}`                         | Neutral label → the tracker's own label, type or status                           |
+| `issueProvider.localDir`                        | `docs/issues`                | Directory of the local tracker                                                    |
+| `codeHost.type`                                 | `github`                     | Only `github` is supported                                                        |
+| `codeHost.defaultBranch`                        | `main`                       | Branch worktrees start from and PRs target                                        |
+| `branches.feature`                              | `feat/{issue_id}-{slug}`     | Branch template for features                                                      |
+| `branches.bugfix`                               | `fix/{issue_id}`             | Branch template for bug fixes                                                     |
+| `branches.hotfix`                               | `hotfix/{issue_id}-{slug}`   | Branch template for hotfixes                                                      |
+| `branches.refactor`                             | `refactor/{issue_id}-{slug}` | Branch template for refactors                                                     |
+| `worktrees.root`                                | `.worktrees`                 | Directory for per-issue worktrees (added to `.gitignore`)                         |
+| `worktrees.copyFiles`                           | `[".env.example"]`           | Files copied into a new worktree, never overwriting                               |
+| `prd.dir`                                       | `docs/prd`                   | Where PRDs are written                                                            |
+| `prd.threshold`                                 | `85`                         | Minimum mean score to accept a PRD                                                |
+| `prd.dimensionFloor`                            | `70`                         | Minimum score for each dimension (must not exceed threshold)                      |
+| `prd.maxRefinements`                            | `3`                          | Failed refinement passes before escalating                                        |
+| `rfc.dir`                                       | `docs/rfcs`                  | Where RFCs are written                                                            |
+| `babysit.maxAttempts`                           | `5`                          | Fix attempts before giving up                                                     |
+| `babysit.pollIntervalSec`                       | `30`                         | Seconds between CI polls                                                          |
+| `babysit.timeoutMin`                            | `60`                         | Minutes before giving up on a pending run                                         |
+| `testing.unit`, `.integration`, `.e2e`, `.load` | `null`                       | Command for each test tier                                                        |
 
 Branch templates accept `{issue_id}` (required), `{slug}`, `{type}`, `{user}` and `{date}`.
 
@@ -172,14 +172,14 @@ Branch templates accept `{issue_id}` (required), `{slug}`, `{type}`, `{user}` an
 
 Every command supports `--json`. Agents branch on the exit code:
 
-| Code | Meaning                                                              |
-| ---- | -------------------------------------------------------------------- |
-| `0`  | Success                                                              |
-| `1`  | Failure (for example a failed `doctor` check)                        |
+| Code | Meaning                                                               |
+| ---- | --------------------------------------------------------------------- |
+| `0`  | Success                                                               |
+| `1`  | Failure (for example a failed `doctor` check)                         |
 | `2`  | Threshold not met: refine and retry (PRD scores, a CI failure to fix) |
-| `3`  | Retry budget exhausted: escalate to a human or a stronger model      |
-| `4`  | Tracker unavailable, or code host / authentication error             |
-| `5`  | Invalid or missing configuration                                     |
+| `3`  | Retry budget exhausted: escalate to a human or a stronger model       |
+| `4`  | Tracker unavailable, or code host / authentication error              |
+| `5`  | Invalid or missing configuration                                      |
 
 ## Using the CLI directly
 
