@@ -3,6 +3,7 @@ import { ConfigError } from '../core/config.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { GuardrailError } from '../core/guardrails.js';
 import { WorktreeError } from '../core/git-worktree-manager.js';
+import { MiningError } from '../core/mining.js';
 import { PrdError } from '../core/prd-state.js';
 import { TrackerError } from '../core/issue-tracker.js';
 import { ProviderError } from '../core/provider-error.js';
@@ -33,6 +34,7 @@ export function guarded<Args extends unknown[]>(
         error instanceof StateError ||
         error instanceof PrdError ||
         error instanceof ScaffoldError ||
+        error instanceof MiningError ||
         error instanceof GuardrailError ||
         error instanceof WorktreeError
       ) {
