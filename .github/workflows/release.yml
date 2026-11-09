@@ -34,6 +34,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run check:plugin
+      # Guard the tag: with no pending changesets the next step may tag a release, so the
+      # committed bundle must equal a fresh build of src/. Between releases the bundle is
+      # allowed to lag behind main (ADR-0006), so the check is skipped while changesets wait.
+      - name: Bundle matches source (before tagging)
+        run: |
+          if ls .changeset/*.md 2>/dev/null | grep -qv 'README.md'; then
+            echo "pending changesets: bundle is refreshed by the version PR, skipping"
+          else
+            node scripts/build-plugin.js --verify-fresh
+          fi
       - uses: changesets/action@v1
         with:
           version: npm run version-packages
