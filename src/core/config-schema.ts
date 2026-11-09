@@ -8,12 +8,27 @@ const branchTemplate = z.string().superRefine((value, ctx) => {
 
 const relativeDir = z.string().min(1);
 const command = z.string().min(1).nullable();
+const text = z.string().min(1);
+
+/** Lower-case slug naming a tracker (`github`, `jira`, `linear`, `local`…); see ADR-0005. */
+export const TRACKER_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 const sections = {
+  /**
+   * Which issue tracker the repo uses, recorded as intent only (ADR-0005). The host agent
+   * reaches the tracker with its own tools; `null` means "resolve on first use".
+   */
   issueProvider: z.strictObject({
-    type: z.enum(['github', 'jira', 'azure-devops', 'custom']),
-    options: z.record(z.string(), z.unknown()),
-    labelMap: z.record(z.string(), z.string()).optional(),
+    tracker: z
+      .string()
+      .regex(TRACKER_SLUG_PATTERN, 'use a lower-case slug such as github, jira, linear or local')
+      .nullable(),
+    location: text.nullable(),
+    notes: text.nullable(),
+    /** Neutral label (`kind/bug`, `status/in-progress`) → the tracker's own name for it. */
+    labelMap: z.record(text, text),
+    /** Directory of the local markdown tracker, relative to the repo root. */
+    localDir: relativeDir,
   }),
   codeHost: z.strictObject({
     type: z.literal('github'),
@@ -89,7 +104,13 @@ export const userConfigSchema = z.strictObject({
 export type UserConfig = z.infer<typeof userConfigSchema>;
 
 export const DEFAULT_CONFIG: SentinelConfig = {
-  issueProvider: { type: 'github', options: {} },
+  issueProvider: {
+    tracker: null,
+    location: null,
+    notes: null,
+    labelMap: {},
+    localDir: 'docs/issues',
+  },
   codeHost: { type: 'github', defaultBranch: 'main' },
   branches: {
     feature: 'feat/{issue_id}-{slug}',

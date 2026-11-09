@@ -39,24 +39,8 @@ export { ConfigError, loadConfig, globalConfigPath, type LoadedConfig } from './
 export { StateStore, StateError } from './core/state.js';
 export { nodeFiles, type FileAccess } from './core/fs.js';
 export { findRepoRoot } from './core/repo.js';
-export {
-  ProviderError,
-  resolveLabels,
-  titleSimilarity,
-  type Issue,
-  type IssueProvider,
-  type IssueQuery,
-  type NewIssue,
-  type ProviderCapabilities,
-} from './core/issue-provider.js';
-export { createIssueProvider } from './core/providers/index.js';
-export { GitHubIssueProvider } from './core/providers/github.js';
-export { CustomIssueProvider } from './core/providers/custom.js';
-export {
-  renderCommand,
-  tokenizeTemplate,
-  validateCommandTemplate,
-} from './core/command-template.js';
+export { ProviderError, type ProviderErrorKind } from './core/provider-error.js';
+export { DUPLICATE_THRESHOLD, rankDuplicates, titleSimilarity } from './core/duplicates.js';
 export type { CheckRun, CodeHost, NewPullRequest, PullRequest } from './core/code-host.js';
 export { GitHubCodeHost } from './core/hosts/github.js';
 export {
@@ -68,6 +52,37 @@ export {
   type PruneResult,
   type WorktreeInfo,
 } from './core/git-worktree-manager.js';
+export {
+  LOCAL_TRACKER,
+  TRACKER_CLIS,
+  TRACKER_VERBS,
+  TrackerError,
+  describeTracker,
+  detectTrackerHints,
+  forgeFromRemote,
+  formatTrackerDescription,
+  normalizeTracker,
+  redactRemote,
+  resolveTracker,
+  saveTrackerChoice,
+  type Forge,
+  type ResolveTrackerInput,
+  type TrackerDecision,
+  type TrackerDescription,
+  type TrackerHints,
+  type TrackerOption,
+} from './core/issue-tracker.js';
+export {
+  LocalTracker,
+  parseLocalId,
+  parseLocalIssue,
+  renderLocalIssue,
+  type LocalComment,
+  type LocalIssue,
+  type LocalIssueQuery,
+  type LocalIssueStatus,
+  type NewLocalIssue,
+} from './core/local-tracker.js';
 export {
   TEST_TIERS,
   analyze,
