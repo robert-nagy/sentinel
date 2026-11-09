@@ -402,13 +402,13 @@ Each milestone ends with a merged PR on `main` and green CI on **ubuntu, macOS a
 
 Done on the `docs/marketplace-distribution` branch once this plan is approved.
 
-- [ ] `package.json`: `"private": true`; remove `publishConfig`, `prepack`, the `release` script and the `files` list; add `build:plugin` and `check:plugin`.
-- [ ] Bundle: a second tsup entry producing one dependency-free `sentinel.mjs` (no code splitting, dependencies inlined, version injected).
-- [ ] `scripts/build-plugin.js`: copy the bundle into every `plugins/sentinel/skills/*/scripts/`, stamp the version into the manifests, generate the derived manifests, write `schema/config.json`. `--check` mode exits non-zero on drift.
-- [ ] Plugin skeleton: `.claude-plugin/marketplace.json`, `plugins/sentinel/.claude-plugin/plugin.json`, generated `plugins/sentinel/plugin.json`, `.agents/plugins/marketplace.json`, `.cursor-plugin/marketplace.json`, and one placeholder skill (`sentinel-doctor`) to prove the path end to end.
+- [x] `package.json`: `"private": true`; remove `publishConfig`, `prepack`, the `release` script and the `files` list; add `build:plugin` and `check:plugin`.
+- [x] Bundle: a second tsup entry producing one dependency-free `sentinel.mjs` (no code splitting, dependencies inlined, version injected).
+- [x] `scripts/build-plugin.js`: copy the bundle into every `plugins/sentinel/skills/*/scripts/`, stamp the version into the manifests, generate the derived manifests, write `schema/config.json`. `--check` mode exits non-zero on drift.
+- [x] Plugin skeleton: `.claude-plugin/marketplace.json`, `plugins/sentinel/.claude-plugin/plugin.json`, generated `plugins/sentinel/plugin.json`, `.agents/plugins/marketplace.json`, `.cursor-plugin/marketplace.json`, and one placeholder skill (`sentinel-doctor`) to prove the path end to end.
 - [ ] Workflows: delete `publish.yml`; add `release.yml` (changesets version PR that also runs `build:plugin`; on merge, tag `vX.Y.Z` and create the GitHub Release). Remove the `SENTINEL_RELEASE_ENABLED` variable and the npm trusted-publisher entry.
-- [ ] CI: replace the "Pack & install" job with "Plugin smoke test" (run `build:plugin`, then `node plugins/sentinel/skills/sentinel-doctor/scripts/sentinel.mjs --version` and `doctor` from a temp dir on 3 OSes); add `check:plugin` and `claude plugin validate` to the quality job.
-- [ ] Config `$schema` URL → `https://raw.githubusercontent.com/robert-nagy/sentinel/v<version>/schema/config.json`; commit `schema/config.json`.
+- [x] CI: replace the "Pack & install" job with "Plugin smoke test" (run the committed bundle from a copied skill folder: `node plugins/sentinel/skills/sentinel-doctor/scripts/sentinel.mjs --version` and `doctor` from a temp dir on 3 OSes); add `check:plugin` and `claude plugin validate` (advisory); `--verify-fresh` guards the release tag.
+- [x] Config `$schema` URL → `https://raw.githubusercontent.com/robert-nagy/sentinel/v<version>/schema/config.json`; commit `schema/config.json`.
 - [ ] Check npmjs.com: if `@robert-nagy/sentinel` exists, `npm deprecate` it with a pointer to the marketplace. Delete the `ci/staged-publishing` branch if it only served npm publishing.
 - [ ] Manual smoke test: install from the branch in Claude Code, VS Code, Codex and Cursor (local folder); record the result per tool in ADR-0006 and close its open items.
 

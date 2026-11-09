@@ -27,6 +27,8 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
+      - name: Plugin is consistent
+        run: npm run check:plugin
 
   test:
     name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
@@ -53,8 +55,8 @@ jobs:
       - name: E2E tests (built CLI)
         run: npm run test:e2e
 
-  smoke:
-    name: Smoke test built CLI (${{ matrix.os }})
+  plugin-smoke:
+    name: Plugin smoke test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -68,17 +70,27 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      # sentinel is not published to npm (ADR-0006), so there is no tarball to
-      # install. Run the built CLI from outside the repository, the way a
-      # plugin install will invoke it.
-      - name: Run the built CLI from another directory
-        working-directory: ${{ runner.temp }}
+      # No npm install: a plugin install is a git clone, so the committed bundle must run
+      # as it is. Copy one skill folder away from the repo and run it the way a skill does.
+      - name: Run the bundled CLI from a copied skill folder
         env:
-          SENTINEL_BIN: ${{ github.workspace }}/dist/bin/sentinel.js
+          SKILL_SRC: ${{ github.workspace }}/plugins/sentinel/skills/sentinel-doctor
         run: |
-          node "$SENTINEL_BIN" --version
-          node "$SENTINEL_BIN" --help
-          node "$SENTINEL_BIN" doctor
+          cp -r "$SKILL_SRC" "$RUNNER_TEMP/skill"
+          cd "$RUNNER_TEMP/skill"
+          node scripts/sentinel.mjs --version
+          node scripts/sentinel.mjs --help
+          node scripts/sentinel.mjs doctor --json
+
+  plugin-validate:
+    name: Claude Code plugin validate (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate .
+      - run: claude plugin validate plugins/sentinel
