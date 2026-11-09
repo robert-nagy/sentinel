@@ -8,6 +8,7 @@ import { defaultDeps, type CliDeps } from './deps.js';
 import { registerDoctor } from './doctor.js';
 import { registerGuardrails } from './guardrails.js';
 import { registerIssue } from './issue.js';
+import { registerMine } from './mine.js';
 import { registerPr } from './pr.js';
 import { registerPrd } from './prd.js';
 import { registerRfc } from './rfc.js';
@@ -43,6 +44,7 @@ export function createProgram(deps: CliDeps = defaultDeps()): Command {
   registerConfig(program, deps);
   registerGuardrails(program, deps);
   registerIssue(program, deps);
+  registerMine(program, deps);
   registerPr(program, deps);
   registerPrd(program, deps);
   registerRfc(program, deps);

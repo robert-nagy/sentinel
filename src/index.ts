@@ -127,3 +127,14 @@ export {
   type BabysitResult,
   type BabysitState,
 } from './core/pr-babysitter.js';
+export {
+  MiningError,
+  issueDraftFor,
+  mergeFindings,
+  parseGapFile,
+  parseRepoSearch,
+  renderGapFile,
+  type Finding,
+  type Gap,
+  type Repo,
+} from './core/mining.js';
