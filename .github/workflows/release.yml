@@ -26,6 +26,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -46,6 +47,7 @@ jobs:
             node scripts/build-plugin.js --verify-fresh
           fi
       - uses: changesets/action@v1
+        id: changesets
         with:
           version: npm run version-packages
           # `changeset tag` creates the vX.Y.Z tag for the private package; the
@@ -55,3 +57,12 @@ jobs:
           commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Pushes made with GITHUB_TOKEN do not trigger workflows, so the version PR would sit
+      # with no checks at all. Dispatch them explicitly; runs on that branch attach to the PR.
+      - name: Run checks on the version PR
+        if: steps.changesets.outputs.hasChangesets == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run ci.yml --ref changeset-release/main
+          gh workflow run security.yml --ref changeset-release/main
