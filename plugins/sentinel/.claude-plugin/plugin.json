@@ -1,0 +1,10 @@
+{
+  "name": "sentinel",
+  "version": "0.2.0",
+  "description": "PRD validation, RFCs, worktrees and PR babysitting for AI coding agents, backed by a deterministic CLI.",
+  "author": { "name": "Robert Nagy" },
+  "homepage": "https://github.com/robert-nagy/sentinel#readme",
+  "repository": "https://github.com/robert-nagy/sentinel",
+  "license": "MIT",
+  "keywords": ["sdlc", "pdlc", "prd", "worktrees", "agent-skills"]
+}

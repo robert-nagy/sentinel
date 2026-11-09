@@ -5,3 +5,9 @@ package-lock.json
 .changeset/*.md
 CHANGELOG.md
 schema
+dist-bundle
+plugins/*/skills/*/scripts/sentinel.mjs
+plugins/*/plugin.json
+plugins/*/.claude-plugin/plugin.json
+.agents/plugins/marketplace.json
+.cursor-plugin/marketplace.json

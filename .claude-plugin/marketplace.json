@@ -1,0 +1,16 @@
+{
+  "name": "robert-nagy",
+  "owner": { "name": "Robert Nagy" },
+  "metadata": {
+    "description": "Agentic PDLC/SDLC governance: skills, guardrails and deterministic tooling for AI coding agents."
+  },
+  "plugins": [
+    {
+      "name": "sentinel",
+      "source": "./plugins/sentinel",
+      "description": "PRD validation, RFCs, worktrees and PR babysitting for AI coding agents, backed by a deterministic CLI.",
+      "category": "development",
+      "keywords": ["sdlc", "pdlc", "prd", "worktrees", "agent-skills"]
+    }
+  ]
+}

@@ -52,7 +52,9 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm test",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "build:plugin": "node scripts/build-plugin.js",
+    "check:plugin": "node scripts/build-plugin.js --check",
+    "version-packages": "changeset version && npm run build:plugin",
     "release": "changeset tag"
   },
   "dependencies": {
