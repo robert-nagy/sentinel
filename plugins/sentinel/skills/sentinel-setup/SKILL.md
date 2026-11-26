@@ -25,6 +25,7 @@ You ask the questions and write the answers; sentinel decides which questions ar
 1. `list` open issues and reuse one titled "Bootstrap repository" if it exists; otherwise `create` it, describing the Phase 0 work. Note its id.
 2. Create the worktree: `node scripts/sentinel.mjs worktree add <issue-id> --title "Bootstrap repository" --json`. It names the branch with `sentinel branch name` and the configured template. Work only inside the path it prints from here on, and `set-status` the issue to in progress.
 3. If it fails because `origin/<default branch>` does not exist (a brand-new repository with no commits), **STOP.** Ask the user to push a first commit to the default branch themselves (for example a `.gitignore` or a licence), then run the command again. Never create that commit yourself.
+4. The worktree starts from the default branch, so it lacks what the steps above wrote to the main checkout. If you saved the tracker with `issue use`, run the same `node scripts/sentinel.mjs issue use <tracker>` command (with the same options) in the worktree, so `sentinel.config.json` is written there. For the local tracker, move the bootstrap issue file that `create` wrote (under `issueProvider.localDir`, by default `docs/issues/`) from the main checkout to the same path in the worktree. These two files, written by this run, are the only changes you make to the main checkout.
 
 ## Record the domain
 
@@ -41,8 +42,8 @@ You ask the questions and write the answers; sentinel decides which questions ar
 
 Read `stack` from the last `--json` result.
 
-- `stack.proposal` is `true` (the repository has no code yet): propose an ecosystem from the domain answers and the user's preferences, one of `node`, `python`, `go`, `rust`, `java`, `dotnet`, `ruby`, `php`. **STOP** and wait for the user to confirm or pick another. Pass the confirmed one as `--stack <ecosystem>` to every command in the next section.
-- Otherwise show the user the detected `stack.projects` and their test tooling per tier (unit, integration, E2E, load), and ask them to confirm. If a tier has no tool, name the `recommended` one and its `install` command, and install it only after the user agrees.
+- `stack.proposal` is `true` (the repository has no code yet): propose an ecosystem from the domain answers and the user's preferences, one of `node`, `python`, `go`, `rust`, `java`, `dotnet`, `ruby`, `php`. **STOP** and wait for the user to confirm or pick another. Pass the confirmed one as `--stack <ecosystem>` to both `setup` commands in the next section.
+- Otherwise show the user the detected `stack.projects` and the test tooling of each under `tests.<tier>` (unit, integration, E2E, load), and ask them to confirm. A tier whose `detected` is `null` has no tool yet: name its `recommended` tool and, when `install` is not `null`, its install command, and run that command only after the user agrees. When `install` is `null`, tell the user what to add by hand.
 
 ## Generate the files
 
@@ -54,7 +55,7 @@ Read `stack` from the last `--json` result.
 
 ## Open the bootstrap PR
 
-1. Commit `.sentinel/domain.json`, the workflows, `README.md`, `AGENTS.md` (and `CLAUDE.md` if it changed) in the worktree, in small focused commits. Do not commit the answers file or anything under `.sentinel/state/`.
+1. Commit in the worktree, in small focused commits: `.sentinel/domain.json`, the workflows, `README.md`, `AGENTS.md` (and `CLAUDE.md` if it changed), `sentinel.config.json` and the local issue file if you wrote them, and the manifest and lockfile changes from any test tools you installed. Do not commit the answers file or anything under `.sentinel/state/`.
 2. Open the PR: `node scripts/sentinel.mjs pr create --issue <issue-id> --title "Bootstrap repository with sentinel" --json`. It pushes the branch and targets the default branch. Then `link-pr` and `set-status` (in review) on the issue.
 3. Tell the user the PR link. If the `sentinel-babysit` skill is installed, offer to watch CI with it; otherwise CI is theirs to watch. A merge is a human decision.
 

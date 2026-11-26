@@ -78,7 +78,7 @@ sentinel/
 │   ├── .claude-plugin/plugin.json       # hand-written
 │   ├── plugin.json                      # Agent Plugins 1.0 (generated)
 │   ├── skills/
-│   │   ├── sentinel-setup/    SKILL.md · references/question-bank.md · scripts/sentinel.mjs
+│   │   ├── sentinel-setup/    SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-prd/      SKILL.md · references/rubric.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc/     SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc-auto/ SKILL.md · scripts/sentinel.mjs
@@ -263,7 +263,7 @@ All skills follow the Agent Skills spec: a folder with `SKILL.md`; `name` must m
 
 | Skill                | Phase | Behaviour                                                                                                                                                                                                                                                                          | `disable-model-invocation`       |
 | -------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → scaffold folders + GitHub workflows → README + diagrams → bootstrap branch + PR → hand off to babysit.                                                                            | true                             |
+| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → GitHub workflows → README + diagrams → `AGENTS.md` guardrails → bootstrap branch + PR → hand off to babysit.                                                                      | true                             |
 | `sentinel-prd`       | 1     | Draft the PRD from the template using `.sentinel/domain.json` and the issue → self-score with the rubric → `prd validate` → refine (≤3) → accept or escalate.                                                                                                                      | false (the agent may suggest it) |
 | `sentinel-mine`      | 1     | `gh search repos` for comparable high-star projects → extract feature/API surfaces → gap list in `docs/feature-gaps.md` → **stop for user approval** → `issue resolve` → `list` candidates + `issue duplicates` to skip duplicates → `create` the approved issues with `labelMap`. | true                             |
 | `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                 | true                             |

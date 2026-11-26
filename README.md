@@ -11,8 +11,8 @@ VS Code / GitHub Copilot, Codex and Cursor. Your agent runs a governed workflow:
 pass a quality gate, then issue → isolated worktree → RFC → test-driven implementation → pull
 request.
 
-> **Status: early development (pre-0.1.0).** The plugin installs from this repository and four
-> skills ship today. Three more are planned and marked _coming soon_ below. See the
+> **Status: early development (pre-0.1.0).** The plugin installs from this repository and five
+> skills ship today. Two more are planned and marked _coming soon_ below. See the
 > [implementation plan](docs/PLAN.md) for the roadmap.
 
 ## How it works
