@@ -44,7 +44,7 @@ export class StateStore {
   /** Atomic write: temp file in the same directory, then rename. */
   async write(name: string, value: unknown): Promise<void> {
     const path = this.pathFor(name);
-    await mkdir(this.dir, { recursive: true });
+    await this.ensureDir();
     const temp = `${path}.${String(process.pid)}.${String(Date.now())}.tmp`;
     await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
     try {
@@ -52,6 +52,23 @@ export class StateStore {
     } catch (error) {
       await rm(temp, { force: true });
       throw error;
+    }
+  }
+
+  /**
+   * Creates the state directory with a `.gitignore` that ignores everything in it, so state
+   * is never committed even in repositories whose own `.gitignore` does not mention it.
+   */
+  private async ensureDir(): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
+    const ignore = join(this.dir, '.gitignore');
+    try {
+      await writeFile(ignore, '# sentinel state: local to this machine, never committed.\n*\n', {
+        encoding: 'utf8',
+        flag: 'wx',
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
   }
 
