@@ -110,3 +110,172 @@ describe('GitHubCodeHost', () => {
     expect(calls[0]?.args).toEqual(['run', 'rerun', '77', '--failed']);
   });
 });
+
+describe('GitHubCodeHost as a PullRequestReader', () => {
+  const fail = (stderr: string): CommandResult => ({
+    exitCode: 1,
+    stdout: '',
+    stderr,
+    notFound: false,
+    timedOut: false,
+  });
+
+  it('reads the signed-in login', async () => {
+    const { run, calls } = fakeRun((l) =>
+      l === 'gh api user --jq .login' ? ok('octo\n') : undefined,
+    );
+    expect(await new GitHubCodeHost({ run, cwd: '/r' }).currentLogin()).toBe('octo');
+    expect(calls[0]?.args).toEqual(['api', 'user', '--jq', '.login']);
+  });
+
+  it('reads who opened a pull request from the API, flagging bots', async () => {
+    const { run, calls } = fakeRun((l) =>
+      l.includes('repos/{owner}/{repo}/pulls/36')
+        ? ok(
+            JSON.stringify({
+              number: 36,
+              login: 'github-actions[bot]',
+              type: 'Bot',
+              association: 'NONE',
+              headSha: 'abc1234',
+              merged: true,
+            }),
+          )
+        : undefined,
+    );
+    const author = await new GitHubCodeHost({ run, cwd: '/r' }).getPullRequestAuthor(36);
+    expect(author).toEqual({
+      number: 36,
+      login: 'github-actions[bot]',
+      isBot: true,
+      association: 'NONE',
+      headSha: 'abc1234',
+      merged: true,
+    });
+    expect(calls[0]?.args.at(-1)).toBe('repos/{owner}/{repo}/pulls/36');
+  });
+
+  it('rejects a pull request number that is not a positive integer', async () => {
+    const { run } = fakeRun(() => ok('{}'));
+    await expect(new GitHubCodeHost({ run, cwd: '/r' }).getPullRequestAuthor(0)).rejects.toThrow(
+      ProviderError,
+    );
+  });
+
+  it("lists only the user's merged PRs, newest first, with commit and comment authors", async () => {
+    const rows = [
+      {
+        number: 1,
+        title: 'old',
+        url: 'u1',
+        author: { login: 'me' },
+        mergedAt: '2026-01-01T00:00:00Z',
+        headRefName: 'feat/1',
+        commits: [{ authors: [{ login: 'me' }, { login: 'claude' }] }, { authors: [] }],
+        reviews: [{ author: { login: 'dana' } }],
+        comments: [{ author: null }],
+      },
+      {
+        number: 2,
+        title: 'new',
+        url: 'u2',
+        author: { login: 'me' },
+        mergedAt: '2026-02-01T00:00:00Z',
+        headRefName: 'feat/2',
+      },
+    ];
+    const { run, calls } = fakeRun((l) =>
+      l.startsWith('gh pr list') ? ok(JSON.stringify(rows)) : undefined,
+    );
+    const prs = await new GitHubCodeHost({ run, cwd: '/r' }).listMyMergedPullRequests(100);
+    expect(calls[0]?.args).toEqual(
+      expect.arrayContaining(['--author', '@me', '--state', 'merged']),
+    );
+    expect(prs.map((p) => p.number)).toEqual([2, 1]);
+    expect(prs[1]).toMatchObject({ commitAuthors: ['me', undefined], commentAuthors: ['dana'] });
+  });
+
+  it('reads paginated commits as one JSON object per line', async () => {
+    const lines = [
+      { sha: 'a1', login: 'me', type: 'User', message: 'feat: x', url: 'c1' },
+      { sha: 'b2', login: null, type: null, message: 'fix: y', url: 'c2' },
+    ]
+      .map((o) => JSON.stringify(o))
+      .join('\n');
+    const { run, calls } = fakeRun((l) =>
+      l.includes('pulls/5/commits') ? ok(`${lines}\n`) : undefined,
+    );
+    const commits = await new GitHubCodeHost({ run, cwd: '/r' }).listPullRequestCommits(5);
+    expect(commits).toEqual([
+      { sha: 'a1', author: 'me', isBot: false, message: 'feat: x', url: 'c1' },
+      { sha: 'b2', author: undefined, isBot: false, message: 'fix: y', url: 'c2' },
+    ]);
+    expect(calls[0]?.args).toContain('--paginate');
+  });
+
+  it('merges inline, review and conversation comments, dropping empty review bodies', async () => {
+    const { run } = fakeRun((l) => {
+      if (l.includes('pulls/5/comments'))
+        return ok(
+          JSON.stringify({
+            id: 1,
+            login: 'dana',
+            type: 'User',
+            body: 'use path.join',
+            path: 'a.ts',
+            line: 3,
+            url: 'x',
+          }),
+        );
+      if (l.includes('pulls/5/reviews'))
+        return ok(
+          [
+            JSON.stringify({ id: 2, login: 'dana', type: 'User', body: '', url: 'y' }),
+            JSON.stringify({
+              id: 3,
+              login: 'dana',
+              type: 'User',
+              body: 'LGTM after fix',
+              url: 'y',
+            }),
+          ].join('\n'),
+        );
+      if (l.includes('issues/5/comments'))
+        return ok(
+          JSON.stringify({ id: 4, login: 'renovate[bot]', type: 'Bot', body: 'bump', url: 'z' }),
+        );
+      return undefined;
+    });
+    const comments = await new GitHubCodeHost({ run, cwd: '/r' }).listPullRequestComments(5);
+    expect(comments.map((c) => [c.id, c.kind, c.isBot])).toEqual([
+      ['inline-1', 'inline', false],
+      ['review-3', 'review', false],
+      ['conversation-4', 'conversation', true],
+    ]);
+    expect(comments[0]).toMatchObject({ file: 'a.ts', line: 3 });
+  });
+
+  it('reads a file at a commit through the contents API and returns undefined when missing', async () => {
+    const { run, calls } = fakeRun((l) => {
+      if (l.includes('contents/.sentinel/learnings/L-1.md?ref=abcdef1')) return ok('---\n');
+      if (l.includes('contents/')) return fail('HTTP 404: Not Found');
+      return undefined;
+    });
+    const host = new GitHubCodeHost({ run, cwd: '/r' });
+    expect(await host.readFileAtRef('.sentinel/learnings/L-1.md', 'abcdef1')).toBe('---\n');
+    expect(calls[0]?.args).toEqual(
+      expect.arrayContaining(['-H', 'Accept: application/vnd.github.raw']),
+    );
+    expect(await host.readFileAtRef('nope.md', 'abcdef1')).toBeUndefined();
+    await expect(host.readFileAtRef('a.md', 'main; rm -rf /')).rejects.toThrow(ProviderError);
+  });
+
+  it('turns an authentication failure into a ProviderError', async () => {
+    const { run } = fakeRun(() => fail('HTTP 401: Bad credentials'));
+    await expect(
+      new GitHubCodeHost({ run, cwd: '/r' }).listPullRequestFiles(5),
+    ).rejects.toMatchObject({
+      kind: 'auth',
+    });
+  });
+});
