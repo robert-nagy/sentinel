@@ -26,7 +26,18 @@ import {
   type Ecosystem,
   type ProjectReport,
 } from '../core/stack-analyzer.js';
-import { renderWorkflows } from '../core/workflows.js';
+import { StateStore } from '../core/state.js';
+import {
+  LEARN_VERIFY_CHECK,
+  LEARN_VERIFY_WORKFLOW_PATH,
+  learnVerifyRuleset,
+  renderLearnVerifyWorkflow,
+  renderWorkflows,
+} from '../core/workflows.js';
+import { VERSION } from '../version.js';
+
+/** State file holding the ruleset payload for the user to apply. */
+export const LEARN_RULESET_STATE = 'learn-ruleset';
 import { loadCliConfig } from './branch.js';
 import type { CliDeps } from './deps.js';
 import { guarded } from './safe.js';
@@ -38,6 +49,7 @@ interface SetupOptions {
   workflows?: boolean;
   readme?: boolean;
   issueForms?: boolean;
+  learnVerify?: boolean;
   name?: string;
   force?: boolean;
   dryRun?: boolean;
@@ -99,6 +111,10 @@ export function registerSetup(program: Command, deps: CliDeps): void {
       '--issue-forms',
       'write GitHub issue forms (.github/ISSUE_TEMPLATE/feature.yml and bug.yml) in the sentinel issue format',
     )
+    .option(
+      '--learn-verify',
+      'write the CI check for lesson changes (own-PR rule) and the ruleset that requires it',
+    )
     .option('--name <name>', 'project name for the README (default: the folder name)')
     .option('--force', 'overwrite files that already exist')
     .option('--dry-run', 'report what would be written without writing')
@@ -132,7 +148,8 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           options.questions !== true &&
           options.workflows !== true &&
           options.readme !== true &&
-          options.issueForms !== true
+          options.issueForms !== true &&
+          options.learnVerify !== true
         ) {
           incoming = await askInTerminal(answers, deps);
         }
@@ -221,6 +238,23 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           }
         }
 
+        let ruleset: string | undefined;
+        if (options.learnVerify === true) {
+          const path = LEARN_VERIFY_WORKFLOW_PATH;
+          if (options.force !== true) await refuseToOverwrite(root, path, deps);
+          if (!dryRun) {
+            await writeNewFile(
+              resolveInside(root, '.', path),
+              renderLearnVerifyWorkflow(VERSION, 'release'),
+              options.force === true,
+            );
+            // The ruleset is applied by the user (or the skill, after approval), never here.
+            await new StateStore(root).write(LEARN_RULESET_STATE, learnVerifyRuleset());
+          }
+          files.push(path);
+          ruleset = `.sentinel/state/${LEARN_RULESET_STATE}.json`;
+        }
+
         const complete = isComplete(answers);
         const next = nextQuestions(answers).map(toPublic);
         const result = {
@@ -233,6 +267,7 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             proposal: stack.empty && options.stack === undefined,
           },
           files,
+          ruleset,
         };
         if (options.json === true) {
           deps.stdout(JSON.stringify(result, null, 2));
@@ -244,6 +279,11 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             '',
             formatStackReport(stack),
             ...files.map((f) => `${prefix}wrote ${f}`),
+            ...(ruleset === undefined
+              ? []
+              : [
+                  `${prefix}ruleset to require "${LEARN_VERIFY_CHECK}": ${ruleset} (apply it with gh api --method POST repos/{owner}/{repo}/rulesets --input ${ruleset})`,
+                ]),
           ];
           deps.stdout(lines.join('\n'));
         }

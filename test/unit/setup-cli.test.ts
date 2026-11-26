@@ -173,4 +173,34 @@ describe('sentinel setup', () => {
     await again.run('setup', '--readme');
     expect(again.codes).toContain(1);
   });
+
+  it('writes the lesson check workflow and a ruleset for the user to apply', async () => {
+    const c = cli();
+    await c.run('setup', '--learn-verify', '--json');
+    const result = c.json() as SetupResult & { ruleset: string };
+    expect(result.files).toEqual(['.github/workflows/sentinel-lessons.yml']);
+    const workflow = await readFile(
+      join(repo, '.github', 'workflows', 'sentinel-lessons.yml'),
+      'utf8',
+    );
+    expect(workflow).toContain('pull_request_target:');
+    expect(workflow).toContain('name: sentinel learn verify');
+    expect(workflow).toMatch(
+      /raw\.githubusercontent\.com\/robert-nagy\/sentinel\/v\d+\.\d+\.\d+\//,
+    );
+    expect(workflow).not.toContain('actions/checkout');
+    expect(result.ruleset).toBe('.sentinel/state/learn-ruleset.json');
+    const ruleset = JSON.parse(await readFile(join(repo, result.ruleset), 'utf8')) as {
+      bypass_actors: unknown[];
+      rules: { parameters: { required_status_checks: { context: string }[] } }[];
+    };
+    expect(ruleset.bypass_actors).toEqual([]);
+    expect(ruleset.rules[0]?.parameters.required_status_checks[0]?.context).toBe(
+      'sentinel learn verify',
+    );
+
+    const again = cli();
+    await again.run('setup', '--learn-verify');
+    expect(again.codes.at(-1)).toBe(1);
+  });
 });

@@ -244,3 +244,84 @@ export async function checkWorktrees(ctx: DoctorContext): Promise<CheckResult> {
   }
   return { ...base, status: 'pass', message: `${String(extra)} extra worktrees` };
 }
+
+/**
+ * Gate 3 of the own-PR rule (ADR-0008): when the repository has shared lessons, the
+ * `sentinel learn verify` check should exist and be required on the default branch. Only
+ * ever warns; a missing ruleset is the owner's decision.
+ */
+export async function checkLearnVerify(ctx: DoctorContext, ghReady: boolean): Promise<CheckResult> {
+  const base = { id: 'learn-verify', title: 'Lesson check (own-PR rule)' } as const;
+  const tracked = await exec(ctx, 'git', [
+    'ls-files',
+    '--',
+    '.sentinel/learnings',
+    '.github/workflows/sentinel-lessons.yml',
+  ]);
+  if (tracked.exitCode !== 0) {
+    return { ...base, status: 'skip', message: 'Skipped: not a git repository' };
+  }
+  const files = tracked.stdout.split('\n').map((l) => l.trim());
+  const hasLessons = files.some((f) => f.startsWith('.sentinel/learnings/'));
+  const hasWorkflow = files.includes('.github/workflows/sentinel-lessons.yml');
+  if (!hasLessons && !hasWorkflow) {
+    return { ...base, status: 'skip', message: 'Skipped: no shared lessons committed' };
+  }
+  if (!hasWorkflow) {
+    return {
+      ...base,
+      status: 'warn',
+      message: 'shared lessons are committed, but no CI check verifies them',
+      hint: 'Run `sentinel setup --learn-verify` and commit the workflow.',
+    };
+  }
+  if (!ghReady) {
+    return { ...base, status: 'skip', message: 'Skipped: gh is not ready to read rulesets' };
+  }
+  const branch = await exec(ctx, 'gh', [
+    'repo',
+    'view',
+    '--json',
+    'defaultBranchRef',
+    '--jq',
+    '.defaultBranchRef.name',
+  ]);
+  const name = branch.stdout.trim();
+  const rules =
+    branch.exitCode === 0 && /^[\w./-]+$/.test(name)
+      ? await exec(ctx, 'gh', ['api', `repos/{owner}/{repo}/rules/branches/${name}`])
+      : undefined;
+  if (rules?.exitCode !== 0) {
+    return {
+      ...base,
+      status: 'warn',
+      message: 'could not read the rulesets of the default branch',
+      hint: 'Check `gh auth status`, then re-run `sentinel doctor`.',
+    };
+  }
+  let required = false;
+  try {
+    const parsed = JSON.parse(rules.stdout) as {
+      type?: string;
+      parameters?: { required_status_checks?: { context?: string }[] };
+    }[];
+    required = parsed.some(
+      (r) =>
+        r.type === 'required_status_checks' &&
+        (r.parameters?.required_status_checks ?? []).some(
+          (c) => c.context === 'sentinel learn verify',
+        ),
+    );
+  } catch {
+    required = false;
+  }
+  if (!required) {
+    return {
+      ...base,
+      status: 'warn',
+      message: `"sentinel learn verify" is not a required check on ${name}, so a PR can merge lessons that fail it`,
+      hint: 'Run `sentinel setup --learn-verify` for a ruleset to apply, or add the check in the repository rulesets.',
+    };
+  }
+  return { ...base, status: 'pass', message: `required on ${name}` };
+}

@@ -64,6 +64,12 @@ export {
   type RecallQuery,
 } from './core/learn-store.js';
 export { assertOwnPullRequest, verifyLessonChanges } from './core/learn-pr.js';
+export {
+  LEARN_VERIFY_CHECK,
+  LEARN_VERIFY_WORKFLOW_PATH,
+  learnVerifyRuleset,
+  renderLearnVerifyWorkflow,
+} from './core/workflows.js';
 export { GitHubCodeHost } from './core/hosts/github.js';
 export {
   GitWorktreeManager,
