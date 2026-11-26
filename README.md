@@ -11,8 +11,8 @@ VS Code / GitHub Copilot, Codex and Cursor. Your agent runs a governed workflow:
 pass a quality gate, then issue → isolated worktree → RFC → test-driven implementation → pull
 request.
 
-> **Status: early development (pre-0.1.0).** The plugin installs from this repository and four
-> skills ship today. Three more are planned and marked _coming soon_ below. See the
+> **Status: early development (pre-0.1.0).** The plugin installs from this repository and six
+> skills ship today. One more is planned and marked _coming soon_ below. See the
 > [implementation plan](docs/PLAN.md) for the roadmap.
 
 ## How it works
@@ -60,7 +60,8 @@ support them.
    asks for a refinement, or escalates after the refinement limit.
 3. **Implement an issue.** "Use sentinel-sdlc on issue 42." The agent resolves your tracker, creates
    a worktree on a branch named by sentinel, writes an RFC and **stops for your approval**, then
-   implements test-first, reviews the diff and opens a pull request. It never merges.
+   implements test-first, reviews the diff, opens a pull request and babysits its CI. It never
+   merges.
    `sentinel-sdlc-auto` does the same without the approval stop, for runs you explicitly want
    unattended.
 
@@ -71,11 +72,13 @@ support them.
 | `sentinel-sdlc`      | shipped     | Issue to pull request, with an RFC approval stop                       |
 | `sentinel-sdlc-auto` | shipped     | Same, without the approval stop                                        |
 | `sentinel-setup`     | coming soon | Bootstraps a repository: domain questions, test tiers, CI workflows    |
-| `sentinel-babysit`   | coming soon | Watches a pull request's CI and fixes failures until green             |
-| `sentinel-mine`      | coming soon | Finds feature gaps in comparable projects and files issues on approval |
+| `sentinel-babysit`   | shipped     | Watches a pull request's CI and fixes failures until green             |
+| `sentinel-mine`      | shipped     | Finds feature gaps in comparable projects and files issues on approval |
 
-The shipped skills end by opening the pull request. Watching CI is yours until `sentinel-babysit`
-lands.
+`sentinel-sdlc` and `sentinel-sdlc-auto` hand the pull request to the `sentinel-babysit` loop: the
+agent fixes real CI failures and pushes until the checks are green, or sentinel gives up after
+`babysit.maxAttempts` and leaves a comment for a human. `sentinel-mine` stops for your approval of
+the gap list before it files anything.
 
 ## Guardrails
 
@@ -201,8 +204,7 @@ sentinel babysit 17 --once --json    # one look at a PR's CI: wait, done, patch 
 sentinel mine search "task tracker"  # popular comparable repositories
 ```
 
-The `setup`, `babysit` and `mine` commands are built, but the skills that drive them are still
-to come (table above).
+The `setup` command is built, but the skill that drives it is still to come (table above).
 
 Run `sentinel --help` for the full list.
 
