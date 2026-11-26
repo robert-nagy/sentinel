@@ -70,7 +70,7 @@ support them.
 | `sentinel-prd`       | shipped     | Drafts and validates a PRD                                             |
 | `sentinel-sdlc`      | shipped     | Issue to pull request, with an RFC approval stop                       |
 | `sentinel-sdlc-auto` | shipped     | Same, without the approval stop                                        |
-| `sentinel-setup`     | coming soon | Bootstraps a repository: domain questions, test tiers, CI workflows    |
+| `sentinel-setup`     | shipped     | Bootstraps a repository: domain questions, test tiers, CI workflows    |
 | `sentinel-babysit`   | coming soon | Watches a pull request's CI and fixes failures until green             |
 | `sentinel-mine`      | coming soon | Finds feature gaps in comparable projects and files issues on approval |
 

@@ -436,7 +436,7 @@ _M5a (core, no skill, can start now): the checklist items below. M5b (skill): `s
 - [x] Empty-state detection; stack proposal flow (M5a: `sentinel setup --questions --json` reports `stack.proposal`; `--stack <ecosystem>` confirms it).
 - [x] Stack-parameterised GitHub workflow templates (4 tiers as separate jobs; load tests on `workflow_dispatch`/schedule only) (M5a: `setup --workflows`).
 - [x] README renderer with Mermaid (M5a: `setup --readme`).
-- [ ] Bootstrap PR via branch-namer + code host (M5b: the skill drives `branch name`, `worktree add` and `pr create`).
+- [x] Bootstrap PR via branch-namer + code host (M5b: the `sentinel-setup` skill drives `branch name`, `worktree add` and `pr create`).
 
 ### M6 — Babysitter & mining (≈3–4 days core + 1 day skills)
 
