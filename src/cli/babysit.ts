@@ -1,8 +1,9 @@
 import type { Command } from 'commander';
 import { ExitCode } from '../core/exit-codes.js';
 import { GitHubCodeHost } from '../core/hosts/github.js';
-import { babysit, type BabysitAction } from '../core/pr-babysitter.js';
-import { findRepoRoot } from '../core/repo.js';
+import { LessonStore, type RecalledLesson } from '../core/learn-store.js';
+import { babysatPullRequests, babysit, type BabysitAction } from '../core/pr-babysitter.js';
+import { findMainRoot, findRepoRoot } from '../core/repo.js';
 import { StateStore } from '../core/state.js';
 import { loadCliConfig } from './branch.js';
 import type { CliDeps } from './deps.js';
@@ -28,8 +29,12 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
       guarded(deps, async (ref: string, options: { once?: boolean; json?: boolean }) => {
         const { config } = await loadCliConfig(deps);
         const root = (await findRepoRoot(deps.cwd, deps.files)) ?? deps.cwd;
+        // State lives in the main checkout, so it survives worktree removal and other PRs'
+        // failure signatures are visible (ADR-0008).
+        const mainRoot = await findMainRoot(deps.run, deps.cwd, root);
+        const state = new StateStore(mainRoot);
         const host = new GitHubCodeHost({ run: deps.run, cwd: deps.cwd });
-        const result = await babysit(host, ref, new StateStore(root), {
+        const result = await babysit(host, ref, state, {
           settings: { maxAttempts: config.babysit.maxAttempts },
           pollIntervalSec: config.babysit.pollIntervalSec,
           timeoutMin: config.babysit.timeoutMin,
@@ -40,12 +45,33 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
             deps.stderr(`sentinel: ${message}`);
           },
         });
+        // A failure seen before, on another PR or in a lesson, is worth a lesson once fixed.
+        let recurringPrs: number[] = [];
+        let lessons: RecalledLesson[] = [];
+        if (result.packet !== undefined && result.action === 'patch') {
+          const signature = result.packet.signature;
+          recurringPrs = [...(await babysatPullRequests(state))]
+            .filter(([pr, info]) => pr !== result.pr.number && info.signatures.includes(signature))
+            .map(([pr]) => pr);
+          if (config.learn.enabled) {
+            const lessonStore = new LessonStore(root, {
+              now: deps.now,
+              settings: config.learn,
+              mainRoot,
+            });
+            lessons = await lessonStore.recall({ signature, limit: 3 });
+            lessons = lessons.filter((l) => l.match === 'signature');
+          }
+        }
         const output = {
           action: result.action,
           reason: result.reason,
           pr: result.pr.url,
           attempts: result.attempts,
           packet: result.packet,
+          recurring: recurringPrs.length > 0 || lessons.length > 0,
+          recurringPrs,
+          lessons: lessons.map(({ id, summary, body, path }) => ({ id, summary, body, path })),
         };
         deps.stdout(
           options.json === true

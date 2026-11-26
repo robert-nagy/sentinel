@@ -102,9 +102,7 @@ export async function suggest(
     // `--author @me` is applied by the host; this is the same rule, checked again here.
     if (pr.author.toLowerCase() !== login) continue;
     if (learned.has(pr.number)) continue;
-    const otherCommits = pr.commitAuthors.filter(
-      (a) => a === undefined || a.toLowerCase() !== login,
-    ).length;
+    const otherCommits = pr.commitAuthors.filter((a) => a?.toLowerCase() !== login).length;
     const reviewComments = pr.commentAuthors.filter(
       (a) => a.toLowerCase() !== login && !isBotLogin(a),
     ).length;
@@ -188,8 +186,7 @@ export async function prChanges(
     commits.forEach((commit, index) => {
       if (commit.isBot) return;
       const { isBot: _bot, ...rest } = commit;
-      const other =
-        commit.author === undefined || commit.author.toLowerCase() !== author.login.toLowerCase();
+      const other = commit.author?.toLowerCase() !== author.login.toLowerCase();
       if (other) selected.push({ ...rest, message: clip(rest.message), reason: 'other-author' });
       else if (recordedIndex !== -1 && index > recordedIndex)
         selected.push({ ...rest, message: clip(rest.message), reason: 'after-agent' });

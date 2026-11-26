@@ -1,10 +1,13 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { main } from '../../src/cli/index.js';
 import type { CommandRunner } from '../../src/core/exec.js';
 import { nodeFiles } from '../../src/core/fs.js';
+import { lessonId, renderLesson } from '../../src/core/learnings.js';
+import { parseFailureLog } from '../../src/core/log-parser.js';
+import { StateStore } from '../../src/core/state.js';
 
 let repo: string;
 beforeEach(async () => {
@@ -98,5 +101,83 @@ describe('sentinel babysit', () => {
     await run('babysit', '7', '--once');
     expect(out.join('\n')).toContain('wait: checks are still running');
     expect(codes.at(-1)).toBe(0);
+  });
+
+  describe('recurring failures', () => {
+    const log = 'ci\tbuild\t2026-01-01T00:00:00Z src/a.ts(1,1): error TS2322: bad';
+    const failing = () => fakeGh([{ name: 'ci', bucket: 'fail', workflow: 'CI', link }], log);
+
+    it('is not recurring the first time', async () => {
+      const { run, out } = cli(failing());
+      await run('babysit', '7', '--once', '--json');
+      expect(JSON.parse(out.join('')) as unknown).toMatchObject({
+        recurring: false,
+        recurringPrs: [],
+        lessons: [],
+      });
+    });
+
+    it('names other PRs with the same signature and the lessons that carry it', async () => {
+      const { signature } = parseFailureLog(log, ['ci']);
+      const state = new StateStore(repo);
+      await state.write('babysit-pr-3', {
+        pr: 3,
+        attempts: 1,
+        signatures: { [signature]: { seen: 1, reran: false } },
+        lastRunIds: [],
+        afterRerun: false,
+        gaveUp: false,
+      });
+      const lessons = join(repo, '.sentinel', 'learnings');
+      await mkdir(lessons, { recursive: true });
+      const lesson = {
+        id: lessonId('Fix the type of a', '2026-03-05'),
+        summary: 'Fix the type of a',
+        scope: ['src/**'],
+        tags: [],
+        signature,
+        source: 'ci-signature' as const,
+        created: '2026-03-05',
+        body: 'Declare a as number.',
+      };
+      await writeFile(join(lessons, `${lesson.id}.md`), renderLesson(lesson), 'utf8');
+
+      const { run, out } = cli(failing());
+      await run('babysit', '7', '--once', '--json');
+      const result = JSON.parse(out.join('')) as {
+        recurring: boolean;
+        recurringPrs: number[];
+        lessons: { id: string; body: string }[];
+      };
+      expect(result.recurring).toBe(true);
+      expect(result.recurringPrs).toEqual([3]);
+      expect(result.lessons).toEqual([
+        expect.objectContaining({ id: lesson.id, body: 'Declare a as number.' }),
+      ]);
+    });
+  });
+
+  it('records the head SHA of the open pull request', async () => {
+    const run: CommandRunner = (command, args) => {
+      const text = args.join(' ');
+      if (text.startsWith('pr view'))
+        return Promise.resolve(
+          ok(
+            JSON.stringify({
+              number: 7,
+              url: 'https://github.com/o/r/pull/7',
+              title: 't',
+              state: 'OPEN',
+              isDraft: false,
+              headRefName: 'feat/7',
+              baseRefName: 'main',
+              headRefOid: 'abc1234',
+            }),
+          ),
+        );
+      return fakeGh([{ name: 'ci', bucket: 'pending', workflow: 'CI', link }])(command, args);
+    };
+    await cli(run).run('babysit', '7', '--once');
+    expect(await new StateStore(repo).read('babysit-pr-7')).toMatchObject({ headSha: 'abc1234' });
   });
 });

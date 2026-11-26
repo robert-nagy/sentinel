@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}$/i;
@@ -70,6 +70,22 @@ export class StateStore {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
+  }
+
+  /** Names (without `.json`) of the state files that start with `prefix`. */
+  async list(prefix: string): Promise<string[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    return names
+      .filter((n) => n.startsWith(prefix) && n.endsWith('.json'))
+      .map((n) => n.slice(0, -'.json'.length))
+      .filter((n) => NAME_PATTERN.test(n))
+      .sort();
   }
 
   async remove(name: string): Promise<void> {

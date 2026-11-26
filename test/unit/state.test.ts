@@ -23,6 +23,14 @@ describe('StateStore', () => {
     expect(await store.read('run-1')).toEqual({ attempts: 3 });
     expect((await readdir(store.dir)).sort()).toEqual(['.gitignore', 'run-1.json']);
   });
+  it('lists state names by prefix, sorted, without .json', async () => {
+    const store = new StateStore(root);
+    expect(await store.list('babysit-pr-')).toEqual([]);
+    await store.write('babysit-pr-9', {});
+    await store.write('babysit-pr-10', {});
+    await store.write('learn-usage', {});
+    expect(await store.list('babysit-pr-')).toEqual(['babysit-pr-10', 'babysit-pr-9']);
+  });
   it('ignores its own directory in git', async () => {
     const store = new StateStore(root);
     await store.write('a', 1);
