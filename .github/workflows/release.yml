@@ -26,6 +26,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      has-changesets: ${{ steps.changesets.outputs.hasChangesets }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -46,6 +48,7 @@ jobs:
             node scripts/build-plugin.js --verify-fresh
           fi
       - uses: changesets/action@v1
+        id: changesets
         with:
           version: npm run version-packages
           # `changeset tag` creates the vX.Y.Z tag for the private package; the
@@ -55,3 +58,23 @@ jobs:
           commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  version-pr-checks:
+    # Pushes made with GITHUB_TOKEN do not start workflows on their own (pull_request runs
+    # from the bot wait for manual approval), so dispatch CI and Security on the version PR
+    # branch; runs on its head commit attach to the PR. Kept in its own job so that only
+    # this step holds `actions: write`, not the job that runs npm ci and build scripts.
+    name: Run checks on the version PR
+    needs: release
+    if: needs.release.outputs.has-changesets == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch CI and Security
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh workflow run ci.yml --ref changeset-release/main
+          gh workflow run security.yml --ref changeset-release/main
