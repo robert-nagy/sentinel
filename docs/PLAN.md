@@ -1,7 +1,7 @@
 # sentinel — Implementation Plan
 
-> **Status:** v4 — v2 decisions locked after the design-grilling session (2026-11-02); issue trackers revised on 2026-11-04 to use the host agent's own tooling (ADR-0005); distribution revised on 2026-11-09 from an npm package to a plugin marketplace (ADR-0006). See §11 for the full decision log.
-> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5 and M6 are done; M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
+> **Status:** v4 — v2 decisions locked after the design-grilling session (2026-11-02); issue trackers revised on 2026-11-04 to use the host agent's own tooling (ADR-0005); distribution revised on 2026-11-09 from an npm package to a plugin marketplace (ADR-0006); issue intake and a standard issue format added on 2026-11-26 (ADR-0007, M9). See §11 for the full decision log.
+> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5 and M6 are done; M7's smoke test, M8 and M9 (issue intake) remain (§9). M4 (MCP) is deferred.
 > Source: _Refined Requirements Specification: `sentinel`_ (PDLC/SDLC platform spec + master generator prompt).
 > Repo at planning time: empty (`README.md` = `# sentinel`), remote `github.com/robert-nagy/sentinel`, branch `main`.
 
@@ -13,11 +13,11 @@
 
 Three layers, kept strictly separate:
 
-| Layer                     | What it is                                                                                                                                                                                                                                                 | Runs where                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| **A. Deterministic core** | TypeScript library + CLI: config, branch naming, stack detection, git worktrees, tracker resolution + local tracker, code host (PRs/CI), PRD structural validation, CI log parsing, state, file generation. Same input → same output; fully unit-testable. | the bundled `sentinel` CLI                                   |
-| **B. Skills**             | The workflow intelligence, written as **Agent Skills (`SKILL.md`)**: `sentinel-setup`, `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto`, `sentinel-babysit`, `sentinel-mine`, `sentinel-review`, plus one sub-agent, `sentinel-reviewer`.             | The host agent (Claude Code, VS Code/Copilot, Codex, Cursor) |
-| **C. Packaging**          | The repo is a plugin marketplace: one hand-written catalog and manifest (Claude Code format), thin generated manifests for the other tools, and the bundled CLI copied into every skill. No installer.                                                     | the host tool's plugin install                               |
+| Layer                     | What it is                                                                                                                                                                                                                                                        | Runs where                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **A. Deterministic core** | TypeScript library + CLI: config, branch naming, stack detection, git worktrees, tracker resolution + local tracker, code host (PRs/CI), PRD structural validation, CI log parsing, state, file generation. Same input → same output; fully unit-testable.        | the bundled `sentinel` CLI                                   |
+| **B. Skills**             | The workflow intelligence, written as **Agent Skills (`SKILL.md`)**: `sentinel-setup`, `sentinel-intake`, `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto`, `sentinel-babysit`, `sentinel-mine`, `sentinel-review`, plus one sub-agent, `sentinel-reviewer`. | The host agent (Claude Code, VS Code/Copilot, Codex, Cursor) |
+| **C. Packaging**          | The repo is a plugin marketplace: one hand-written catalog and manifest (Claude Code format), thin generated manifests for the other tools, and the bundled CLI copied into every skill. No installer.                                                            | the host tool's plugin install                               |
 
 ### Core principle: sentinel never calls an LLM _(decision Q1)_
 
@@ -36,7 +36,7 @@ The host agent does all the reasoning. Sentinel supplies (1) skills that tell th
 | 5   | "push fixes until green"                                                                                  | Capped: `maxAttempts` (default 5), stop when the same failure signature repeats twice, one flaky re-run before patching, never force-push, never push to the default branch.                    |
 | 6   | Auto-install test frameworks                                                                              | Propose → confirm. `--yes` for non-interactive runs.                                                                                                                                            |
 | 7   | Per-tool commands/rules (`.claude/commands`, `.cursor/rules/*.mdc` for workflows, `.opencode/agent.json`) | Workflows are **skills** shipped in one plugin and installed from the marketplace (ADR-0006). Per-tool files shrink to generated manifests, a Cursor guardrail rule and the reviewer sub-agent. |
-| 8   | Slash commands `/prd`, `/sdlc-worktree`, `/setup-repo`                                                    | Skills named **`/sentinel-setup`, `/sentinel-prd`, `/sentinel-sdlc`, `/sentinel-sdlc-auto`, `/sentinel-babysit`, `/sentinel-mine`, `/sentinel-review`**.                                        |
+| 8   | Slash commands `/prd`, `/sdlc-worktree`, `/setup-repo`                                                    | Skills named **`/sentinel-setup`, `/sentinel-intake`, `/sentinel-prd`, `/sentinel-sdlc`, `/sentinel-sdlc-auto`, `/sentinel-babysit`, `/sentinel-mine`, `/sentinel-review`**.                    |
 | 9   | One "issue provider" concept                                                                              | Split into **`issueProvider`** (which tracker, recorded as intent) and **`codeHost`** (github only in v0.1). PRs, CI babysitting and generated workflows depend on `codeHost`.                  |
 | 10  | Issue providers: GitHub, Jira, Linear, Azure DevOps                                                       | **Any tracker the host agent can reach** (MCP server or CLI), plus a built-in **local markdown** tracker. Sentinel ships no remote tracker clients (ADR-0005).                                  |
 | 11  | `.agents/` "universal format"                                                                             | `AGENTS.md` carries the repo guardrails. `.agents/skills/` is no longer an install target (ADR-0006).                                                                                           |
@@ -80,6 +80,7 @@ sentinel/
 │   ├── plugin.json                      # Agent Plugins 1.0 (generated)
 │   ├── skills/
 │   │   ├── sentinel-setup/    SKILL.md · scripts/sentinel.mjs
+│   │   ├── sentinel-intake/   SKILL.md · scripts/sentinel.mjs   # planned (M9)
 │   │   ├── sentinel-prd/      SKILL.md · references/rubric.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc/     SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc-auto/ SKILL.md · scripts/sentinel.mjs
@@ -101,6 +102,7 @@ sentinel/
 │   │   ├── git-worktree-manager.ts
 │   │   ├── issue-tracker.ts             # intent, aliases, forge detection, resolve rule, describe()
 │   │   ├── local-tracker.ts             # the one tracker sentinel implements: Markdown files
+│   │   ├── issue-format.ts              # planned (M9): sections per kind, template, lint, attachments, issue forms
 │   │   ├── duplicates.ts · mining.ts    # title-similarity ranking; mine search/draft/create
 │   │   ├── code-host.ts                 # interface: createPR, prStatus, checks, failedLogs, comment
 │   │   ├── hosts/ github.ts
@@ -117,7 +119,7 @@ sentinel/
 ├── test/ unit/ · e2e/ · fixtures/           # integration-style tests (real git) live in unit/
 ├── .github/workflows/                   # ci.yml · security.yml · release.yml
 ├── .changeset/
-├── docs/ PLAN.md · adr/
+├── docs/ PLAN.md · issue-format.md · adr/
 ├── LICENSE (MIT) · package.json (private) · tsconfig.json · tsup.config.ts · README.md
 ```
 
@@ -190,6 +192,8 @@ Skills describe tracker work only as neutral verbs, carried out with whatever to
 | `comment`    | add a comment                                                           |
 | `set-status` | move an issue to `labelMap["status/<name>"]` (e.g. _In Progress_)       |
 | `link-pr`    | connect a PR to the issue (tracker link, or `Fixes <id>` in the body)   |
+| `update`     | replace an issue's title or body _(M9)_                                 |
+| `attach`     | store a file on an issue, if the tracker can _(M9)_                     |
 | `close`      | close or resolve the issue                                              |
 
 **Resolution rule** — `resolveTracker({ config, available, remoteForge })`, exposed as `sentinel issue resolve --available <slugs>`. The agent lists the trackers it can reach; sentinel reads the git remote. Slugs are normalised (`gh` → `github`, `atlassian` → `jira`, `ado` → `azure-devops`…).
@@ -214,6 +218,15 @@ Other commands:
 ### `local-tracker.ts` — the built-in fallback
 
 Issues as Markdown files with front matter (`id`, `title`, `status: open|closed`, `labels`, `created`) under `issueProvider.localDir` (default `docs/issues`), named `<id>-<slug>.md`, committed with the repo. Ids are sequential integers. Comments are appended under a `## Comments` heading. `sentinel issue create|get|list|comment|label|close|reopen` operate on it; for any other tracker they exit with code 4 and point the agent at its own tooling.
+
+### `issue-format.ts` — the issue contract _(ADR-0007, planned in M9)_
+
+One definition of the sections per kind (`feature`, `bug`; see [docs/issue-format.md](issue-format.md)), used by everything that writes or reads an issue:
+
+- `sentinel issue template <kind>` prints the empty body with the required and optional headings.
+- `sentinel issue lint <file> --kind <kind>` checks the title rule, required sections in order, `AC-n` Given/When/Then, placeholders, the PRD ambiguity list, secret patterns and inline limits. Exit 0 ok · 2 fix and lint again. `sentinel-intake` never files an issue that does not pass.
+- `sentinel issue attachments <files…>` plans each file: inline (text ≤ 200 lines; longer text trimmed to the first and last 80), `attach` (image or binary, when the tracker can upload), _pending upload_ (otherwise), blocked (secret found) or rejected (over 10 MB for images, 25 MB otherwise). It renders the `## Attachments` section. The local tracker's `sentinel issue attach <id> <file>` copies into `<localDir>/attachments/<id>/`.
+- `sentinel setup --issue-forms` writes `.github/ISSUE_TEMPLATE/feature.yml` and `bug.yml` from the same definition, with labels mapped through `labelMap`, when the tracker is GitHub.
 
 ### `code-host.ts` — GitHub only in v0.1
 
@@ -262,15 +275,16 @@ All skills follow the Agent Skills spec: a folder with `SKILL.md`; `name` must m
 
 **Bundled CLI invocation (decision Q20).** Every skill folder contains `scripts/sentinel.mjs`, a single-file build of the CLI at the same commit as the skill. Skill bodies call it by a path relative to their own folder (`node scripts/sentinel.mjs prd validate … --json`); where this plan writes `sentinel <command>` inside a skill, that is the invocation meant. Skills and CLI ship together, so there is no version pinning and nothing to drift.
 
-| Skill                | Phase | Behaviour                                                                                                                                                                                                                                                                          | `disable-model-invocation`       |
-| -------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → GitHub workflows → README + diagrams → `AGENTS.md` guardrails → bootstrap branch + PR → hand off to babysit.                                                                      | true                             |
-| `sentinel-prd`       | 1     | Draft the PRD from the template using `.sentinel/domain.json` and the issue → self-score with the rubric → `prd validate` → refine (≤3) → accept or escalate.                                                                                                                      | false (the agent may suggest it) |
-| `sentinel-mine`      | 1     | `gh search repos` for comparable high-star projects → extract feature/API surfaces → gap list in `docs/feature-gaps.md` → **stop for user approval** → `issue resolve` → `list` candidates + `issue duplicates` to skip duplicates → `create` the approved issues with `labelMap`. | true                             |
-| `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                 | true                             |
-| `sentinel-sdlc-auto` | 2     | Same as `sentinel-sdlc` with no RFC stop; still never merges.                                                                                                                                                                                                                      | true                             |
-| `sentinel-babysit`   | 2     | Run `babysit --once` in a loop: read the packet → patch → push → repeat until green or `GIVE_UP`.                                                                                                                                                                                  | true                             |
-| `sentinel-review`    | any   | Stand-alone review of uncommitted work plus the branch vs its PR target (or a given scope) with `sentinel-reviewer` (inline checklist where there is no sub-agent) → report findings → fix only on request.                                                                        | false (the agent may suggest it) |
+| Skill                | Phase | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `disable-model-invocation`       |
+| -------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → GitHub workflows → README + diagrams → `AGENTS.md` guardrails → GitHub issue forms (M9) → bootstrap branch + PR → hand off to babysit.                                                                                                                                                                                                                                            | true                             |
+| `sentinel-intake`    | 1     | _(planned, M9)_ Read what the user wrote (or `get` an issue to refine) → pick the kind → ask only for missing or vague sections, one question at a time with a suggested answer, reading the code instead of asking where it can → `issue attachments` → `issue lint` until 0 → `issue resolve` → `dedupe` → propose priority → **STOP for approval** → `create` (or `update`, posting the old body as a comment) → `attach` → list _pending upload_ files → offer `sentinel-prd`. | false (the agent may suggest it) |
+| `sentinel-prd`       | 1     | Draft the PRD from the template using `.sentinel/domain.json` and the issue (its sections mapped per [docs/issue-format.md](issue-format.md) from M9) → self-score with the rubric → `prd validate` → refine (≤3) → accept or escalate.                                                                                                                                                                                                                                            | false (the agent may suggest it) |
+| `sentinel-mine`      | 1     | `gh search repos` for comparable high-star projects → extract feature/API surfaces → gap list in `docs/feature-gaps.md` → **stop for user approval** → `issue resolve` → `list` candidates + `issue duplicates` to skip duplicates → `create` the approved issues with `labelMap`.                                                                                                                                                                                                 | true                             |
+| `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                                                                                                                                                                                                                 | true                             |
+| `sentinel-sdlc-auto` | 2     | Same as `sentinel-sdlc` with no RFC stop; still never merges.                                                                                                                                                                                                                                                                                                                                                                                                                      | true                             |
+| `sentinel-babysit`   | 2     | Run `babysit --once` in a loop: read the packet → patch → push → repeat until green or `GIVE_UP`.                                                                                                                                                                                                                                                                                                                                                                                  | true                             |
+| `sentinel-review`    | any   | Stand-alone review of uncommitted work plus the branch vs its PR target (or a given scope) with `sentinel-reviewer` (inline checklist where there is no sub-agent) → report findings → fix only on request.                                                                                                                                                                                                                                                                        | false (the agent may suggest it) |
 
 Shared guardrails (repeated in every skill and in AGENTS.md):
 
@@ -330,13 +344,16 @@ Not supported in v0.1: OpenCode, the generic `.agents/skills` location and Claud
 
 ```
 sentinel guardrails write [--dry-run]                        # managed block in AGENTS.md (+ CLAUDE.md pointer)
-sentinel setup [--answers answers.json]                      # Phase 0 (interactive or agent-fed)
+sentinel setup [--answers answers.json] [--issue-forms]      # Phase 0 (interactive or agent-fed); issue forms: M9
 sentinel analyze [--json] [--install]
 sentinel branch name --issue <id> [--title] [--label] [--issue-type] [--type feature|bugfix|hotfix|refactor]
 sentinel worktree add <id> [--type] | remove <id> | prune
 sentinel issue resolve [--available <slugs>] | detect | use <tracker> | describe
 sentinel issue duplicates <title> [--candidates <file>]
-sentinel issue create|get|list|comment|label|close|reopen    # local tracker only
+sentinel issue template <feature|bug> | lint <file> --kind <kind>   # M9, any tracker
+sentinel issue attachments <files…> [--tracker-uploads]   # M9: inline / attach / pending plan
+sentinel issue attach <id> <file>                            # M9, local tracker only
+sentinel issue create|get|list|comment|label|close|reopen|update    # local tracker only (update: M9)
 sentinel prd new <slug> | validate <file> [--scores scores.json] | status <slug>
 sentinel rfc new <issue-id>
 sentinel pr create --issue <id> --title <title> [--issue-url <url>]
@@ -348,7 +365,7 @@ sentinel doctor                                                # tools, auth, co
 
 Every command supports `--json`. Exit codes: 0 ok · 2 threshold not met / refine · 3 escalate / give-up · 4 provider/auth error · 5 config error.
 
-MCP tools mirror the CLI: `analyze_stack`, `resolve_branch`, `worktree_create/remove`, `issue_resolve/use/describe/duplicates`, `local_issue_get/list/create/comment/close`, `prd_validate`, `rfc_scaffold`, `pr_create`, `ci_status`, `ci_failure_packet`. The MCP server is deferred (M4).
+MCP tools mirror the CLI: `analyze_stack`, `resolve_branch`, `worktree_create/remove`, `issue_resolve/use/describe/duplicates/template/lint/attachments`, `local_issue_get/list/create/comment/close`, `prd_validate`, `rfc_scaffold`, `pr_create`, `ci_status`, `ci_failure_packet`. The MCP server is deferred (M4).
 
 ---
 
@@ -467,9 +484,22 @@ _Was "Jira & Azure DevOps trackers (≈4 days)"; replaced by ADR-0005._
 - [ ] Submit the plugin to Cursor's marketplace.
 - [ ] First marketplace release at the next version (`v0.4.0` unless the pending changesets say otherwise): version PR → tag → GitHub Release → announce the install commands as stable. `v0.1.0`–`v0.3.0` were development tags (Q25).
 
+### M9 — Issue intake: `sentinel-intake` (≈2 days core + 1 day skill) _(ADR-0007)_
+
+_M9a (core, no skill, can start now). M9b (skill and skill changes) once M9a is in the bundle. Independent of M7 and M8; ships in the first marketplace release if it is ready, otherwise in the next._
+
+- [x] Research and format decision: [ADR-0007](adr/0007-issue-intake-format.md), [docs/issue-format.md](issue-format.md).
+- [ ] M9a: `issue-format.ts` with the section definitions; `issue template`, `issue lint` (golden good/bad issues per kind, reusing the PRD ambiguity list and a secret-pattern list).
+- [ ] M9a: `issue attachments` planner (text sniffing, trimming, size caps, secret block) and the local tracker's `issue attach` and `issue update`; fixtures for logs, images and a file with a token.
+- [ ] M9a: `setup --issue-forms` generating `feature.yml` and `bug.yml`; a test that the forms and the lint agree on every section id.
+- [ ] M9a: the neutral verbs `update` and `attach` in `issue describe` and the skill lint test's verb list.
+- [ ] M9b: `sentinel-intake` SKILL.md: gap-driven interview, lint gate, dedupe, priority proposal, **STOP for approval**, create or refine (old body kept as a comment), attachments with the _pending upload_ hand-off, offer `sentinel-prd`.
+- [ ] M9b: `sentinel-prd` maps issue sections onto the PRD; `sentinel-setup` offers the GitHub issue forms; README skills table and quickstart.
+- [ ] Manual check: one feature and one bug through `sentinel-intake` on GitHub (with a screenshot, so the hand-off is exercised) and on the local tracker, then `sentinel-prd` on the feature.
+
 ### Sequencing: what can run in parallel
 
-Only M3's skills and M5b/M6b depend on each other through the bundle; the deterministic cores (M5a, M6a) depend only on M1/M2 and can start now.
+Only M3's skills and M5b/M6b/M9b depend on each other through the bundle; the deterministic cores (M5a, M6a, M9a) depend only on M1/M2 and can start now.
 
 ```mermaid
 flowchart LR
@@ -484,6 +514,10 @@ flowchart LR
   M7 --> M8["M8: hardening, first marketplace release"]
   M5b --> M8
   M4["M4: MCP (deferred past the first release)"] -.-> M8
+  done --> M9a["M9a: issue format, lint, attachments CLI"]
+  M3 --> M9b["M9b: sentinel-intake skill, prd mapping"]
+  M9a --> M9b
+  M9b -.-> M8
 ```
 
 **Why the split.** A skill may only name CLI commands that exist in the committed bundle, and the bundle changes only in the version PR or in a PR whose skills need a new command (ADR-0006). So _core_ PRs (code, tests, no skill) never touch the 1 MB bundle copies and merge freely in parallel. _Skill_ PRs rebuild the bundle, so they are merged one at a time; after any merge, a conflict in a generated file is resolved by re-running `npm run build:plugin`.
@@ -532,35 +566,42 @@ Coverage gate: 85% lines on `src/core`.
 
 ---
 
-## 11. Decision log (grilling sessions, 2026-11-02 and 2026-11-09)
+## 11. Decision log (grilling sessions, 2026-11-02, 2026-11-09 and 2026-11-26)
 
-| #   | Decision                                                                                                                                                                                                                                     |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Q1  | Sentinel **never calls an LLM**; the host agent reasons, sentinel enforces.                                                                                                                                                                  |
-| Q2  | Audience: **public open-source tool**.                                                                                                                                                                                                       |
-| Q3  | ~~Built-in trackers: GitHub Issues, Jira, Azure DevOps; others via Custom.~~ Superseded by Q17.                                                                                                                                              |
-| Q4  | **TypeScript** (tsup build).                                                                                                                                                                                                                 |
-| Q5  | Both modes available: RFC checkpoint and full autonomy (see Q12).                                                                                                                                                                            |
-| Q6  | PRD pass = **mean ≥ 85 and each dimension ≥ 70**.                                                                                                                                                                                            |
-| Q7  | Mining writes a **draft list for approval** before creating issues.                                                                                                                                                                          |
-| Q8  | ~~Package `@robert-nagy/sentinel`, binary `sentinel`.~~ Superseded by Q18 (the name stays as a private package).                                                                                                                             |
-| Q9  | Workflows are **Agent Skills**, prefixed `sentinel-`: setup, prd, sdlc, sdlc-auto, babysit, mine.                                                                                                                                            |
-| Q10 | ~~Skills copied to both `.agents/skills/` and `.claude/skills/`.~~ Superseded by Q23.                                                                                                                                                        |
-| Q11 | ~~Jira gets a built-in REST v3 tracker.~~ Superseded by Q17.                                                                                                                                                                                 |
-| Q12 | **`sentinel-sdlc`** stops for RFC approval; **`sentinel-sdlc-auto`** runs to a green PR without stopping. Neither merges.                                                                                                                    |
-| Q13 | **`issueProvider` separate from `codeHost`**; code host is GitHub only in v0.1.                                                                                                                                                              |
-| Q14 | Only **`sentinel-reviewer`** is a sub-agent; other roles are folded into skills.                                                                                                                                                             |
-| Q15 | **MIT**; **Windows fully supported** (CI matrix + real path/worktree tests).                                                                                                                                                                 |
-| Q16 | ~~`init` pins skills to `npx -y @robert-nagy/sentinel@<version>`; `doctor` detects drift.~~ Superseded by Q18/Q20.                                                                                                                           |
-| Q17 | _(2026-11-04)_ **Tracker-agnostic**: the agent uses its own MCP/CLI connections; config keeps intent only; lazy, coded resolution rule; built-in local markdown fallback (ADR-0005).                                                         |
-| Q18 | _(2026-11-09)_ **No npm.** Distribution is a **plugin marketplace in this repo**, Claude Code format as the source of truth (ADR-0006). Supersedes Q8 and Q16.                                                                               |
-| Q19 | _(2026-11-09)_ Other tools get **thin generated manifests** (Agent Plugins 1.0 `plugin.json`, Codex and Cursor catalogs); CI fails on drift.                                                                                                 |
-| Q20 | _(2026-11-09)_ The CLI is **bundled into one file and copied into every skill** (`scripts/sentinel.mjs`); skills call it by relative path.                                                                                                   |
-| Q21 | _(2026-11-09)_ The bundle is **committed on `main`**, regenerated only by the version PR.                                                                                                                                                    |
-| Q22 | _(2026-11-09)_ **Changesets stay** for versions and the changelog; release = git tag + GitHub Release.                                                                                                                                       |
-| Q23 | _(2026-11-09)_ **`sentinel init` and the adapters are dropped**; `sentinel-setup` writes the `AGENTS.md` guardrail block and the config. Supersedes Q10.                                                                                     |
-| Q24 | _(2026-11-09)_ Supported tools: **Claude Code, VS Code / Copilot, Codex, Cursor**. OpenCode, generic `.agents` and Claude Desktop are dropped for now.                                                                                       |
-| Q25 | _(2026-11-26)_ Changesets already tagged **`v0.1.0`–`v0.3.0`** with GitHub Releases during development, so M8 no longer "releases 0.1.0": it cuts the **first marketplace release at the next version**. Tags are never reused or rewritten. |
+| #   | Decision                                                                                                                                                                                                                                                                                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | Sentinel **never calls an LLM**; the host agent reasons, sentinel enforces.                                                                                                                                                                                                                                                      |
+| Q2  | Audience: **public open-source tool**.                                                                                                                                                                                                                                                                                           |
+| Q3  | ~~Built-in trackers: GitHub Issues, Jira, Azure DevOps; others via Custom.~~ Superseded by Q17.                                                                                                                                                                                                                                  |
+| Q4  | **TypeScript** (tsup build).                                                                                                                                                                                                                                                                                                     |
+| Q5  | Both modes available: RFC checkpoint and full autonomy (see Q12).                                                                                                                                                                                                                                                                |
+| Q6  | PRD pass = **mean ≥ 85 and each dimension ≥ 70**.                                                                                                                                                                                                                                                                                |
+| Q7  | Mining writes a **draft list for approval** before creating issues.                                                                                                                                                                                                                                                              |
+| Q8  | ~~Package `@robert-nagy/sentinel`, binary `sentinel`.~~ Superseded by Q18 (the name stays as a private package).                                                                                                                                                                                                                 |
+| Q9  | Workflows are **Agent Skills**, prefixed `sentinel-`: setup, prd, sdlc, sdlc-auto, babysit, mine.                                                                                                                                                                                                                                |
+| Q10 | ~~Skills copied to both `.agents/skills/` and `.claude/skills/`.~~ Superseded by Q23.                                                                                                                                                                                                                                            |
+| Q11 | ~~Jira gets a built-in REST v3 tracker.~~ Superseded by Q17.                                                                                                                                                                                                                                                                     |
+| Q12 | **`sentinel-sdlc`** stops for RFC approval; **`sentinel-sdlc-auto`** runs to a green PR without stopping. Neither merges.                                                                                                                                                                                                        |
+| Q13 | **`issueProvider` separate from `codeHost`**; code host is GitHub only in v0.1.                                                                                                                                                                                                                                                  |
+| Q14 | Only **`sentinel-reviewer`** is a sub-agent; other roles are folded into skills.                                                                                                                                                                                                                                                 |
+| Q15 | **MIT**; **Windows fully supported** (CI matrix + real path/worktree tests).                                                                                                                                                                                                                                                     |
+| Q16 | ~~`init` pins skills to `npx -y @robert-nagy/sentinel@<version>`; `doctor` detects drift.~~ Superseded by Q18/Q20.                                                                                                                                                                                                               |
+| Q17 | _(2026-11-04)_ **Tracker-agnostic**: the agent uses its own MCP/CLI connections; config keeps intent only; lazy, coded resolution rule; built-in local markdown fallback (ADR-0005).                                                                                                                                             |
+| Q18 | _(2026-11-09)_ **No npm.** Distribution is a **plugin marketplace in this repo**, Claude Code format as the source of truth (ADR-0006). Supersedes Q8 and Q16.                                                                                                                                                                   |
+| Q19 | _(2026-11-09)_ Other tools get **thin generated manifests** (Agent Plugins 1.0 `plugin.json`, Codex and Cursor catalogs); CI fails on drift.                                                                                                                                                                                     |
+| Q20 | _(2026-11-09)_ The CLI is **bundled into one file and copied into every skill** (`scripts/sentinel.mjs`); skills call it by relative path.                                                                                                                                                                                       |
+| Q21 | _(2026-11-09)_ The bundle is **committed on `main`**, regenerated only by the version PR.                                                                                                                                                                                                                                        |
+| Q22 | _(2026-11-09)_ **Changesets stay** for versions and the changelog; release = git tag + GitHub Release.                                                                                                                                                                                                                           |
+| Q23 | _(2026-11-09)_ **`sentinel init` and the adapters are dropped**; `sentinel-setup` writes the `AGENTS.md` guardrail block and the config. Supersedes Q10.                                                                                                                                                                         |
+| Q24 | _(2026-11-09)_ Supported tools: **Claude Code, VS Code / Copilot, Codex, Cursor**. OpenCode, generic `.agents` and Claude Desktop are dropped for now.                                                                                                                                                                           |
+| Q25 | _(2026-11-26)_ Changesets already tagged **`v0.1.0`–`v0.3.0`** with GitHub Releases during development, so M8 no longer "releases 0.1.0": it cuts the **first marketplace release at the next version**. Tags are never reused or rewritten.                                                                                     |
+| Q26 | _(2026-11-26)_ New skill **`sentinel-intake`**: interviews the user and files a feature or bug in a **standard format** reused from known conventions (Connextra user story + Gherkin acceptance criteria; the classic defect report), not a new one (ADR-0007).                                                                 |
+| Q27 | _(2026-11-26)_ Two kinds only, **feature and bug**; chores and refactors are features with a `kind/chore` or `kind/refactor` label. For bugs only Summary, Steps, Expected, Actual, Environment and one AC are required.                                                                                                         |
+| Q28 | _(2026-11-26)_ The interview is **gap-driven**: ask only about missing or vague sections, one question at a time with a suggested answer; read the code instead of asking where possible.                                                                                                                                        |
+| Q29 | _(2026-11-26)_ **`sentinel issue lint` blocks filing** (exit 2); no scoring loop, since the PRD is scored later. One format definition in code drives template, lint and GitHub issue forms.                                                                                                                                     |
+| Q30 | _(2026-11-26)_ Attachments are **tracker-native when the tracker can upload**; otherwise small text is inlined (trimmed if long) and binaries are a one-step _pending upload_ hand-off, because GitHub has no upload API. Secrets in text block filing.                                                                          |
+| Q31 | _(2026-11-26)_ `sentinel-intake` **dedupes**, **stops for approval** before `create`, can **refine an existing issue** (old body kept as a comment) and **offers `sentinel-prd`** afterwards. Priority (`critical`, `high`, `medium`, `low`; default `medium`) is proposed by the agent with a reason and confirmed by the user. |
+| Q32 | _(2026-11-26)_ `sentinel-setup` writes **GitHub issue forms** in the same format when the tracker is GitHub; `sentinel-prd` **maps issue sections** onto PRD sections.                                                                                                                                                           |
 
 Unverified facts to re-check before implementing ADR-0006:
 
@@ -579,6 +620,8 @@ Unverified facts to re-check before implementing ADR-0006:
 | Agents ignore skill instructions                   | Enforcement lives in CLI/MCP (exit codes, state, caps); guardrails repeated in AGENTS.md and the Cursor plugin's always-on rule |
 | Babysitter makes things worse                      | Attempt caps, signature dedupe, flaky re-run, give-up comment, never force-push                                                 |
 | Mining floods trackers                             | Draft + approval + dedupe (agent lists candidates, `issue duplicates` ranks them in code)                                       |
+| Issues too thin for the PRD agent                  | Standard format checked by `issue lint` before filing; `sentinel-prd` maps sections instead of guessing (ADR-0007)              |
+| Secrets or personal data leak through attachments  | Secret patterns block text attachments; the approval stop shows every attachment; images are never uploaded without that stop   |
 | Agent files issues in the wrong tracker            | Coded resolution rule; `ask` on any ambiguity; decision saved to the repo config so every teammate gets the same answer         |
 | Windows paths / long paths / CRLF                  | 3-OS CI; `path` APIs only; `.gitattributes`; `doctor` checks `core.longpaths`                                                   |
 | Tracker connector missing or broken                | `issue resolve` reports `unavailable` with the configured tracker; the local tracker keeps work moving                          |
