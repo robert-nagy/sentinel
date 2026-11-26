@@ -180,9 +180,9 @@ describe('lintIssue details', () => {
 });
 
 describe('stripComments', () => {
-  it('drops closed and unclosed comments, leaving no opener behind', () => {
+  it('drops closed and unclosed comments in one pass', () => {
     expect(stripComments('a<!-- x -->b<!-- y')).toBe('ab');
-    expect(stripComments('<!<!-- -->-- z')).not.toMatch(/<!--.*-->/);
+    expect(stripComments('<!<!-- -->-- z')).toBe('<!-- z');
     expect(stripComments('plain')).toBe('plain');
   });
 });

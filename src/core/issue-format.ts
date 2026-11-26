@@ -330,8 +330,8 @@ function parseBody(body: string): ParsedBody {
 }
 
 /**
- * The text with HTML comments left out; an unclosed comment runs to the end. A scanner rather
- * than a regex replace, so no comment opener can survive or be formed by a removal.
+ * The text with HTML comments left out; an unclosed comment runs to the end. Used only to judge
+ * whether a section is empty and to scan prose, never to sanitise output for rendering.
  */
 export function stripComments(text: string): string {
   let out = '';
