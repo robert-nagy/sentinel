@@ -11,8 +11,9 @@ VS Code / GitHub Copilot, Codex and Cursor. Your agent runs a governed workflow:
 pass a quality gate, then issue → isolated worktree → RFC → test-driven implementation → pull
 request.
 
-> **Status: early development (pre-0.1.0).** The plugin installs from this repository and four
-> skills ship today. Three more are planned and marked _coming soon_ below. See the
+> **Status: early development.** Versions 0.1.0 to 0.3.0 are tagged, but sentinel is not yet listed
+> in any tool's public marketplace; the plugin installs from this repository and four skills ship
+> today. Three more are planned and marked _coming soon_ below. See the
 > [implementation plan](docs/PLAN.md) for the roadmap.
 
 ## How it works
@@ -94,7 +95,25 @@ an always-on rule shipped in the plugin.
 
 Skills describe tracker work as neutral verbs (`get`, `list`, `create`, `comment`, `set-status`,
 `link-pr`, `close`) and your agent carries them out with whatever tool reaches your tracker.
-sentinel only decides **which** tracker to use, in code:
+sentinel only decides **which** tracker to use, in code
+([ADR-0005](docs/adr/0005-agent-native-issue-trackers.md)).
+
+### How sentinel picks the tracker
+
+A skill runs `sentinel issue resolve --available <slugs>`, listing the trackers the agent can reach
+with its own tools. sentinel reads the git remote itself and applies these rules in order:
+
+1. **Configured.** `issueProvider.tracker` is set: `use` it. If `--available` was passed and does
+   not include it, the answer is `unavailable` (exit code 4) and the agent tells you which
+   connection is missing. `local` is always reachable.
+2. **The only reachable tracker that doesn't conflict with the git remote.** Nothing is configured
+   and exactly one tracker is reachable: `use` it and offer to save it, unless the remote is on a
+   different forge (see below).
+3. **Ask.** Several trackers are reachable, or the only one conflicts with the remote: `ask` the
+   user once and save the answer. The remote's forge comes first and is the recommendation (marked
+   unreachable if the agent can't reach it); `local` is always the last option.
+4. **Local fallback.** Nothing is reachable: `fallback` to the local tracker, which keeps issues as
+   Markdown files under `docs/issues/`.
 
 | Situation                                                    | `sentinel issue resolve` says | Then                                      |
 | ------------------------------------------------------------ | ----------------------------- | ----------------------------------------- |
@@ -104,33 +123,146 @@ sentinel only decides **which** tracker to use, in code:
 | Several reachable, or the only one conflicts with the remote | `ask`                         | ask the user once and save the answer     |
 | None reachable                                               | `fallback`                    | use the local tracker                     |
 
-The local tracker keeps issues as Markdown files under `docs/issues/`.
+Details that decide edge cases:
 
-Record the choice in `sentinel.config.json`. `labelMap` translates sentinel's neutral labels into
-the tracker's own labels, issue types or statuses; the keys below are the neutral names the skills
-use, and the values depend on your tracker.
+- **Slugs are normalised** before comparison: lower-cased, spaces and underscores become hyphens,
+  and common aliases map to one name. `gh`, `github-issues` → `github`; `glab`, `gitlab-issues` →
+  `gitlab`; `atlassian`, `jira-cloud`, `jira-server` → `jira`; `ado`, `azdo`, `az`, `azure`,
+  `azure-boards` → `azure-devops`; `markdown`, `md`, `files` → `local`. Any other lower-case slug
+  (`linear`, `youtrack`…) is accepted as is.
+- **The forge** comes from the `origin` remote (or the first remote): a host containing `github`,
+  `gitlab` or `bitbucket`, or `dev.azure.com` / `*.visualstudio.com` / `*.azure.com` for Azure
+  DevOps. A self-hosted forge is recognised only when its host name contains the forge's name. A
+  remote on any other host, or no remote, never conflicts.
+- **A conflict** means the only reachable tracker differs from the remote's forge, for example a
+  GitHub remote with only a Linear MCP server connected. The repo may track work on the forge, so
+  sentinel asks instead of guessing.
+- **Without `--available`**, sentinel trusts a configured tracker as is; with nothing configured, it
+  treats the tracker CLIs it finds on `PATH` (`gh`, `glab`, `az`, `jira`, `linear`) as reachable.
+  Installed is not proof of sign-in, so the skills always pass `--available`.
+- `sentinel issue detect` shows what sentinel can see itself (the remote and its forge, and which
+  tracker CLIs are installed).
 
-```jsonc
-// Jira
-{ "issueProvider": { "tracker": "jira", "location": "Jira project PROJ",
-    "labelMap": { "kind/bug": "Bug", "kind/feature": "Story",
-                  "status/in-progress": "In Progress", "status/in-review": "In Review" } } }
+### Recording the choice
 
-// Linear
-{ "issueProvider": { "tracker": "linear", "location": "team ENG",
-    "labelMap": { "kind/bug": "Bug", "kind/feature": "Feature", "priority/p1": "Urgent",
-                  "status/in-progress": "In Progress", "status/in-review": "In Review" } } }
+`sentinel issue use <tracker> [--location <text>] [--notes <text>] [--label neutral=native]…`
+writes `issueProvider` to the repository's `sentinel.config.json`, leaving every other key alone.
+`--label` is repeatable and merges into the existing `labelMap`. `sentinel issue describe` prints
+the instructions the agent follows for the configured tracker.
 
-// GitHub Issues (labels are usually the neutral names themselves)
-{ "issueProvider": { "tracker": "github" } }
+`labelMap` translates sentinel's neutral labels into the tracker's own label, issue type or status
+name. The skills use these keys:
 
-// Local Markdown tracker
-{ "issueProvider": { "tracker": "local", "localDir": "docs/issues" } }
+| Neutral key          | Used when                                                     |
+| -------------------- | ------------------------------------------------------------- |
+| `kind/feature`       | filing a feature (`sentinel mine create` labels gaps with it) |
+| `kind/bug`           | marking a bug                                                 |
+| `status/in-progress` | `set-status` after the worktree is created                    |
+| `status/in-review`   | `set-status` after the pull request is opened                 |
+
+sentinel hands the map to the agent through `sentinel issue describe` and does not check the
+values. Map what differs in your tracker; an unmapped key reaches the agent as the neutral
+name. Extra keys are passed through too. Branch-type detection does not depend on the map: a
+native label or issue type such as `Bug` or `defect` already gives a `fix/` branch.
+
+### Examples per tracker
+
+Each example is a complete, schema-valid `sentinel.config.json`. The keys and the shape are checked
+against [`schema/config.json`](schema/config.json); the values are **not yet verified against live
+trackers**: the manual smoke test with each tracker (M7 in the [plan](docs/PLAN.md)) hasn't run, so
+check names against your own labels, issue types and workflow statuses.
+
+**GitHub Issues** (agent uses `gh` or a GitHub MCP server). _Not yet smoke-tested._ GitHub has no
+statuses, so the status keys map to labels, which must exist in the repository; the kind keys map
+to GitHub's default labels. `pr create`
+writes `Closes #<id>` for this tracker.
+
+```json
+{
+  "issueProvider": {
+    "tracker": "github",
+    "labelMap": {
+      "kind/bug": "bug",
+      "kind/feature": "enhancement",
+      "status/in-progress": "in progress",
+      "status/in-review": "in review"
+    }
+  }
+}
 ```
 
-These examples show the shape; the per-tracker values are not yet verified against live trackers
-(planned for M7), so check them against your own workflow names. `sentinel issue describe` prints
-the instructions the agent follows for the configured tracker.
+**Jira** (agent uses the Atlassian MCP server). _Not yet smoke-tested._ Kinds map to issue types and
+statuses to workflow statuses. Use your project's key in `location` and the `PROJ-123` key as the
+issue id.
+
+```json
+{
+  "issueProvider": {
+    "tracker": "jira",
+    "location": "Jira project PROJ",
+    "labelMap": {
+      "kind/bug": "Bug",
+      "kind/feature": "Story",
+      "status/in-progress": "In Progress",
+      "status/in-review": "In Review"
+    }
+  }
+}
+```
+
+**Linear** (agent uses the Linear MCP server). _Not yet smoke-tested._ Kinds map to labels and
+statuses to workflow states of the team in `location`.
+
+```json
+{
+  "issueProvider": {
+    "tracker": "linear",
+    "location": "team ENG",
+    "labelMap": {
+      "kind/bug": "Bug",
+      "kind/feature": "Feature",
+      "status/in-progress": "In Progress",
+      "status/in-review": "In Review"
+    }
+  }
+}
+```
+
+**GitLab Issues** (agent uses `glab` or a GitLab MCP server). _Not yet smoke-tested, and not in the
+M7 smoke-test set._ sentinel recognises `gitlab` as a tracker and a forge, but the code host is
+GitHub only, so `sentinel pr create` works only when the code lives on GitHub and the issues on
+GitLab. The values below use GitLab's scoped labels as an example.
+
+```json
+{
+  "issueProvider": {
+    "tracker": "gitlab",
+    "location": "group/project",
+    "labelMap": {
+      "kind/bug": "type::bug",
+      "kind/feature": "type::feature",
+      "status/in-progress": "workflow::in progress",
+      "status/in-review": "workflow::in review"
+    }
+  }
+}
+```
+
+**Local Markdown tracker** (built in; managed with `sentinel issue create|get|list|comment|label|close|reopen`).
+_Not yet smoke-tested end to end; covered by unit tests._ Labels are stored verbatim, so no
+`labelMap` is needed. `localDir` defaults to `docs/issues`.
+
+```json
+{
+  "issueProvider": {
+    "tracker": "local",
+    "localDir": "docs/issues"
+  }
+}
+```
+
+Any other tracker works the same way: pick a slug, describe where the work lives in `location`, add
+team conventions to `notes`, and map the four neutral keys.
 
 ## Configuration
 
