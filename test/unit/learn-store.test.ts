@@ -185,6 +185,26 @@ describe('LessonStore.recall', () => {
   });
 });
 
+describe('LessonStore in a worktree', () => {
+  it('keeps shared lessons in the worktree and personal lessons and state in the main checkout', async () => {
+    const worktree = join(root, '.worktrees', '39');
+    await mkdir(worktree, { recursive: true });
+    const s = new LessonStore(worktree, { now: () => now, settings, mainRoot: root });
+    const shared = await s.add(draft('Shared rule'), { store: 'shared' });
+    const personal = await s.add(draft('Personal habit', { scope: ['docs/**'] }), {
+      store: 'personal',
+    });
+    expect(await readdir(join(worktree, STORE_DIRS.shared))).toEqual([`${shared.id}.md`]);
+    expect(await readdir(join(root, STORE_DIRS.personal))).toContain(`${personal.id}.md`);
+    expect(await readdir(join(root, '.sentinel', 'state'))).toContain('learn-usage.json');
+    const hits = await s.recall({ paths: ['src/a.ts', 'docs/x.md'] });
+    expect(hits.map((h) => h.store).sort()).toEqual(['personal', 'shared']);
+    // The main checkout does not see the worktree's new shared lesson until it is merged.
+    const main = new LessonStore(root, { now: () => now, settings });
+    expect((await main.recall({ paths: ['src/a.ts'] })).map((h) => h.store)).toEqual([]);
+  });
+});
+
 describe('LessonStore index', () => {
   it('reads only files that changed since the last refresh', async () => {
     const s = store();

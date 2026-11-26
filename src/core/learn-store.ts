@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { titleSimilarity, DUPLICATE_THRESHOLD } from './duplicates.js';
@@ -175,19 +176,43 @@ export class LessonStore {
   /** Files read and parsed by the last `refresh` (for tests and `--json` diagnostics). */
   filesRead = 0;
 
+  /**
+   * @param root the checkout whose shared lessons are read and written (an issue worktree
+   *   during an SDLC run, so new lessons ride on its PR).
+   * @param options.mainRoot the main checkout, home of the personal lessons and the local
+   *   state (index and usage), so both survive when a worktree is removed. Defaults to `root`.
+   */
   constructor(
     readonly root: string,
-    private readonly options: { readonly now: () => Date; readonly settings: LearnSettings },
+    private readonly options: {
+      readonly now: () => Date;
+      readonly settings: LearnSettings;
+      readonly mainRoot?: string | undefined;
+    },
   ) {
-    this.state = new StateStore(root);
+    this.mainRoot = options.mainRoot ?? root;
+    this.state = new StateStore(this.mainRoot);
+    // One index per checkout: each worktree has its own shared lessons.
+    this.indexName =
+      this.mainRoot === root
+        ? INDEX_NAME
+        : `${INDEX_NAME}-${createHash('sha256').update(root).digest('hex').slice(0, 12)}`;
   }
+
+  private readonly indexName: string;
+
+  readonly mainRoot: string;
 
   private today(): string {
     return day(this.options.now());
   }
 
   dir(store: StoreName): string {
-    return join(this.root, ...STORE_DIRS[store].split('/'));
+    return join(store === 'shared' ? this.root : this.mainRoot, ...STORE_DIRS[store].split('/'));
+  }
+
+  private pathOf(entry: Pick<IndexEntry, 'store' | 'file'>): string {
+    return join(this.dir(entry.store), entry.file.slice(STORE_DIRS[entry.store].length + 1));
   }
 
   /**
@@ -249,12 +274,12 @@ export class LessonStore {
       this.filesRead > 0 ||
       Object.keys(entries).length !== Object.keys(previous.entries).length ||
       Object.keys(entries).some((file) => previous.entries[file] === undefined);
-    if (changed) await this.state.write(INDEX_NAME, { version: INDEX_VERSION, entries });
+    if (changed) await this.state.write(this.indexName, { version: INDEX_VERSION, entries });
     return Object.values(entries);
   }
 
   private async readIndex(): Promise<IndexFile> {
-    const index = await this.state.read<IndexFile>(INDEX_NAME);
+    const index = await this.state.read<IndexFile>(this.indexName);
     if (index?.version !== INDEX_VERSION || typeof index.entries !== 'object') {
       return { version: INDEX_VERSION, entries: {} };
     }
@@ -428,7 +453,7 @@ export class LessonStore {
       if (results.length >= limit) break;
       let text: string;
       try {
-        text = await readFile(join(this.root, ...entry.file.split('/')), 'utf8');
+        text = await readFile(this.pathOf(entry), 'utf8');
       } catch {
         continue;
       }
@@ -520,7 +545,7 @@ export class LessonStore {
 
   async show(id: string): Promise<RecalledLesson & { usage: UsageEntry }> {
     const entry = await this.find(id);
-    const text = await readFile(join(this.root, ...entry.file.split('/')), 'utf8');
+    const text = await readFile(this.pathOf(entry), 'utf8');
     const parsed = parseLesson(text);
     if (parsed.lesson === undefined) throw new LearnError(`${entry.file} is not a valid lesson`);
     const usage = await this.readUsage();
