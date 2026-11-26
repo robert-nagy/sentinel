@@ -1,5 +1,12 @@
 # @robert-nagy/sentinel
 
+## 0.5.0
+
+### Minor Changes
+
+- dac8898: Add the `sentinel-review` skill: a stand-alone review of uncommitted work plus the branch's changes against its pull request's target branch (or the default branch when there is no pull request), or of staged work, a base ref or a given pull request, using the `sentinel-reviewer` sub-agent (or its checklist inline) and reporting findings without editing files. The reviewer now accepts an explicit scope, reviews uncommitted and untracked changes and compares against the pull request's target branch by default, and checks for logic errors and broken edge cases.
+- 9454ff7: Add issue intake (ADR-0007). A new `sentinel-intake` skill interviews you about what is missing from a feature or bug, plans attachments, lints the draft, checks for duplicates, proposes a priority and stops for your approval before it files or refines the issue in the standard issue format. New CLI commands: `sentinel issue template <feature|bug>`, `sentinel issue lint <file> --kind <kind>` (exit 0 to file, 2 to fix; checks sections, `AC-n` Given/When/Then, placeholders, vague wording and secrets), `sentinel issue attachments <files…> [--tracker-uploads]` (inline, attach, pending upload, blocked or rejected per file), and, for the local tracker, `sentinel issue update` and `sentinel issue attach`. `sentinel setup --issue-forms` writes GitHub issue forms that ask for the same sections (issues filed through them use `###` headings, so refine them with `sentinel-intake` before `issue lint` accepts them). `issue describe` lists the new neutral verbs `update` and `attach`. `sentinel-prd` now maps issue sections onto the PRD, and `sentinel-setup` offers the issue forms when the tracker is GitHub.
+
 ## 0.4.0
 
 ### Minor Changes
