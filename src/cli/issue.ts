@@ -151,7 +151,9 @@ async function readBody(
   options: { body?: string | undefined; bodyFile?: string | undefined },
 ): Promise<string | undefined> {
   if (options.bodyFile !== undefined) {
-    return readFile(resolve(deps.cwd, options.bodyFile), 'utf8');
+    const text = await deps.files.readText(resolve(deps.cwd, options.bodyFile));
+    if (text === undefined) throw new TrackerError(`body file not found: ${options.bodyFile}`);
+    return text;
   }
   return options.body;
 }

@@ -346,7 +346,7 @@ sentinel mine search "task tracker"  # popular comparable repositories
 sentinel issue template bug          # empty bug report in the standard issue format
 sentinel issue lint draft.md --kind bug --title "checkout: total ignores discount code"
 sentinel issue attachments server.log screenshot.png   # inline, upload or pending upload, per file
-sentinel setup --issue-forms         # GitHub issue forms in the same format
+sentinel setup --issue-forms         # GitHub issue forms asking for the same sections
 ```
 
 The `setup` command is built, but the skill that drives it is still to come (table above).

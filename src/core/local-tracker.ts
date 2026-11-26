@@ -1,7 +1,8 @@
-import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { slugify } from './branch-namer.js';
+import { fencedLines, findSecrets, looksLikeText } from './issue-format.js';
 import { TrackerError } from './issue-tracker.js';
 
 /**
@@ -326,8 +327,8 @@ export class LocalTracker {
   ): Promise<{ issue: LocalIssue; path: string; link: string }> {
     const issue = await this.get(id);
     const name = basename(source);
-    if (name === '' || name === '.' || name === '..') {
-      throw new TrackerError(`cannot attach "${source}": not a file name`);
+    if (name === '' || name === '.' || name === '..' || /[`\n\r]/.test(name)) {
+      throw new TrackerError(`cannot attach "${source}": rename the file first`);
     }
     let size: number;
     try {
@@ -345,6 +346,15 @@ export class LocalTracker {
         `cannot attach "${name}": ${String(size)} bytes is over the ${String(options.maxBytes)}-byte limit`,
       );
     }
+    const bytes = new Uint8Array(await readFile(source));
+    if (looksLikeText(bytes)) {
+      const secrets = findSecrets(new TextDecoder('utf-8').decode(bytes));
+      if (secrets.length > 0) {
+        throw new TrackerError(
+          `cannot attach "${name}": line ${secrets.map((f) => String(f.line)).join(', ')} looks like a secret; redact it first`,
+        );
+      }
+    }
     const dir = this.attachmentsDir(issue.id);
     await mkdir(dir, { recursive: true });
     const target = join(dir, name);
@@ -357,11 +367,17 @@ export class LocalTracker {
       throw error;
     }
     const link = relative(this.dir, target).split('\\').join('/');
-    const updated = await this.change(issue.id, (current) => ({
-      ...current,
-      body: linkAttachment(current.body, name, link),
-    }));
-    return { issue: updated, path: target, link };
+    try {
+      const updated = await this.change(issue.id, (current) => ({
+        ...current,
+        body: linkAttachment(current.body, name, link),
+      }));
+      return { issue: updated, path: target, link };
+    } catch (error) {
+      // Leave no orphan copy behind, so a retry is not refused as a duplicate.
+      await unlink(target).catch(() => undefined);
+      throw error;
+    }
   }
 }
 
@@ -369,11 +385,17 @@ const ATTACHMENTS_DIR = 'attachments';
 
 /** Links `name` from the `## Attachments` section, creating the section when it is missing. */
 export function linkAttachment(body: string, name: string, link: string): string {
-  const linked = `[\`${name}\`](${link.split(' ').join('%20')})`;
+  const linked = `[\`${name}\`](${link
+    .split('/')
+    .map((part) => encodeURIComponent(part).replace(/\(/g, '%28').replace(/\)/g, '%29'))
+    .join('/')})`;
   const lines = body === '' ? [] : body.split('\n');
-  const heading = lines.findIndex((l) => /^##\s+Attachments\s*$/i.test(l));
+  const fenced = fencedLines(lines);
+  const isHeading = (i: number, pattern: RegExp) =>
+    fenced[i] === 'prose' && pattern.test(lines[i] ?? '');
+  const heading = lines.findIndex((_, i) => isHeading(i, /^##\s+Attachments\s*$/i));
   if (heading !== -1) {
-    let end = lines.findIndex((l, i) => i > heading && /^##\s/.test(l));
+    let end = lines.findIndex((_, i) => i > heading && isHeading(i, /^##\s/));
     if (end === -1) end = lines.length;
     const plain = `\`${name}\``;
     for (let i = heading + 1; i < end; i++) {

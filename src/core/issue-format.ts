@@ -311,20 +311,13 @@ function parseBody(body: string): ParsedBody {
   const preamble: { text: string; line: number }[] = [];
   const sections: { heading: string; line: number; lines: { text: string; line: number }[] }[] = [];
   const prose: { text: string; line: number }[] = [];
-  let fence: string | undefined;
-  body.split('\n').forEach((text, index) => {
+  const lines = body.split('\n');
+  const fenced = fencedLines(lines);
+  lines.forEach((text, index) => {
     const line = index + 1;
-    const fenceMatch = FENCE.exec(text);
-    if (fence === undefined && fenceMatch?.[1] !== undefined) {
-      fence = fenceMatch[1];
-    } else if (fence !== undefined && fenceMatch?.[1] !== undefined) {
-      const closing = fenceMatch[1];
-      if (closing.startsWith(fence) && text.trim() === closing) {
-        fence = undefined;
-      }
-    } else if (fence === undefined) {
+    if (fenced[index] === 'prose') {
       const heading = /^##[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(text);
-      if (heading?.[1] !== undefined && !text.startsWith('###')) {
+      if (heading?.[1] !== undefined) {
         sections.push({ heading: heading[1].trim(), line, lines: [] });
         return;
       }
@@ -484,17 +477,17 @@ function lintAcceptanceCriteria(section: ParsedSection, problems: LintProblem[])
 
 /** Inlined attachments (`<details>` blocks) may hold at most {@link INLINE_WHOLE_LINES} lines. */
 function lintDetailsBlocks(body: string, problems: LintProblem[]): void {
-  let open: { line: number; count: number; fence: boolean } | undefined;
-  body.split('\n').forEach((text, index) => {
+  let open: { line: number; count: number } | undefined;
+  const lines = body.split('\n');
+  const fenced = fencedLines(lines);
+  lines.forEach((text, index) => {
+    const state = fenced[index];
     if (open === undefined) {
-      if (/<details\b/i.test(text)) open = { line: index + 1, count: 0, fence: false };
+      if (state === 'prose' && /<details\b/i.test(text)) open = { line: index + 1, count: 0 };
       return;
     }
-    if (FENCE.test(text)) {
-      open.fence = !open.fence;
-      return;
-    }
-    if (!open.fence && /<\/details>/i.test(text)) {
+    if (state === 'fence') return;
+    if (state === 'prose' && /<\/details>/i.test(text)) {
       if (open.count > INLINE_WHOLE_LINES) {
         problems.push({
           code: 'inline-too-long',
@@ -506,7 +499,28 @@ function lintDetailsBlocks(body: string, problems: LintProblem[]): void {
       open = undefined;
       return;
     }
-    if (open.fence || (text.trim() !== '' && !/<\/?summary\b/i.test(text))) open.count += 1;
+    if (state === 'code' || (text.trim() !== '' && !/<\/?summary\b/i.test(text))) open.count += 1;
+  });
+}
+
+/**
+ * Per line: `fence` for an opening or closing code fence, `code` inside fenced code, `prose`
+ * otherwise. A fence closes only on the same character, at least as long, alone on its line.
+ */
+export function fencedLines(lines: readonly string[]): ('prose' | 'fence' | 'code')[] {
+  let fence: string | undefined;
+  return lines.map((text) => {
+    const match = FENCE.exec(text)?.[1];
+    if (fence === undefined) {
+      if (match === undefined) return 'prose';
+      fence = match;
+      return 'fence';
+    }
+    if (match?.startsWith(fence) === true && text.trim() === match) {
+      fence = undefined;
+      return 'fence';
+    }
+    return 'code';
   });
 }
 
@@ -639,8 +653,10 @@ export function lintIssue(input: { kind: IssueKind; title: string; body: string 
     }
   }
 
-  // Line-level checks, outside fenced code and inline code.
+  // Line-level checks, outside fenced code and inline code. The `<details>`/`<summary>` header
+  // of an inlined attachment holds the file name, which the author cannot reword.
   for (const { text, line } of parsed.prose) {
+    if (/<(?:details|summary)\b/i.test(text)) continue;
     if (text.includes('<!--')) {
       problems.push({
         code: 'template-comment',

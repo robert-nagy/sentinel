@@ -141,6 +141,22 @@ describe('lintIssue details', () => {
     expect(codes(lint('Export invoices', block(201)))).toEqual(['inline-too-long']);
   });
 
+  it('accepts a generated block for a vaguely named file, and measures nested fences', async () => {
+    const md = `# Notes\n\n\`\`\`sh\nnpm test\n\`\`\`\n${Array.from({ length: 250 }, (_, i) => `l${String(i)}`).join('\n')}\n`;
+    const plan = await planAttachment(
+      {
+        path: 'quick-start.md',
+        bytes: md.length,
+        read: () => Promise.resolve(new TextEncoder().encode(md)),
+      },
+      { trackerUploads: false },
+    );
+    const section = renderAttachmentsSection([plan]).replace('<what it shows>', 'setup notes');
+    expect(lint('Export invoices', `${body}\n\n${section}`).problems).toEqual([]);
+    const untrimmed = `${body}\n\n## Attachments\n\n- \`a.md\`: notes (inline, below)\n\n<details><summary>a.md</summary>\n\n\`\`\`\`\n\`\`\`\n${Array.from({ length: 205 }, () => 'x').join('\n')}\n\`\`\`\n\`\`\`\`\n\n</details>`;
+    expect(codes(lint('Export invoices', untrimmed))).toEqual(['inline-too-long']);
+  });
+
   it('requires an AC list and numbered criteria', () => {
     const none = body.replace(
       /## Acceptance criteria[\s\S]*?(?=## Out of scope)/,

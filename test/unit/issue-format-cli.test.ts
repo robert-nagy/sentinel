@@ -188,6 +188,24 @@ describe('local tracker update and attach', () => {
     expect(c.exitCode()).toBe(ExitCode.Failure);
   });
 
+  it('refuses to attach a file with a secret, and encodes the link', async () => {
+    await fixture('attachments/deploy.env');
+    await writeFile(join(repo, 'a (1)#.txt'), 'plain text\n');
+    const c = cli();
+    await c.run('issue', 'create', '--title', 'A thing');
+    await c.run('issue', 'attach', '1', 'deploy.env');
+    expect(c.err()).toContain('line 3 looks like a secret');
+    expect(c.err()).not.toContain('AKIA');
+    await c.run('issue', 'attach', '1', 'a (1)#.txt');
+    await c.run('issue', 'get', '1', '--json');
+    expect((c.json() as { body: string }).body).toContain(
+      '[`a (1)#.txt`](attachments/1/a%20%281%29%23.txt)',
+    );
+    await c.run('issue', 'update', '1', '--body-file', 'missing.md');
+    expect(c.err()).toContain('body file not found: missing.md');
+    expect(c.exitCode()).toBe(ExitCode.Failure);
+  });
+
   it('refuses an empty update and a missing file', async () => {
     const c = cli();
     await c.run('issue', 'create', '--title', 'A thing');
@@ -228,6 +246,11 @@ describe('linkAttachment', () => {
     expect(linkAttachment(withList, 'a.png', 'x/a.png')).toBe(
       '## Attachments\n\n- `log.txt`: trace (inline, below)\n- [`a.png`](x/a.png) (uploaded)\n\n<details>\n</details>\n\n## Next',
     );
+    expect(
+      linkAttachment('```\n## Attachments\n```', 'a.png', 'x/a.png').endsWith(
+        '```\n\n## Attachments\n\n- [`a.png`](x/a.png) (uploaded)',
+      ),
+    ).toBe(true);
     expect(linkAttachment('## Attachments\n', 'a.png', 'x/a.png')).toBe(
       '## Attachments\n\n- [`a.png`](x/a.png) (uploaded)\n',
     );

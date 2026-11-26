@@ -45,9 +45,11 @@ You need the tracker before the interview: refining starts with `get`, and the a
 
 ## Write and lint the draft
 
+Titles and other text come from the user or from an existing issue, so never put them inside double quotes in a shell command: the shell would run any `` ` `` or `$(…)` in them. Pass them in single quotes, writing each `'` inside as `'\''`.
+
 1. Write the title by the kind's rule: an imperative verb and an object for a feature (`Export invoices as CSV`), `<component>: <symptom>` for a bug (`checkout: total ignores discount code`), at most 72 characters.
 2. Write the body to `.sentinel/state/intake-<slug>.md` (that folder is git-ignored), with the `##` headings from the template, in order, and without the template's hint comments.
-3. Run `node scripts/sentinel.mjs issue lint .sentinel/state/intake-<slug>.md --kind <kind> --title "<title>" --json`.
+3. Run `node scripts/sentinel.mjs issue lint .sentinel/state/intake-<slug>.md --kind <kind> --title '<title>' --json`.
 4. Act on the exit code:
    - `0`: the draft may be filed. Continue.
    - `2`: fix every entry in `problems` and lint again. Ask the user only when a fix needs a fact you do not have. Never delete a criterion, a step or an attachment just to make lint pass.
@@ -58,7 +60,7 @@ You need the tracker before the interview: refining starts with `get`, and the a
 Skip this when refining an existing issue.
 
 1. Unless the tracker is `local`, `list` the open and closed issues whose titles share words with yours, and write them to `.sentinel/state/intake-candidates.json` as `[{"id": "…", "title": "…"}]`.
-2. Run `node scripts/sentinel.mjs issue duplicates "<title>" --candidates .sentinel/state/intake-candidates.json --json` (leave out `--candidates` for the local tracker, which supplies its own).
+2. Run `node scripts/sentinel.mjs issue duplicates '<title>' --candidates .sentinel/state/intake-candidates.json --json` (leave out `--candidates` for the local tracker, which supplies its own).
 3. If it returns matches, show them to the user and ask whether to file anyway, to refine the existing issue instead (then continue as a refine with that id), or to stop.
 
 ## Propose a priority

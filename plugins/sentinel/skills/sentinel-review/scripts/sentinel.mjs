@@ -25307,20 +25307,13 @@ function parseBody(body) {
   const preamble = [];
   const sections2 = [];
   const prose = [];
-  let fence;
-  body.split("\n").forEach((text2, index) => {
+  const lines = body.split("\n");
+  const fenced = fencedLines(lines);
+  lines.forEach((text2, index) => {
     const line = index + 1;
-    const fenceMatch = FENCE2.exec(text2);
-    if (fence === void 0 && fenceMatch?.[1] !== void 0) {
-      fence = fenceMatch[1];
-    } else if (fence !== void 0 && fenceMatch?.[1] !== void 0) {
-      const closing = fenceMatch[1];
-      if (closing.startsWith(fence) && text2.trim() === closing) {
-        fence = void 0;
-      }
-    } else if (fence === void 0) {
+    if (fenced[index] === "prose") {
       const heading = /^##[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(text2);
-      if (heading?.[1] !== void 0 && !text2.startsWith("###")) {
+      if (heading?.[1] !== void 0) {
         sections2.push({ heading: heading[1].trim(), line, lines: [] });
         return;
       }
@@ -25459,16 +25452,16 @@ function lintAcceptanceCriteria(section2, problems) {
 }
 function lintDetailsBlocks(body, problems) {
   let open2;
-  body.split("\n").forEach((text2, index) => {
+  const lines = body.split("\n");
+  const fenced = fencedLines(lines);
+  lines.forEach((text2, index) => {
+    const state = fenced[index];
     if (open2 === void 0) {
-      if (/<details\b/i.test(text2)) open2 = { line: index + 1, count: 0, fence: false };
+      if (state === "prose" && /<details\b/i.test(text2)) open2 = { line: index + 1, count: 0 };
       return;
     }
-    if (FENCE2.test(text2)) {
-      open2.fence = !open2.fence;
-      return;
-    }
-    if (!open2.fence && /<\/details>/i.test(text2)) {
+    if (state === "fence") return;
+    if (state === "prose" && /<\/details>/i.test(text2)) {
       if (open2.count > INLINE_WHOLE_LINES) {
         problems.push({
           code: "inline-too-long",
@@ -25480,7 +25473,23 @@ function lintDetailsBlocks(body, problems) {
       open2 = void 0;
       return;
     }
-    if (open2.fence || text2.trim() !== "" && !/<\/?summary\b/i.test(text2)) open2.count += 1;
+    if (state === "code" || text2.trim() !== "" && !/<\/?summary\b/i.test(text2)) open2.count += 1;
+  });
+}
+function fencedLines(lines) {
+  let fence;
+  return lines.map((text2) => {
+    const match = FENCE2.exec(text2)?.[1];
+    if (fence === void 0) {
+      if (match === void 0) return "prose";
+      fence = match;
+      return "fence";
+    }
+    if (match?.startsWith(fence) === true && text2.trim() === match) {
+      fence = void 0;
+      return "fence";
+    }
+    return "code";
   });
 }
 function splitTitle(text2) {
@@ -25595,6 +25604,7 @@ function lintIssue(input2) {
     }
   }
   for (const { text: text2, line } of parsed.prose) {
+    if (/<(?:details|summary)\b/i.test(text2)) continue;
     if (text2.includes("<!--")) {
       problems.push({
         code: "template-comment",
@@ -27384,7 +27394,7 @@ import { readFile as readFile6, stat as stat4 } from "fs/promises";
 import { isAbsolute as isAbsolute3, join as join9, resolve as resolve3 } from "path";
 
 // src/core/local-tracker.ts
-import { copyFile as copyFile2, mkdir as mkdir5, readdir as readdir2, readFile as readFile5, stat as stat3, writeFile as writeFile5 } from "fs/promises";
+import { copyFile as copyFile2, mkdir as mkdir5, readdir as readdir2, readFile as readFile5, stat as stat3, unlink, writeFile as writeFile5 } from "fs/promises";
 import { constants as constants2 } from "fs";
 import { basename, join as join8, relative as relative3 } from "path";
 var FILE_PATTERN = /^(\d{1,9})(?:-[a-z0-9-]*)?\.md$/;
@@ -27596,8 +27606,8 @@ var LocalTracker = class {
   async attach(id, source, options = {}) {
     const issue2 = await this.get(id);
     const name = basename(source);
-    if (name === "" || name === "." || name === "..") {
-      throw new TrackerError(`cannot attach "${source}": not a file name`);
+    if (name === "" || name === "." || name === ".." || /[`\n\r]/.test(name)) {
+      throw new TrackerError(`cannot attach "${source}": rename the file first`);
     }
     let size;
     try {
@@ -27615,6 +27625,15 @@ var LocalTracker = class {
         `cannot attach "${name}": ${String(size)} bytes is over the ${String(options.maxBytes)}-byte limit`
       );
     }
+    const bytes = new Uint8Array(await readFile5(source));
+    if (looksLikeText(bytes)) {
+      const secrets = findSecrets(new TextDecoder("utf-8").decode(bytes));
+      if (secrets.length > 0) {
+        throw new TrackerError(
+          `cannot attach "${name}": line ${secrets.map((f) => String(f.line)).join(", ")} looks like a secret; redact it first`
+        );
+      }
+    }
     const dir = this.attachmentsDir(issue2.id);
     await mkdir5(dir, { recursive: true });
     const target = join8(dir, name);
@@ -27627,20 +27646,27 @@ var LocalTracker = class {
       throw error63;
     }
     const link = relative3(this.dir, target).split("\\").join("/");
-    const updated = await this.change(issue2.id, (current) => ({
-      ...current,
-      body: linkAttachment(current.body, name, link)
-    }));
-    return { issue: updated, path: target, link };
+    try {
+      const updated = await this.change(issue2.id, (current) => ({
+        ...current,
+        body: linkAttachment(current.body, name, link)
+      }));
+      return { issue: updated, path: target, link };
+    } catch (error63) {
+      await unlink(target).catch(() => void 0);
+      throw error63;
+    }
   }
 };
 var ATTACHMENTS_DIR = "attachments";
 function linkAttachment(body, name, link) {
-  const linked = `[\`${name}\`](${link.split(" ").join("%20")})`;
+  const linked = `[\`${name}\`](${link.split("/").map((part) => encodeURIComponent(part).replace(/\(/g, "%28").replace(/\)/g, "%29")).join("/")})`;
   const lines = body === "" ? [] : body.split("\n");
-  const heading = lines.findIndex((l) => /^##\s+Attachments\s*$/i.test(l));
+  const fenced = fencedLines(lines);
+  const isHeading = (i, pattern) => fenced[i] === "prose" && pattern.test(lines[i] ?? "");
+  const heading = lines.findIndex((_, i) => isHeading(i, /^##\s+Attachments\s*$/i));
   if (heading !== -1) {
-    let end = lines.findIndex((l, i) => i > heading && /^##\s/.test(l));
+    let end = lines.findIndex((_, i) => i > heading && isHeading(i, /^##\s/));
     if (end === -1) end = lines.length;
     const plain2 = `\`${name}\``;
     for (let i = heading + 1; i < end; i++) {
@@ -27765,7 +27791,9 @@ function printIssue(deps, issue2, json2) {
 }
 async function readBody(deps, options) {
   if (options.bodyFile !== void 0) {
-    return readFile6(resolve3(deps.cwd, options.bodyFile), "utf8");
+    const text2 = await deps.files.readText(resolve3(deps.cwd, options.bodyFile));
+    if (text2 === void 0) throw new TrackerError(`body file not found: ${options.bodyFile}`);
+    return text2;
   }
   return options.body;
 }
