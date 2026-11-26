@@ -1,7 +1,7 @@
 # sentinel — Implementation Plan
 
 > **Status:** v4 — v2 decisions locked after the design-grilling session (2026-11-02); issue trackers revised on 2026-11-04 to use the host agent's own tooling (ADR-0005); distribution revised on 2026-11-09 from an npm package to a plugin marketplace (ADR-0006). See §11 for the full decision log.
-> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5a and M6a are done; M5b, M6b, M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
+> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5 and M6 are done; M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
 > Source: _Refined Requirements Specification: `sentinel`_ (PDLC/SDLC platform spec + master generator prompt).
 > Repo at planning time: empty (`README.md` = `# sentinel`), remote `github.com/robert-nagy/sentinel`, branch `main`.
 
@@ -79,7 +79,7 @@ sentinel/
 │   ├── .claude-plugin/plugin.json       # hand-written
 │   ├── plugin.json                      # Agent Plugins 1.0 (generated)
 │   ├── skills/
-│   │   ├── sentinel-setup/    SKILL.md · references/question-bank.md · scripts/sentinel.mjs
+│   │   ├── sentinel-setup/    SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-prd/      SKILL.md · references/rubric.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc/     SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc-auto/ SKILL.md · scripts/sentinel.mjs
@@ -263,7 +263,7 @@ All skills follow the Agent Skills spec: a folder with `SKILL.md`; `name` must m
 
 | Skill                | Phase | Behaviour                                                                                                                                                                                                                                                                          | `disable-model-invocation`       |
 | -------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → scaffold folders + GitHub workflows → README + diagrams → bootstrap branch + PR → hand off to babysit.                                                                            | true                             |
+| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → GitHub workflows → README + diagrams → `AGENTS.md` guardrails → bootstrap branch + PR → hand off to babysit.                                                                      | true                             |
 | `sentinel-prd`       | 1     | Draft the PRD from the template using `.sentinel/domain.json` and the issue → self-score with the rubric → `prd validate` → refine (≤3) → accept or escalate.                                                                                                                      | false (the agent may suggest it) |
 | `sentinel-mine`      | 1     | `gh search repos` for comparable high-star projects → extract feature/API surfaces → gap list in `docs/feature-gaps.md` → **stop for user approval** → `issue resolve` → `list` candidates + `issue duplicates` to skip duplicates → `create` the approved issues with `labelMap`. | true                             |
 | `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                 | true                             |
@@ -436,7 +436,7 @@ _M5a (core, no skill, can start now): the checklist items below. M5b (skill): `s
 - [x] Empty-state detection; stack proposal flow (M5a: `sentinel setup --questions --json` reports `stack.proposal`; `--stack <ecosystem>` confirms it).
 - [x] Stack-parameterised GitHub workflow templates (4 tiers as separate jobs; load tests on `workflow_dispatch`/schedule only) (M5a: `setup --workflows`).
 - [x] README renderer with Mermaid (M5a: `setup --readme`).
-- [ ] Bootstrap PR via branch-namer + code host (M5b: the skill drives `branch name`, `worktree add` and `pr create`).
+- [x] Bootstrap PR via branch-namer + code host (M5b: the `sentinel-setup` skill drives `branch name`, `worktree add` and `pr create`).
 
 ### M6 — Babysitter & mining (≈3–4 days core + 1 day skills)
 

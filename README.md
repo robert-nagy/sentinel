@@ -12,8 +12,8 @@ pass a quality gate, then issue → isolated worktree → RFC → test-driven im
 request.
 
 > **Status: early development.** Versions 0.1.0 to 0.3.0 are tagged, but sentinel is not yet listed
-> in any tool's public marketplace; the plugin installs from this repository and six skills ship
-> today. One more is planned and marked _coming soon_ below. See the
+> in any tool's public marketplace; the plugin installs from this repository and all seven skills
+> ship today. See the
 > [implementation plan](docs/PLAN.md) for the roadmap.
 
 ## How it works
@@ -66,15 +66,15 @@ support them.
    `sentinel-sdlc-auto` does the same without the approval stop, for runs you explicitly want
    unattended.
 
-| Skill                | Status      | What it does                                                           |
-| -------------------- | ----------- | ---------------------------------------------------------------------- |
-| `sentinel-doctor`    | shipped     | Checks that sentinel can run here                                      |
-| `sentinel-prd`       | shipped     | Drafts and validates a PRD                                             |
-| `sentinel-sdlc`      | shipped     | Issue to pull request, with an RFC approval stop                       |
-| `sentinel-sdlc-auto` | shipped     | Same, without the approval stop                                        |
-| `sentinel-setup`     | coming soon | Bootstraps a repository: domain questions, test tiers, CI workflows    |
-| `sentinel-babysit`   | shipped     | Watches a pull request's CI and fixes failures until green             |
-| `sentinel-mine`      | shipped     | Finds feature gaps in comparable projects and files issues on approval |
+| Skill                | Status  | What it does                                                           |
+| -------------------- | ------- | ---------------------------------------------------------------------- |
+| `sentinel-doctor`    | shipped | Checks that sentinel can run here                                      |
+| `sentinel-prd`       | shipped | Drafts and validates a PRD                                             |
+| `sentinel-sdlc`      | shipped | Issue to pull request, with an RFC approval stop                       |
+| `sentinel-sdlc-auto` | shipped | Same, without the approval stop                                        |
+| `sentinel-setup`     | shipped | Bootstraps a repository: domain questions, test tiers, CI workflows    |
+| `sentinel-babysit`   | shipped | Watches a pull request's CI and fixes failures until green             |
+| `sentinel-mine`      | shipped | Finds feature gaps in comparable projects and files issues on approval |
 
 `sentinel-sdlc` and `sentinel-sdlc-auto` hand the pull request to the `sentinel-babysit` loop: the
 agent fixes real CI failures and pushes until the checks are green, or sentinel gives up after
