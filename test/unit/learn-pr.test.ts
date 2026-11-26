@@ -231,8 +231,10 @@ describe('prChanges', () => {
     const reader = fakeReader({
       authors: { 57: {}, 36: { login: 'app/github-actions', isBot: true } },
     });
-    await expect(prChanges(reader, newStore(), [36])).rejects.toMatchObject({ kind: 'forbidden' });
-    expect(reader.calls).not.toContain('commits 36');
+    await expect(prChanges(reader, newStore(), [57, 36])).rejects.toMatchObject({
+      kind: 'forbidden',
+    });
+    expect(reader.calls.filter((c) => c.startsWith('commits'))).toEqual([]);
   });
 
   it('reports a PR that was learned from before', async () => {

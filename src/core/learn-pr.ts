@@ -172,9 +172,13 @@ export async function prChanges(
   }
   const login = await reader.currentLogin();
   const learned = await store.learnedPrs();
+  const unique = [...new Set(prs)];
+  // Check every PR before reading anything, so one foreign PR stops the whole call.
+  const owned: PullRequestAuthor[] = [];
+  for (const pr of unique) owned.push(await assertOwnPullRequest(reader, pr, login));
   const results: PrChanges[] = [];
-  for (const pr of [...new Set(prs)]) {
-    const author = await assertOwnPullRequest(reader, pr, login);
+  for (const author of owned) {
+    const pr = author.number;
     const [commits, comments] = await Promise.all([
       reader.listPullRequestCommits(pr),
       reader.listPullRequestComments(pr),
