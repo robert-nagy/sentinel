@@ -1,5 +1,12 @@
-import { copyFile, mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
-import { constants } from 'node:fs';
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  unlink,
+  writeFile,
+  type FileHandle,
+} from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
 import { slugify } from './branch-namer.js';
 import { fencedLines, findSecrets, looksLikeText } from './issue-format.js';
@@ -330,23 +337,29 @@ export class LocalTracker {
     if (name === '' || name === '.' || name === '..' || /[`\n\r]/.test(name)) {
       throw new TrackerError(`cannot attach "${source}": rename the file first`);
     }
-    let size: number;
+    // One handle for the size check and the read, so the file cannot change in between.
+    let bytes: Uint8Array;
+    let handle: FileHandle;
     try {
-      const info = await stat(source);
-      if (!info.isFile()) throw new TrackerError(`cannot attach "${source}": not a file`);
-      size = info.size;
+      handle = await open(source, 'r');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new TrackerError(`cannot attach "${source}": file not found`, 'not-found');
       }
       throw error;
     }
-    if (options.maxBytes !== undefined && size > options.maxBytes) {
-      throw new TrackerError(
-        `cannot attach "${name}": ${String(size)} bytes is over the ${String(options.maxBytes)}-byte limit`,
-      );
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new TrackerError(`cannot attach "${source}": not a file`);
+      if (options.maxBytes !== undefined && info.size > options.maxBytes) {
+        throw new TrackerError(
+          `cannot attach "${name}": ${String(info.size)} bytes is over the ${String(options.maxBytes)}-byte limit`,
+        );
+      }
+      bytes = new Uint8Array(await handle.readFile());
+    } finally {
+      await handle.close();
     }
-    const bytes = new Uint8Array(await readFile(source));
     if (looksLikeText(bytes)) {
       const secrets = findSecrets(new TextDecoder('utf-8').decode(bytes));
       if (secrets.length > 0) {
@@ -359,7 +372,8 @@ export class LocalTracker {
     await mkdir(dir, { recursive: true });
     const target = join(dir, name);
     try {
-      await copyFile(source, target, constants.COPYFILE_EXCL);
+      // Write the bytes that were checked, not a fresh copy of the source.
+      await writeFile(target, bytes, { flag: 'wx' });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
         throw new TrackerError(`#${String(issue.id)} already has an attachment named ${name}`);

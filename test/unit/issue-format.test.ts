@@ -17,6 +17,7 @@ import {
   renderTemplate,
   sizeCapFor,
   splitTitle,
+  stripComments,
   type AttachmentPlan,
   type IssueKind,
 } from '../../src/core/issue-format.js';
@@ -175,6 +176,14 @@ describe('lintIssue details', () => {
 
   it('reports a secret in the title', () => {
     expect(codes(lint('Rotate AKIAIOSFODNN7EXAMPLE now'))).toContain('secret');
+  });
+});
+
+describe('stripComments', () => {
+  it('drops closed and unclosed comments, leaving no opener behind', () => {
+    expect(stripComments('a<!-- x -->b<!-- y')).toBe('ab');
+    expect(stripComments('<!<!-- -->-- z')).not.toMatch(/<!--.*-->/);
+    expect(stripComments('plain')).toBe('plain');
   });
 });
 

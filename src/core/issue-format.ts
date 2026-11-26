@@ -329,14 +329,25 @@ function parseBody(body: string): ParsedBody {
   return { preamble, sections, prose };
 }
 
-const HTML_COMMENT = /<!--[\s\S]*?-->/g;
+/**
+ * The text with HTML comments left out; an unclosed comment runs to the end. A scanner rather
+ * than a regex replace, so no comment opener can survive or be formed by a removal.
+ */
+export function stripComments(text: string): string {
+  let out = '';
+  let from = 0;
+  for (;;) {
+    const start = text.indexOf('<!--', from);
+    if (start === -1) return out + text.slice(from);
+    out += text.slice(from, start);
+    const end = text.indexOf('-->', start + 4);
+    if (end === -1) return out;
+    from = end + 3;
+  }
+}
 
 function contentOf(section: ParsedSection): string {
-  return section.lines
-    .map((l) => l.text)
-    .join('\n')
-    .replace(HTML_COMMENT, '')
-    .trim();
+  return stripComments(section.lines.map((l) => l.text).join('\n')).trim();
 }
 
 /** Items of a Markdown list: a `-`, `*` or `1.` line plus its indented continuation lines. */
@@ -541,7 +552,7 @@ export function lintIssue(input: { kind: IssueKind; title: string; body: string 
   const definition = ISSUE_SECTIONS[kind];
   const parsed = parseBody(body);
 
-  if (parsed.preamble.some((l) => l.text.replace(HTML_COMMENT, '').trim() !== '')) {
+  if (parsed.preamble.some((l) => stripComments(l.text).trim() !== '')) {
     problems.push({
       code: 'content-before-sections',
       line: parsed.preamble.find((l) => l.text.trim() !== '')?.line ?? 1,
@@ -664,7 +675,7 @@ export function lintIssue(input: { kind: IssueKind; title: string; body: string 
         message: 'Remove the template hint comment.',
       });
     }
-    const withoutComments = text.replace(HTML_COMMENT, '');
+    const withoutComments = stripComments(text);
     for (const match of withoutComments.matchAll(/<\/?([a-z][a-z0-9 _-]*)>|\bN\/A\b/gi)) {
       const tag = match[1]?.toLowerCase();
       if (tag !== undefined && HTML_TAGS.has(tag)) continue;

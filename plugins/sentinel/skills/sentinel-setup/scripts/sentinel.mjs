@@ -25324,9 +25324,20 @@ function parseBody(body) {
   });
   return { preamble, sections: sections2, prose };
 }
-var HTML_COMMENT = /<!--[\s\S]*?-->/g;
+function stripComments(text2) {
+  let out = "";
+  let from = 0;
+  for (; ; ) {
+    const start = text2.indexOf("<!--", from);
+    if (start === -1) return out + text2.slice(from);
+    out += text2.slice(from, start);
+    const end = text2.indexOf("-->", start + 4);
+    if (end === -1) return out;
+    from = end + 3;
+  }
+}
 function contentOf(section2) {
-  return section2.lines.map((l) => l.text).join("\n").replace(HTML_COMMENT, "").trim();
+  return stripComments(section2.lines.map((l) => l.text).join("\n")).trim();
 }
 function listItems(section2) {
   const items = [];
@@ -25451,29 +25462,29 @@ function lintAcceptanceCriteria(section2, problems) {
   });
 }
 function lintDetailsBlocks(body, problems) {
-  let open2;
+  let open3;
   const lines = body.split("\n");
   const fenced = fencedLines(lines);
   lines.forEach((text2, index) => {
     const state = fenced[index];
-    if (open2 === void 0) {
-      if (state === "prose" && /<details\b/i.test(text2)) open2 = { line: index + 1, count: 0 };
+    if (open3 === void 0) {
+      if (state === "prose" && /<details\b/i.test(text2)) open3 = { line: index + 1, count: 0 };
       return;
     }
     if (state === "fence") return;
     if (state === "prose" && /<\/details>/i.test(text2)) {
-      if (open2.count > INLINE_WHOLE_LINES) {
+      if (open3.count > INLINE_WHOLE_LINES) {
         problems.push({
           code: "inline-too-long",
           section: "attachments",
-          line: open2.line,
-          message: `An inlined attachment has ${String(open2.count)} lines; keep at most ${String(INLINE_WHOLE_LINES)} (let \`sentinel issue attachments\` trim it).`
+          line: open3.line,
+          message: `An inlined attachment has ${String(open3.count)} lines; keep at most ${String(INLINE_WHOLE_LINES)} (let \`sentinel issue attachments\` trim it).`
         });
       }
-      open2 = void 0;
+      open3 = void 0;
       return;
     }
-    if (state === "code" || text2.trim() !== "" && !/<\/?summary\b/i.test(text2)) open2.count += 1;
+    if (state === "code" || text2.trim() !== "" && !/<\/?summary\b/i.test(text2)) open3.count += 1;
   });
 }
 function fencedLines(lines) {
@@ -25506,7 +25517,7 @@ function lintIssue(input2) {
   const problems = titleProblems(kind, title);
   const definition = ISSUE_SECTIONS[kind];
   const parsed = parseBody(body);
-  if (parsed.preamble.some((l) => l.text.replace(HTML_COMMENT, "").trim() !== "")) {
+  if (parsed.preamble.some((l) => stripComments(l.text).trim() !== "")) {
     problems.push({
       code: "content-before-sections",
       line: parsed.preamble.find((l) => l.text.trim() !== "")?.line ?? 1,
@@ -25612,7 +25623,7 @@ function lintIssue(input2) {
         message: "Remove the template hint comment."
       });
     }
-    const withoutComments = text2.replace(HTML_COMMENT, "");
+    const withoutComments = stripComments(text2);
     for (const match of withoutComments.matchAll(/<\/?([a-z][a-z0-9 _-]*)>|\bN\/A\b/gi)) {
       const tag = match[1]?.toLowerCase();
       if (tag !== void 0 && HTML_TAGS.has(tag)) continue;
@@ -27390,12 +27401,18 @@ function registerGuardrails(program2, deps) {
 }
 
 // src/cli/issue.ts
-import { readFile as readFile6, stat as stat4 } from "fs/promises";
+import { readFile as readFile6, stat as stat3 } from "fs/promises";
 import { isAbsolute as isAbsolute3, join as join9, resolve as resolve3 } from "path";
 
 // src/core/local-tracker.ts
-import { copyFile as copyFile2, mkdir as mkdir5, readdir as readdir2, readFile as readFile5, stat as stat3, unlink, writeFile as writeFile5 } from "fs/promises";
-import { constants as constants2 } from "fs";
+import {
+  mkdir as mkdir5,
+  open as open2,
+  readdir as readdir2,
+  readFile as readFile5,
+  unlink,
+  writeFile as writeFile5
+} from "fs/promises";
 import { basename, join as join8, relative as relative3 } from "path";
 var FILE_PATTERN = /^(\d{1,9})(?:-[a-z0-9-]*)?\.md$/;
 var COMMENTS_HEADING = "## Comments";
@@ -27609,23 +27626,28 @@ var LocalTracker = class {
     if (name === "" || name === "." || name === ".." || /[`\n\r]/.test(name)) {
       throw new TrackerError(`cannot attach "${source}": rename the file first`);
     }
-    let size;
+    let bytes;
+    let handle;
     try {
-      const info = await stat3(source);
-      if (!info.isFile()) throw new TrackerError(`cannot attach "${source}": not a file`);
-      size = info.size;
+      handle = await open2(source, "r");
     } catch (error63) {
       if (error63.code === "ENOENT") {
         throw new TrackerError(`cannot attach "${source}": file not found`, "not-found");
       }
       throw error63;
     }
-    if (options.maxBytes !== void 0 && size > options.maxBytes) {
-      throw new TrackerError(
-        `cannot attach "${name}": ${String(size)} bytes is over the ${String(options.maxBytes)}-byte limit`
-      );
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new TrackerError(`cannot attach "${source}": not a file`);
+      if (options.maxBytes !== void 0 && info.size > options.maxBytes) {
+        throw new TrackerError(
+          `cannot attach "${name}": ${String(info.size)} bytes is over the ${String(options.maxBytes)}-byte limit`
+        );
+      }
+      bytes = new Uint8Array(await handle.readFile());
+    } finally {
+      await handle.close();
     }
-    const bytes = new Uint8Array(await readFile5(source));
     if (looksLikeText(bytes)) {
       const secrets = findSecrets(new TextDecoder("utf-8").decode(bytes));
       if (secrets.length > 0) {
@@ -27638,7 +27660,7 @@ var LocalTracker = class {
     await mkdir5(dir, { recursive: true });
     const target = join8(dir, name);
     try {
-      await copyFile2(source, target, constants2.COPYFILE_EXCL);
+      await writeFile5(target, bytes, { flag: "wx" });
     } catch (error63) {
       if (error63.code === "EEXIST") {
         throw new TrackerError(`#${String(issue2.id)} already has an attachment named ${name}`);
@@ -27878,8 +27900,8 @@ function registerIssue(program2, deps) {
         );
       } else {
         const { config: config2 } = await loadCliConfig(deps);
-        const open2 = await (await localTracker(deps, config2)).list({ status: "open" });
-        candidates = open2.map((i) => ({ id: String(i.id), title: i.title }));
+        const open3 = await (await localTracker(deps, config2)).list({ status: "open" });
+        candidates = open3.map((i) => ({ id: String(i.id), title: i.title }));
       }
       const ranked = rankDuplicates(title, candidates);
       deps.stdout(
@@ -27955,7 +27977,7 @@ ${renderTemplate2(kind)}`
           const path = resolve3(deps.cwd, file2);
           let size;
           try {
-            const info = await stat4(path);
+            const info = await stat3(path);
             if (!info.isFile()) throw new IssueFormatError(`not a file: ${file2}`);
             size = info.size;
           } catch (error63) {
@@ -28952,9 +28974,9 @@ async function askInTerminal2(known, deps) {
   const collected = {};
   const asked = /* @__PURE__ */ new Set();
   for (; ; ) {
-    const open2 = nextQuestions({ ...known, ...collected }).filter((q) => !asked.has(q.id));
-    if (open2.length === 0) break;
-    for (const question of open2) {
+    const open3 = nextQuestions({ ...known, ...collected }).filter((q) => !asked.has(q.id));
+    if (open3.length === 0) break;
+    for (const question of open3) {
       asked.add(question.id);
       const hint = question.hint === void 0 ? "" : ` (${question.hint})`;
       const reply = await ask(`${question.prompt}${hint}
