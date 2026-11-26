@@ -1,5 +1,12 @@
 # @robert-nagy/sentinel
 
+## 0.4.0
+
+### Minor Changes
+
+- 7aa4046: Add the `sentinel-babysit` and `sentinel-mine` skills. `sentinel-babysit` drives `sentinel babysit` until CI is green or sentinel gives up; `sentinel-mine` writes a feature-gap list and files only the gaps a human approves. `sentinel-sdlc` and `sentinel-sdlc-auto` now hand the pull request to the babysit loop instead of leaving CI to the user.
+- 0a0929c: Add the `sentinel-setup` skill (Phase 0). It asks the user the domain questions from `sentinel setup --questions`, feeds the answers back until the domain is complete, confirms the stack (proposing one for an empty repository), writes the test workflows, README and `AGENTS.md` guardrails, and opens a bootstrap pull request from a sentinel worktree. It never merges.
+
 ## 0.3.0
 
 ### Minor Changes
