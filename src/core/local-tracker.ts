@@ -1,6 +1,15 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import {
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  unlink,
+  writeFile,
+  type FileHandle,
+} from 'node:fs/promises';
+import { basename, join, relative } from 'node:path';
 import { slugify } from './branch-namer.js';
+import { fencedLines, findSecrets, looksLikeText } from './issue-format.js';
 import { TrackerError } from './issue-tracker.js';
 
 /**
@@ -252,7 +261,7 @@ export class LocalTracker {
     throw new TrackerError(`could not allocate a new issue id in ${this.dir}`);
   }
 
-  private async update(
+  private async change(
     id: string | number,
     change: (issue: LocalIssue) => Omit<LocalIssue, 'path'>,
   ): Promise<LocalIssue> {
@@ -265,7 +274,7 @@ export class LocalTracker {
   async comment(id: string | number, body: string): Promise<LocalIssue> {
     const text = body.trim();
     if (text === '') throw new TrackerError('a comment needs a body');
-    return this.update(id, (issue) => ({
+    return this.change(id, (issue) => ({
       ...issue,
       comments: [...issue.comments, { at: this.now().toISOString(), body: text }],
     }));
@@ -275,7 +284,7 @@ export class LocalTracker {
     id: string | number,
     change: { add?: readonly string[] | undefined; remove?: readonly string[] | undefined },
   ): Promise<LocalIssue> {
-    return this.update(id, (issue) => ({
+    return this.change(id, (issue) => ({
       ...issue,
       labels: [
         ...new Set(
@@ -288,6 +297,142 @@ export class LocalTracker {
   }
 
   setStatus(id: string | number, status: LocalIssueStatus): Promise<LocalIssue> {
-    return this.update(id, (issue) => ({ ...issue, status }));
+    return this.change(id, (issue) => ({ ...issue, status }));
   }
+
+  /** The `update` verb: replaces the title and/or the body; comments and labels stay. */
+  update(
+    id: string | number,
+    input: { title?: string | undefined; body?: string | undefined },
+  ): Promise<LocalIssue> {
+    const title = input.title?.trim();
+    if (title === undefined && input.body === undefined) {
+      throw new TrackerError('nothing to update: pass a new title, a new body or both');
+    }
+    if (title === '') throw new TrackerError('an issue needs a title');
+    return this.change(id, (issue) => ({
+      ...issue,
+      title: title ?? issue.title,
+      body: input.body === undefined ? issue.body : input.body.trim(),
+    }));
+  }
+
+  /** Directory that holds an issue's attachments. */
+  attachmentsDir(id: number): string {
+    return join(this.dir, ATTACHMENTS_DIR, String(id));
+  }
+
+  /**
+   * The `attach` verb: copies `source` to `<dir>/attachments/<id>/<name>` and links it from the
+   * issue's `## Attachments` section (replacing a bullet that names the file, or adding one).
+   * Refuses to overwrite an attachment of the same name.
+   */
+  async attach(
+    id: string | number,
+    source: string,
+    options: { maxBytes?: number | undefined } = {},
+  ): Promise<{ issue: LocalIssue; path: string; link: string }> {
+    const issue = await this.get(id);
+    const name = basename(source);
+    if (name === '' || name === '.' || name === '..' || /[`\n\r]/.test(name)) {
+      throw new TrackerError(`cannot attach "${source}": rename the file first`);
+    }
+    // One handle for the size check and the read, so the file cannot change in between.
+    let bytes: Uint8Array;
+    let handle: FileHandle;
+    try {
+      handle = await open(source, 'r');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new TrackerError(`cannot attach "${source}": file not found`, 'not-found');
+      }
+      throw error;
+    }
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new TrackerError(`cannot attach "${source}": not a file`);
+      if (options.maxBytes !== undefined && info.size > options.maxBytes) {
+        throw new TrackerError(
+          `cannot attach "${name}": ${String(info.size)} bytes is over the ${String(options.maxBytes)}-byte limit`,
+        );
+      }
+      bytes = new Uint8Array(await handle.readFile());
+    } finally {
+      await handle.close();
+    }
+    if (looksLikeText(bytes)) {
+      const secrets = findSecrets(new TextDecoder('utf-8').decode(bytes));
+      if (secrets.length > 0) {
+        throw new TrackerError(
+          `cannot attach "${name}": line ${secrets.map((f) => String(f.line)).join(', ')} looks like a secret; redact it first`,
+        );
+      }
+    }
+    const dir = this.attachmentsDir(issue.id);
+    await mkdir(dir, { recursive: true });
+    const target = join(dir, name);
+    try {
+      // Write the bytes that were checked, not a fresh copy of the source.
+      await writeFile(target, bytes, { flag: 'wx' });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new TrackerError(`#${String(issue.id)} already has an attachment named ${name}`);
+      }
+      throw error;
+    }
+    const link = relative(this.dir, target).split('\\').join('/');
+    try {
+      const updated = await this.change(issue.id, (current) => ({
+        ...current,
+        body: linkAttachment(current.body, name, link),
+      }));
+      return { issue: updated, path: target, link };
+    } catch (error) {
+      // Leave no orphan copy behind, so a retry is not refused as a duplicate.
+      await unlink(target).catch(() => undefined);
+      throw error;
+    }
+  }
+}
+
+const ATTACHMENTS_DIR = 'attachments';
+
+/** Links `name` from the `## Attachments` section, creating the section when it is missing. */
+export function linkAttachment(body: string, name: string, link: string): string {
+  const linked = `[\`${name}\`](${link
+    .split('/')
+    .map((part) => encodeURIComponent(part).replace(/\(/g, '%28').replace(/\)/g, '%29'))
+    .join('/')})`;
+  const lines = body === '' ? [] : body.split('\n');
+  const fenced = fencedLines(lines);
+  const isHeading = (i: number, pattern: RegExp) =>
+    fenced[i] === 'prose' && pattern.test(lines[i] ?? '');
+  const heading = lines.findIndex((_, i) => isHeading(i, /^##\s+Attachments\s*$/i));
+  if (heading !== -1) {
+    let end = lines.findIndex((_, i) => i > heading && isHeading(i, /^##\s/));
+    if (end === -1) end = lines.length;
+    const plain = `\`${name}\``;
+    for (let i = heading + 1; i < end; i++) {
+      const line = lines[i] ?? '';
+      if (/^\s*[-*]\s/.test(line) && line.includes(plain) && !line.includes(linked)) {
+        lines[i] = line.replace(plain, linked).replace('(pending upload)', '(uploaded)');
+        return lines.join('\n');
+      }
+    }
+    let insert = heading + 1;
+    while (insert < end && (lines[insert] === '' || /^\s*[-*]\s/.test(lines[insert] ?? ''))) {
+      insert += 1;
+    }
+    while (insert > heading + 1 && lines[insert - 1] === '') insert -= 1;
+    const bullet = `- ${linked} (uploaded)`;
+    lines.splice(insert, 0, ...(insert === heading + 1 ? ['', bullet] : [bullet]));
+    return lines.join('\n');
+  }
+  return [
+    ...lines,
+    ...(lines.length > 0 ? [''] : []),
+    '## Attachments',
+    '',
+    `- ${linked} (uploaded)`,
+  ].join('\n');
 }

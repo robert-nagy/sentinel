@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import type { SentinelConfig } from '../core/config-schema.js';
@@ -16,6 +16,19 @@ import {
   type TrackerHints,
 } from '../core/issue-tracker.js';
 import { rankDuplicates } from '../core/duplicates.js';
+import {
+  ISSUE_SECTIONS,
+  IssueFormatError,
+  TITLE_RULES,
+  lintIssue,
+  parseIssueKind,
+  planAttachment,
+  renderAttachmentsSection,
+  renderTemplate,
+  sizeCapFor,
+  splitTitle,
+  type AttachmentPlan,
+} from '../core/issue-format.js';
 import { LocalTracker, type LocalIssue, type LocalIssueStatus } from '../core/local-tracker.js';
 import { findRepoRoot } from '../core/repo.js';
 import { collect, loadCliConfig } from './branch.js';
@@ -138,7 +151,9 @@ async function readBody(
   options: { body?: string | undefined; bodyFile?: string | undefined },
 ): Promise<string | undefined> {
   if (options.bodyFile !== undefined) {
-    return readFile(resolve(deps.cwd, options.bodyFile), 'utf8');
+    const text = await deps.files.readText(resolve(deps.cwd, options.bodyFile));
+    if (text === undefined) throw new TrackerError(`body file not found: ${options.bodyFile}`);
+    return text;
   }
   return options.body;
 }
@@ -282,6 +297,130 @@ export function registerIssue(program: Command, deps: CliDeps): void {
       }),
     );
 
+  // The issue format (ADR-0007): works for every tracker.
+
+  issue
+    .command('template')
+    .description('Print the empty issue body for a kind, with the required and optional sections')
+    .argument('<kind>', 'feature or bug')
+    .option('--json', 'output machine-readable JSON')
+    .action(
+      guarded(deps, (rawKind: string, options: { json?: boolean }) => {
+        const kind = parseIssueKind(rawKind);
+        deps.stdout(
+          options.json === true
+            ? JSON.stringify(
+                {
+                  kind,
+                  title: TITLE_RULES[kind],
+                  sections: ISSUE_SECTIONS[kind],
+                  body: renderTemplate(kind),
+                },
+                null,
+                2,
+              )
+            : `<!-- Title: ${TITLE_RULES[kind]} -->\n\n${renderTemplate(kind)}`,
+        );
+        return Promise.resolve();
+      }),
+    );
+
+  issue
+    .command('lint')
+    .description(
+      'Check an issue draft against the format; exit 0 when it may be filed, 2 to fix it',
+    )
+    .argument('<file>', 'Markdown body; a first line "# <title>" is taken as the title')
+    .requiredOption('--kind <kind>', 'feature or bug')
+    .option('--title <title>', 'the issue title (instead of a "# <title>" first line)')
+    .option('--json', 'output machine-readable JSON')
+    .action(
+      guarded(
+        deps,
+        async (file: string, options: { kind: string; title?: string; json?: boolean }) => {
+          const kind = parseIssueKind(options.kind);
+          const text = await deps.files.readText(resolve(deps.cwd, file));
+          if (text === undefined) throw new IssueFormatError(`issue draft not found: ${file}`);
+          const split = splitTitle(text);
+          const fromFile = options.title === undefined;
+          const result = lintIssue({
+            kind,
+            title: (fromFile ? split.title : options.title) ?? '',
+            body: fromFile ? split.body : text,
+          });
+          if (options.json === true) {
+            deps.stdout(JSON.stringify(result, null, 2));
+          } else if (result.ok) {
+            deps.stdout(`ok: the ${kind} "${result.title}" may be filed`);
+          } else {
+            deps.stdout(
+              [
+                `${String(result.problems.length)} problem(s) to fix, then lint again:`,
+                ...result.problems.map(
+                  (p) =>
+                    `  - ${p.line === undefined ? '' : `line ${String(p.line)}: `}${p.message}`,
+                ),
+              ].join('\n'),
+            );
+          }
+          if (!result.ok) deps.setExitCode(ExitCode.Refine);
+        },
+      ),
+    );
+
+  issue
+    .command('attachments')
+    .description(
+      'Plan how each file goes on an issue (inline, attach, pending upload, blocked, rejected) and render the Attachments section',
+    )
+    .argument('<files...>', 'files to attach')
+    .option(
+      '--tracker-uploads',
+      'the tracker can take uploads from your tools (the local tracker can)',
+    )
+    .option('--json', 'output machine-readable JSON')
+    .action(
+      guarded(
+        deps,
+        async (files: string[], options: { trackerUploads?: boolean; json?: boolean }) => {
+          const plans: AttachmentPlan[] = [];
+          for (const file of files) {
+            const path = resolve(deps.cwd, file);
+            let size: number;
+            try {
+              const info = await stat(path);
+              if (!info.isFile()) throw new IssueFormatError(`not a file: ${file}`);
+              size = info.size;
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+                throw new IssueFormatError(`attachment not found: ${file}`);
+              }
+              throw error;
+            }
+            plans.push(
+              await planAttachment(
+                { path: file, bytes: size, read: () => readFile(path) },
+                { trackerUploads: options.trackerUploads === true },
+              ),
+            );
+          }
+          const ok = plans.every((p) => p.action !== 'blocked' && p.action !== 'rejected');
+          const section = renderAttachmentsSection(plans);
+          if (options.json === true) {
+            deps.stdout(JSON.stringify({ ok, files: plans, section }, null, 2));
+          } else {
+            deps.stdout(
+              [
+                ...plans.map((p) => `${p.action.padEnd(14)} ${p.path}  ${p.reason}`),
+                ...(section === '' ? [] : ['', section.trimEnd()]),
+              ].join('\n'),
+            );
+          }
+          if (!ok) deps.setExitCode(ExitCode.Refine);
+        },
+      ),
+    );
+
   // Local tracker commands.
 
   issue
@@ -395,6 +534,54 @@ export function registerIssue(program: Command, deps: CliDeps): void {
           await localTracker(deps, config)
         ).label(id, { add: options.add, remove: options.remove });
         deps.stdout(`#${String(updated.id)} labels: ${updated.labels.join(', ') || '(none)'}`);
+      }),
+    );
+
+  issue
+    .command('update')
+    .description("Replace a local issue's title or body (comments and labels stay)")
+    .argument('<id>', 'issue number')
+    .option('--title <title>', 'new title')
+    .option('--body <text>', 'new body (Markdown)')
+    .option('--body-file <path>', 'read the new body from a file')
+    .option('--json', 'output machine-readable JSON')
+    .action(
+      guarded(
+        deps,
+        async (
+          id: string,
+          options: { title?: string; body?: string; bodyFile?: string; json?: boolean },
+        ) => {
+          const { config } = await loadCliConfig(deps);
+          const updated = await (
+            await localTracker(deps, config)
+          ).update(id, { title: options.title, body: await readBody(deps, options) });
+          deps.stdout(
+            options.json === true
+              ? JSON.stringify(updated, null, 2)
+              : `updated #${String(updated.id)} ${updated.title}`,
+          );
+        },
+      ),
+    );
+
+  issue
+    .command('attach')
+    .description('Copy a file into <localDir>/attachments/<id>/ and link it from the local issue')
+    .argument('<id>', 'issue number')
+    .argument('<file>', 'file to attach')
+    .option('--json', 'output machine-readable JSON')
+    .action(
+      guarded(deps, async (id: string, file: string, options: { json?: boolean }) => {
+        const { config } = await loadCliConfig(deps);
+        const result = await (
+          await localTracker(deps, config)
+        ).attach(id, resolve(deps.cwd, file), { maxBytes: sizeCapFor(file) });
+        deps.stdout(
+          options.json === true
+            ? JSON.stringify({ id: result.issue.id, path: result.path, link: result.link }, null, 2)
+            : `attached ${result.link} to #${String(result.issue.id)}`,
+        );
       }),
     );
 

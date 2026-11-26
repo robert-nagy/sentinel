@@ -203,7 +203,8 @@ function isMeasurable(text: string): boolean {
   return MEASURE.test(text) || /\bp(?:50|90|95|99|99\.9)\b.*\d/i.test(text);
 }
 
-const AMBIGUOUS: readonly RegExp[] = [
+/** Vague wording that cannot be verified; shared by the PRD validator and `issue lint`. */
+export const AMBIGUOUS_TERMS: readonly RegExp[] = [
   /\b(?:fast|faster|quick|quickly|slow)\b/i,
   /\buser[- ]friendly\b/i,
   /\b(?:easy|easily|simple|intuitive|seamless|seamlessly|robust|flexible|modern)\b/i,
@@ -429,7 +430,7 @@ export function analyzePrd(markdown: string): PrdAnalysis {
   // Ambiguity lint (outside code fences)
   let ambiguous = 0;
   codeFreeLines.forEach((text, index) => {
-    for (const pattern of AMBIGUOUS) {
+    for (const pattern of AMBIGUOUS_TERMS) {
       const match = pattern.exec(text);
       if (match !== null) {
         ambiguous += 1;

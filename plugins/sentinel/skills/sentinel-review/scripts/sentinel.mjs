@@ -2218,10 +2218,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
         args = args.slice();
         let launchWithNode = false;
         const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
-        function findFile(baseDir, baseName) {
-          const localBin = path.resolve(baseDir, baseName);
+        function findFile(baseDir, baseName2) {
+          const localBin = path.resolve(baseDir, baseName2);
           if (fs.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path.extname(baseName))) return void 0;
+          if (sourceExt.includes(path.extname(baseName2))) return void 0;
           const foundExt = sourceExt.find(
             (ext) => fs.existsSync(`${localBin}${ext}`)
           );
@@ -3854,9 +3854,9 @@ function jsonDependencies(text2) {
   }
   return deps;
 }
-async function analyzeProject(root, relative3, names, ecosystem, files) {
+async function analyzeProject(root, relative4, names, ecosystem, files) {
   const spec = SPECS[ecosystem];
-  const dir = relative3 === "." ? root : join(root, ...relative3.split("/"));
+  const dir = relative4 === "." ? root : join(root, ...relative4.split("/"));
   const text2 = await readManifestText(dir, names, spec, files);
   const nameSet = new Set(names);
   let has;
@@ -3906,7 +3906,7 @@ async function analyzeProject(root, relative3, names, ecosystem, files) {
       install: detected === null ? t.install : null
     };
   }
-  return { path: relative3, ecosystem, language, packageManager, frameworks, tests };
+  return { path: relative4, ecosystem, language, packageManager, frameworks, tests };
 }
 async function analyze(root, files) {
   const rootNames = await files.listDir(root);
@@ -3919,23 +3919,23 @@ async function analyze(root, files) {
   while (queue.length > 0 && visited < MAX_DIRS) {
     const next = queue.shift();
     if (next === void 0) break;
-    const { relative: relative3, depth } = next;
+    const { relative: relative4, depth } = next;
     visited += 1;
-    const dir = relative3 === "." ? root : join(root, ...relative3.split("/"));
-    const names = relative3 === "." ? rootNames : await files.listDir(dir);
+    const dir = relative4 === "." ? root : join(root, ...relative4.split("/"));
+    const names = relative4 === "." ? rootNames : await files.listDir(dir);
     if (names === void 0) continue;
     for (const ecosystem of Object.keys(SPECS)) {
       const spec = SPECS[ecosystem];
       const marked = names.some(
         (name) => spec.manifests.some((m) => typeof m === "string" ? m === name : m.test(name))
       );
-      if (marked) projects.push(await analyzeProject(root, relative3, names, ecosystem, files));
+      if (marked) projects.push(await analyzeProject(root, relative4, names, ecosystem, files));
     }
     if (depth >= MAX_DEPTH) continue;
     for (const name of [...names].sort()) {
       if (IGNORED_DIRS.has(name) || name.startsWith(".")) continue;
       if (await files.listDir(join(dir, name)) === void 0) continue;
-      queue.push({ relative: relative3 === "." ? name : `${relative3}/${name}`, depth: depth + 1 });
+      queue.push({ relative: relative4 === "." ? name : `${relative4}/${name}`, depth: depth + 1 });
     }
   }
   return { empty: false, projects };
@@ -24703,6 +24703,1166 @@ function applyClaudePointer(existing) {
   return body === "" ? `${CLAUDE_POINTER}${eol}` : `${body}${eol}${eol}${CLAUDE_POINTER}${eol}`;
 }
 
+// src/core/prd-validator.ts
+var DIMENSIONS = [
+  "clarity",
+  "testability",
+  "completeness",
+  "security",
+  "feasibility"
+];
+var scoresSchema = external_exports.strictObject({
+  clarity: external_exports.number().min(0).max(100),
+  testability: external_exports.number().min(0).max(100),
+  completeness: external_exports.number().min(0).max(100),
+  security: external_exports.number().min(0).max(100),
+  feasibility: external_exports.number().min(0).max(100)
+});
+var ESCALATION_MESSAGE = "Confidence threshold not met. Recommended action: Escalate to a higher-reasoning model.";
+function parseHeading(line) {
+  let level = 0;
+  while (level < line.length && line[level] === "#") level += 1;
+  if (level === 0 || level > 6) return null;
+  const next = line[level];
+  if (next !== " " && next !== "	") return null;
+  let title = line.slice(level).trim();
+  while (title.endsWith("#")) title = title.slice(0, -1);
+  return { level, title: title.trim() };
+}
+var FENCE = /^\s*(```|~~~)/;
+function parseSections(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const sections2 = [];
+  const codeFreeLines = [];
+  let inFence = false;
+  let current;
+  const body = [];
+  const flush = () => {
+    if (current !== void 0) sections2.push({ ...current, body: [...body] });
+    body.length = 0;
+  };
+  lines.forEach((text2, index) => {
+    const line = index + 1;
+    if (FENCE.test(text2)) {
+      inFence = !inFence;
+      codeFreeLines.push("");
+      body.push({ text: text2, line });
+      return;
+    }
+    codeFreeLines.push(inFence ? "" : text2);
+    const heading = inFence ? null : parseHeading(text2);
+    if (heading !== null) {
+      flush();
+      current = { title: heading.title, level: heading.level, line, body: [] };
+      return;
+    }
+    body.push({ text: text2, line });
+  });
+  flush();
+  return { sections: sections2, codeFreeLines };
+}
+function sectionWithChildren(sections2, index) {
+  const start = sections2[index];
+  if (start === void 0) return [];
+  const lines = [...start.body];
+  for (let i = index + 1; i < sections2.length; i += 1) {
+    const next = sections2[i];
+    if (next === void 0 || next.level <= start.level) break;
+    lines.push({ text: `${"#".repeat(next.level)} ${next.title}`, line: next.line }, ...next.body);
+  }
+  return lines;
+}
+function findSection(sections2, pattern) {
+  const index = sections2.findIndex((s) => pattern.test(s.title));
+  return index === -1 ? void 0 : sectionWithChildren(sections2, index);
+}
+var plain = (lines) => lines.map((l) => l.text).join("\n");
+var wordCount = (text2) => text2.split(/\s+/).filter(Boolean).length;
+var FR_START = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)?[*_]*FR-(\d+)\b/i;
+var NFR_ITEM = /^(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+[*_]*NFR-\d+|[*_]*NFR-\d+)/i;
+var GWT_LINE = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?[*_]*(given|when|then|and|but)\b/i;
+var GWT_INLINE = /\bgiven\b.+\bwhen\b.+\bthen\b/is;
+function extractFrBlocks(body) {
+  const blocks = [];
+  let current;
+  for (const { text: text2, line } of body) {
+    const start = FR_START.exec(text2);
+    if (start !== null) {
+      current = { id: `FR-${start[1] ?? ""}`, line, lines: [text2] };
+      blocks.push(current);
+    } else if (current !== void 0) {
+      current.lines.push(text2);
+    }
+  }
+  return blocks;
+}
+function scenarioState(lines) {
+  const joined = lines.join("\n");
+  if (GWT_INLINE.test(joined.replace(/\n/g, " "))) return "complete";
+  const keywords = [];
+  for (const text2 of lines) {
+    const match = GWT_LINE.exec(text2);
+    if (match !== null) keywords.push((match[1] ?? "").toLowerCase());
+  }
+  if (keywords.length === 0) return "none";
+  const first = (word) => keywords.indexOf(word);
+  const given = first("given");
+  const when = first("when");
+  const then = first("then");
+  return given !== -1 && when > given && then > when ? "complete" : "incomplete";
+}
+var MEASURE = /\d[\d,.]*[ \t]?(?:ms|milliseconds?|s|sec|secs|seconds?|min|mins|minutes?|h|hrs?|hours?|days?|weeks?|%|percent|rps|req\/s|qps|tps|requests?|users?|kb|mb|gb|tb|kib|mib|gib|nines|\/s|\/sec|\/min)(?![a-z0-9])/i;
+function isMeasurable(text2) {
+  return MEASURE.test(text2) || /\bp(?:50|90|95|99|99\.9)\b.*\d/i.test(text2);
+}
+var AMBIGUOUS_TERMS = [
+  /\b(?:fast|faster|quick|quickly|slow)\b/i,
+  /\buser[- ]friendly\b/i,
+  /\b(?:easy|easily|simple|intuitive|seamless|seamlessly|robust|flexible|modern)\b/i,
+  /\b(?:efficient|efficiently|reasonable|reasonably|adequate|adequately|sufficient|sufficiently)\b/i,
+  /\b(?:appropriate|appropriately)\b/i,
+  /\betc\b\.?/i,
+  /\band so on\b/i,
+  /\b(?:as needed|if necessary|where possible|to be determined)\b/i,
+  /\b(?:tbd|tbc|todo)\b/i
+];
+var TIERS = [
+  ["unit", /\bunit\b/i],
+  ["integration", /\bintegration\b/i],
+  ["E2E", /\b(?:e2e|end[- ]to[- ]end)\b/i],
+  ["load", /\b(?:load|performance|stress)\b/i]
+];
+function analyzePrd(markdown) {
+  const { sections: sections2, codeFreeLines } = parseSections(markdown);
+  const issues = [];
+  const add = (issue2) => {
+    issues.push(issue2);
+  };
+  const context = findSection(sections2, /\b(context|problem|background|overview)\b/i);
+  if (context === void 0 || wordCount(plain(context)) < 15) {
+    add({
+      code: "missing-context",
+      message: 'Add a "Context & Problem Statement" section (at least a short paragraph).',
+      caps: { completeness: 55, clarity: 65 }
+    });
+  }
+  const functionalIndex = sections2.findIndex(
+    (s) => /\bfunctional requirements\b/i.test(s.title) && !/\bnon[- ]?functional\b/i.test(s.title)
+  );
+  const functionalBody = functionalIndex === -1 ? sections2.flatMap((s) => s.body) : sectionWithChildren(sections2, functionalIndex);
+  const frBlocks = extractFrBlocks(functionalBody);
+  if (frBlocks.length === 0) {
+    add({
+      code: "no-functional-requirements",
+      message: 'No functional requirements found. Number them FR-1, FR-2, \u2026 under "Functional Requirements".',
+      caps: { completeness: 40, testability: 50 }
+    });
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const block of frBlocks) {
+    const key = block.id.toUpperCase();
+    if (seen.has(key)) {
+      add({
+        code: "duplicate-requirement-id",
+        message: `${block.id} is defined more than once.`,
+        caps: { clarity: 70 },
+        line: block.line
+      });
+    }
+    seen.add(key);
+    const state = scenarioState(block.lines);
+    if (state === "none") {
+      add({
+        code: "fr-no-scenario",
+        message: `${block.id} has no Given/When/Then scenario.`,
+        caps: { testability: 60 },
+        line: block.line
+      });
+    } else if (state === "incomplete") {
+      add({
+        code: "fr-incomplete-scenario",
+        message: `${block.id} has a scenario that is missing Given, When or Then (in that order).`,
+        caps: { testability: 70 },
+        line: block.line
+      });
+    }
+  }
+  const nfrBody = findSection(sections2, /\bnon[- ]?functional\b|\bnfrs?\b|\bquality attributes\b/i);
+  let nfrCount = 0;
+  if (nfrBody === void 0) {
+    add({
+      code: "no-nfr",
+      message: 'Add a "Non-Functional Requirements" section with measurable targets.',
+      caps: { completeness: 60, testability: 70 }
+    });
+  } else {
+    const rows = [];
+    let inTable = false;
+    for (const entry of nfrBody) {
+      const trimmed = entry.text.trim();
+      if (trimmed === "") {
+        inTable = false;
+      } else if (trimmed.startsWith("|")) {
+        if (/^\|[\s:|-]+\|?$/.test(trimmed)) continue;
+        if (inTable) rows.push(entry);
+        inTable = true;
+      } else {
+        inTable = false;
+        if (NFR_ITEM.test(trimmed)) rows.push(entry);
+      }
+    }
+    nfrCount = rows.length;
+    if (rows.length === 0) {
+      add({
+        code: "no-nfr",
+        message: "The Non-Functional Requirements section lists no requirements.",
+        caps: { completeness: 60, testability: 70 }
+      });
+    }
+    for (const row of rows) {
+      if (!isMeasurable(row.text)) {
+        add({
+          code: "nfr-unmeasurable",
+          message: `Non-functional requirement is not measurable (give a number and a unit): "${row.text.trim().slice(0, 80)}"`,
+          caps: { testability: 65, feasibility: 70 },
+          line: row.line
+        });
+      }
+    }
+  }
+  const security = findSection(sections2, /\bsecurity\b/i);
+  if (security === void 0) {
+    add({
+      code: "no-security-section",
+      message: 'Add a "Security" section covering authentication, authorisation (RBAC) and input validation.',
+      caps: { security: 40 }
+    });
+  } else {
+    const text2 = plain(security);
+    if (!/\b(?:authenticat\w*|authn|login|sign[- ]?in|oauth\w*|oidc|sso|jwt|saml|mfa|api key\w*)\b/i.test(
+      text2
+    )) {
+      add({
+        code: "security-authentication",
+        message: "Security section does not cover authentication.",
+        caps: { security: 60 }
+      });
+    }
+    if (!/\b(?:authori[sz]\w*|authz|rbac|abac|permissions?|roles?|access control|acl)\b/i.test(text2)) {
+      add({
+        code: "security-authorization",
+        message: "Security section does not cover authorisation / RBAC.",
+        caps: { security: 60 }
+      });
+    }
+    if (!/\b(?:input validation|validat\w*|sanitis\w*|sanitiz\w*|injection|escap\w*)\b/i.test(text2)) {
+      add({
+        code: "security-input-validation",
+        message: "Security section does not cover input validation.",
+        caps: { security: 65 }
+      });
+    }
+  }
+  const data = findSection(sections2, /\bdata (?:models?|model|schema|entities)\b|\bschema\b/i);
+  if (data === void 0 || wordCount(plain(data)) < 8) {
+    add({
+      code: "missing-data-model",
+      message: 'Add a "Data Models" section (entities, fields and relations).',
+      caps: { completeness: 65, feasibility: 80 }
+    });
+  }
+  const api = findSection(sections2, /\bapi\b|\bcontracts?\b|\binterfaces?\b/i);
+  const apiText = api === void 0 ? "" : plain(api);
+  if (api === void 0 || !(/\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/\S*/.test(apiText) || /```|^\s*\|/m.test(apiText))) {
+    add({
+      code: "missing-api-contract",
+      message: 'Add an "API Contracts" section with endpoints (e.g. `POST /orders`) or schemas.',
+      caps: { completeness: 65, feasibility: 80 }
+    });
+  }
+  const matrix = findSection(
+    sections2,
+    /\btest(?:ing)? (?:strategy|matrix|plan)\b|\btest strategy\b/i
+  );
+  if (matrix === void 0) {
+    add({
+      code: "missing-test-matrix",
+      message: 'Add a "Test Strategy Matrix" covering unit, integration, E2E and load tests.',
+      caps: { testability: 55, completeness: 75 }
+    });
+  } else {
+    const text2 = plain(matrix);
+    for (const [name, pattern] of TIERS) {
+      if (!pattern.test(text2)) {
+        add({
+          code: "test-matrix-tier",
+          message: `The test matrix does not cover ${name} tests.`,
+          caps: { testability: 65 }
+        });
+      }
+    }
+  }
+  let ambiguous = 0;
+  codeFreeLines.forEach((text2, index) => {
+    for (const pattern of AMBIGUOUS_TERMS) {
+      const match = pattern.exec(text2);
+      if (match !== null) {
+        ambiguous += 1;
+        add({
+          code: "ambiguous-term",
+          message: `Ambiguous wording "${match[0]}": replace it with something verifiable.`,
+          caps: {},
+          line: index + 1
+        });
+      }
+    }
+  });
+  return {
+    issues,
+    stats: {
+      functionalRequirements: frBlocks.length,
+      nonFunctionalRequirements: nfrCount,
+      ambiguousTerms: ambiguous
+    }
+  };
+}
+function capsFor(analysis) {
+  const caps = {
+    clarity: 100,
+    testability: 100,
+    completeness: 100,
+    security: 100,
+    feasibility: 100
+  };
+  for (const issue2 of analysis.issues) {
+    for (const dimension of DIMENSIONS) {
+      const cap = issue2.caps[dimension];
+      if (cap !== void 0) caps[dimension] = Math.min(caps[dimension], cap);
+    }
+  }
+  const n = analysis.stats.ambiguousTerms;
+  if (n > 0) caps.clarity = Math.min(caps.clarity, n > 5 ? 65 : n > 2 ? 75 : 85);
+  return caps;
+}
+var round1 = (n) => Math.round(n * 10) / 10;
+function decide(caps, scores, thresholds, evaluationsBefore2) {
+  if (scores === void 0) {
+    const best = DIMENSIONS.map((d) => caps[d]);
+    const bestMean = best.reduce((a, b) => a + b, 0) / best.length;
+    const blocked = bestMean < thresholds.threshold || Math.min(...best) < thresholds.dimensionFloor;
+    return blocked ? {
+      nextAction: "refine",
+      pass: false,
+      reason: "The structural issues cap the achievable score below the pass rule; fix them first."
+    } : {
+      nextAction: "score",
+      pass: false,
+      reason: "Structure is acceptable: self-score the five dimensions with the rubric and re-run with --scores."
+    };
+  }
+  const effective = {};
+  for (const d of DIMENSIONS) effective[d] = Math.min(scores[d], caps[d]);
+  const values = DIMENSIONS.map((d) => effective[d]);
+  const mean = round1(values.reduce((a, b) => a + b, 0) / values.length);
+  const min = Math.min(...values);
+  const pass = mean >= thresholds.threshold && min >= thresholds.dimensionFloor;
+  if (pass) {
+    return {
+      nextAction: "accept",
+      pass,
+      effectiveScores: effective,
+      mean,
+      min,
+      reason: "The PRD meets the threshold."
+    };
+  }
+  const refinementsDone = evaluationsBefore2;
+  if (refinementsDone >= thresholds.maxRefinements) {
+    return {
+      nextAction: "escalate",
+      pass,
+      effectiveScores: effective,
+      mean,
+      min,
+      reason: `Still below the threshold after ${String(thresholds.maxRefinements)} refinement passes.`
+    };
+  }
+  const why = mean < thresholds.threshold ? `mean ${String(mean)} is below ${String(thresholds.threshold)}` : `lowest dimension ${String(min)} is below the floor ${String(thresholds.dimensionFloor)}`;
+  return {
+    nextAction: "refine",
+    pass,
+    effectiveScores: effective,
+    mean,
+    min,
+    reason: `Refine the PRD: ${why}.`
+  };
+}
+function validatePrd(markdown, options) {
+  const analysis = analyzePrd(markdown);
+  const caps = capsFor(analysis);
+  const before = options.evaluationsBefore ?? 0;
+  const decision = decide(caps, options.scores, options.config.prd, before);
+  return {
+    ...decision,
+    issues: analysis.issues,
+    stats: analysis.stats,
+    caps,
+    evaluation: options.scores === void 0 ? before : before + 1,
+    message: decision.nextAction === "escalate" ? ESCALATION_MESSAGE : decision.reason
+  };
+}
+
+// src/core/issue-format.ts
+var IssueFormatError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "IssueFormatError";
+  }
+};
+var ISSUE_KINDS = ["feature", "bug"];
+function parseIssueKind(raw) {
+  const kind = raw.trim().toLowerCase();
+  if (!ISSUE_KINDS.includes(kind)) {
+    throw new IssueFormatError(`unknown issue kind "${raw}": use feature or bug`);
+  }
+  return kind;
+}
+var ATTACHMENTS = {
+  id: "attachments",
+  heading: "Attachments",
+  required: false,
+  hint: "One bullet per file: the file name, what it shows, and how it was attached (uploaded, inline, pending upload).",
+  example: "- `checkout-error.png`: the total after applying `SPRING10` (uploaded)"
+};
+var ISSUE_SECTIONS = {
+  feature: [
+    {
+      id: "problem",
+      heading: "Problem",
+      required: true,
+      hint: "Who is affected, what they cannot do today, and what it costs them.",
+      example: "Accountants export invoices by copying rows into a spreadsheet, about 40 minutes at each month-end close, and rows get missed."
+    },
+    {
+      id: "user-story",
+      heading: "User story",
+      required: true,
+      hint: 'One or more "As a <role>, I want <capability>, so that <benefit>."',
+      example: "As an accountant, I want to export a month of invoices as CSV, so that I can import them into the ledger without retyping."
+    },
+    {
+      id: "acceptance-criteria",
+      heading: "Acceptance criteria",
+      required: true,
+      hint: 'A checklist of "AC-n: Given <state>, when <action>, then <observable result>.", at least one.',
+      example: "- [ ] AC-1: Given 120 invoices dated in March, when I export March, then the CSV has 120 rows."
+    },
+    {
+      id: "out-of-scope",
+      heading: "Out of scope",
+      required: false,
+      hint: "Bullets of what this issue will not do.",
+      example: "- PDF export."
+    },
+    {
+      id: "constraints",
+      heading: "Constraints",
+      required: false,
+      hint: "Performance, security, compatibility, data or deadline limits, with numbers and units.",
+      example: "- An export of 10 000 invoices finishes in under 5 s."
+    },
+    {
+      id: "context",
+      heading: "Context",
+      required: false,
+      hint: "Links, related issues, code pointers (path:line), prior art.",
+      example: "- `src/invoices/table.ts:42` renders the table that is copied today."
+    },
+    ATTACHMENTS
+  ],
+  bug: [
+    {
+      id: "summary",
+      heading: "Summary",
+      required: true,
+      hint: "One or two sentences: what breaks, and for whom.",
+      example: "Applying a discount code at checkout does not change the order total."
+    },
+    {
+      id: "steps-to-reproduce",
+      heading: "Steps to reproduce",
+      required: true,
+      hint: "Numbered steps a stranger can repeat from a clean start.",
+      example: "1. Add any item to the cart.\n2. Open checkout and apply `SPRING10`."
+    },
+    {
+      id: "expected",
+      heading: "Expected",
+      required: true,
+      hint: "What should happen, specifically.",
+      example: "The total drops by 10 % and the discount is listed."
+    },
+    {
+      id: "actual",
+      heading: "Actual",
+      required: true,
+      hint: "What happens; error text verbatim, in a code block.",
+      example: "The total is unchanged; the console shows `TypeError: rate is undefined`."
+    },
+    {
+      id: "environment",
+      heading: "Environment",
+      required: true,
+      hint: "Version or commit, OS, runtime, browser, relevant configuration.",
+      example: "v2.3.1 (commit abc1234), macOS 15, Safari 19."
+    },
+    {
+      id: "frequency",
+      heading: "Frequency",
+      required: false,
+      hint: "`always`, `intermittent (n of m tries)` or `once`.",
+      example: "always"
+    },
+    {
+      id: "impact",
+      heading: "Impact",
+      required: false,
+      hint: "Who and how many are affected; the workaround, if any.",
+      example: "Every customer with a code; no workaround."
+    },
+    {
+      id: "suspected-cause",
+      heading: "Suspected cause",
+      required: false,
+      hint: "Code pointers found while investigating, marked as a guess.",
+      example: "Guess: `src/checkout/total.ts:88` reads the rate before the code is applied."
+    },
+    {
+      id: "acceptance-criteria",
+      heading: "Acceptance criteria",
+      required: true,
+      hint: "At least AC-1, built from the steps and Expected, so the fix gets a regression test.",
+      example: "- [ ] AC-1: Given a cart with one item, when I apply `SPRING10`, then the total drops by 10 %."
+    },
+    ATTACHMENTS
+  ]
+};
+var TITLE_MAX = 72;
+var TITLE_RULES = {
+  feature: `an imperative verb and an object, at most ${String(TITLE_MAX)} characters, e.g. "Export invoices as CSV"`,
+  bug: `"<component>: <symptom>", at most ${String(TITLE_MAX)} characters, e.g. "checkout: total ignores discount code"`
+};
+var KIND_LABELS = {
+  feature: "kind/feature",
+  bug: "kind/bug"
+};
+function renderTemplate2(kind) {
+  const lines = [];
+  for (const section2 of ISSUE_SECTIONS[kind]) {
+    lines.push(
+      `## ${section2.heading}`,
+      "",
+      `<!-- ${section2.required ? "Required" : "Optional: delete the section if there is nothing to say"}. ${section2.hint} -->`,
+      ""
+    );
+  }
+  return `${lines.join("\n").trimEnd()}
+`;
+}
+var SECRET_PATTERNS = [
+  { name: "private key", pattern: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/ },
+  { name: "AWS access key id", pattern: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/ },
+  {
+    name: "GitHub token",
+    pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})/
+  },
+  { name: "GitLab token", pattern: /\bglpat-[A-Za-z0-9_-]{20,}/ },
+  { name: "Slack token", pattern: /\bxox[abposr]-[A-Za-z0-9-]{10,}/ },
+  { name: "Google API key", pattern: /\bAIza[0-9A-Za-z_-]{35}\b/ },
+  { name: "Stripe key", pattern: /\b(?:sk|rk)_live_[0-9A-Za-z]{16,}/ },
+  { name: "API secret key", pattern: /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{32,}/ },
+  { name: "npm token", pattern: /\bnpm_[A-Za-z0-9]{36}\b/ },
+  {
+    name: "JSON Web Token",
+    pattern: /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/
+  },
+  { name: "bearer token", pattern: /\bBearer\s+[A-Za-z0-9._~+/-]{20,}=*/ },
+  { name: "credentials in a URL", pattern: /\b[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^/\s@]{3,}@/i },
+  {
+    name: "password or secret assignment",
+    pattern: /(?<![A-Za-z0-9])(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)["']?\s*[:=]\s*["']?(?![*x•.]{3,}|<|\$\{|\{\{|%|redacted|changeme|example)[^\s"'<>]{8,}/i
+  }
+];
+function findSecrets(text2) {
+  const findings = [];
+  text2.split(/\r?\n/).forEach((line, index) => {
+    for (const { name, pattern } of SECRET_PATTERNS) {
+      if (pattern.test(line)) findings.push({ line: index + 1, pattern: name });
+    }
+  });
+  return findings;
+}
+var FENCE2 = /^ {0,3}(`{3,}|~{3,})/;
+function parseBody(body) {
+  const preamble = [];
+  const sections2 = [];
+  const prose = [];
+  const lines = body.split("\n");
+  const fenced = fencedLines(lines);
+  lines.forEach((text2, index) => {
+    const line = index + 1;
+    if (fenced[index] === "prose") {
+      const heading = /^##[ \t]+(.+?)[ \t]*#*[ \t]*$/.exec(text2);
+      if (heading?.[1] !== void 0) {
+        sections2.push({ heading: heading[1].trim(), line, lines: [] });
+        return;
+      }
+      prose.push({ text: text2.replace(/`+[^`]*`+/g, ""), line });
+    }
+    const target = sections2.at(-1)?.lines ?? preamble;
+    target.push({ text: text2, line });
+  });
+  return { preamble, sections: sections2, prose };
+}
+function stripComments(text2) {
+  let out = "";
+  let from = 0;
+  for (; ; ) {
+    const start = text2.indexOf("<!--", from);
+    if (start === -1) return out + text2.slice(from);
+    out += text2.slice(from, start);
+    const end = text2.indexOf("-->", start + 4);
+    if (end === -1) return out;
+    from = end + 3;
+  }
+}
+function contentOf(section2) {
+  return stripComments(section2.lines.map((l) => l.text).join("\n")).trim();
+}
+function listItems(section2) {
+  const items = [];
+  for (const { text: text2, line } of section2.lines) {
+    if (/^\s{0,3}(?:[-*+]|\d+[.)])\s+/.test(text2)) {
+      items.push({ text: text2.trim(), line });
+    } else if (/^\s+\S/.test(text2) && items.length > 0) {
+      const last = items[items.length - 1];
+      if (last !== void 0) last.text = `${last.text} ${text2.trim()}`;
+    }
+  }
+  return items;
+}
+var NON_IMPERATIVE_EXCEPTIONS = /* @__PURE__ */ new Set([
+  "bring",
+  "embed",
+  "exceed",
+  "feed",
+  "need",
+  "ping",
+  "proceed",
+  "seed",
+  "shed",
+  "speed",
+  "string",
+  "succeed"
+]);
+function titleProblems(kind, title) {
+  if (title === "") {
+    return [
+      {
+        code: "missing-title",
+        message: `Give the issue a title: ${TITLE_RULES[kind]}. Pass --title, or start the file with "# <title>".`
+      }
+    ];
+  }
+  const problems = [];
+  if (title.length > TITLE_MAX) {
+    problems.push({
+      code: "title-too-long",
+      message: `The title has ${String(title.length)} characters; shorten it to at most ${String(TITLE_MAX)}.`
+    });
+  }
+  if (kind === "bug") {
+    if (!/^[A-Za-z0-9][\w./@ -]{0,40}: \S.*$/.test(title)) {
+      problems.push({ code: "title-format", message: `Write a bug title as ${TITLE_RULES.bug}.` });
+    }
+  } else {
+    const words2 = title.split(/\s+/);
+    const first = (words2[0] ?? "").toLowerCase();
+    const notImperative = /^[a-z]+(?:ing|ed)$/.test(first) && !NON_IMPERATIVE_EXCEPTIONS.has(first);
+    if (words2.length < 2 || !/^[A-Z]/.test(title) || /[.!?]$/.test(title) || /^[^\s:]+: /.test(title) || notImperative) {
+      problems.push({
+        code: "title-format",
+        message: `Write a feature title as ${TITLE_RULES.feature}: capitalised, no trailing full stop.`
+      });
+    }
+  }
+  return problems;
+}
+var HTML_TAGS = /* @__PURE__ */ new Set([
+  "a",
+  "b",
+  "br",
+  "code",
+  "details",
+  "em",
+  "i",
+  "img",
+  "kbd",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "strong",
+  "sub",
+  "summary",
+  "sup",
+  "ul"
+]);
+function lintAcceptanceCriteria(section2, problems) {
+  const items = listItems(section2);
+  if (items.length === 0) {
+    problems.push({
+      code: "no-acceptance-criteria",
+      section: "acceptance-criteria",
+      line: section2.line,
+      message: 'Add at least one acceptance criterion: "- [ ] AC-1: Given <state>, when <action>, then <observable result>."'
+    });
+    return;
+  }
+  items.forEach((item, index) => {
+    const expected = index + 1;
+    const id = /\bAC-(\d+):/.exec(item.text);
+    if (id?.[1] === void 0) {
+      problems.push({
+        code: "acceptance-criterion",
+        section: "acceptance-criteria",
+        line: item.line,
+        message: `Start the criterion with "AC-${String(expected)}:".`
+      });
+    } else if (Number(id[1]) !== expected) {
+      problems.push({
+        code: "acceptance-criterion",
+        section: "acceptance-criteria",
+        line: item.line,
+        message: `Number the criteria in order: this one should be AC-${String(expected)}, not AC-${id[1]}.`
+      });
+    }
+    const lower = item.text.toLowerCase();
+    const given = lower.search(/\bgiven\b/);
+    const when = lower.search(/\bwhen\b/);
+    const then = lower.search(/\bthen\b/);
+    if (!(given !== -1 && when > given && then > when)) {
+      problems.push({
+        code: "acceptance-criterion",
+        section: "acceptance-criteria",
+        line: item.line,
+        message: `AC-${id?.[1] ?? String(expected)} needs Given, when and then, in that order.`
+      });
+    }
+  });
+}
+function lintDetailsBlocks(body, problems) {
+  let open3;
+  const lines = body.split("\n");
+  const fenced = fencedLines(lines);
+  lines.forEach((text2, index) => {
+    const state = fenced[index];
+    if (open3 === void 0) {
+      if (state === "prose" && /<details\b/i.test(text2)) open3 = { line: index + 1, count: 0 };
+      return;
+    }
+    if (state === "fence") return;
+    if (state === "prose" && /<\/details>/i.test(text2)) {
+      if (open3.count > INLINE_WHOLE_LINES) {
+        problems.push({
+          code: "inline-too-long",
+          section: "attachments",
+          line: open3.line,
+          message: `An inlined attachment has ${String(open3.count)} lines; keep at most ${String(INLINE_WHOLE_LINES)} (let \`sentinel issue attachments\` trim it).`
+        });
+      }
+      open3 = void 0;
+      return;
+    }
+    if (state === "code" || text2.trim() !== "" && !/<\/?summary\b/i.test(text2)) open3.count += 1;
+  });
+}
+function fencedLines(lines) {
+  let fence;
+  return lines.map((text2) => {
+    const match = FENCE2.exec(text2)?.[1];
+    if (fence === void 0) {
+      if (match === void 0) return "prose";
+      fence = match;
+      return "fence";
+    }
+    if (match?.startsWith(fence) === true && text2.trim() === match) {
+      fence = void 0;
+      return "fence";
+    }
+    return "code";
+  });
+}
+function splitTitle(text2) {
+  const normalized = text2.replace(/\r\n/g, "\n");
+  const match = /^\s*#[ \t]+(.+?)[ \t]*\n/.exec(`${normalized}
+`);
+  if (match?.[1] === void 0) return { title: void 0, body: normalized.trim() };
+  return { title: match[1].trim(), body: normalized.slice(match[0].length).trim() };
+}
+function lintIssue(input2) {
+  const { kind } = input2;
+  const title = input2.title.trim();
+  const body = input2.body.replace(/\r\n/g, "\n").trim();
+  const problems = titleProblems(kind, title);
+  const definition = ISSUE_SECTIONS[kind];
+  const parsed = parseBody(body);
+  if (parsed.preamble.some((l) => stripComments(l.text).trim() !== "")) {
+    problems.push({
+      code: "content-before-sections",
+      line: parsed.preamble.find((l) => l.text.trim() !== "")?.line ?? 1,
+      message: `Move the text before the first heading into a section (start with "## ${definition[0]?.heading ?? ""}").`
+    });
+  }
+  const found = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const section2 of parsed.sections) {
+    const match = definition.find((d) => d.heading.toLowerCase() === section2.heading.toLowerCase());
+    if (match === void 0) {
+      problems.push({
+        code: "unknown-section",
+        line: section2.line,
+        message: `"## ${section2.heading}" is not a ${kind} section; use ${definition.map((d) => `"${d.heading}"`).join(", ")}.`
+      });
+      continue;
+    }
+    if (seen.has(match.id)) {
+      problems.push({
+        code: "duplicate-section",
+        section: match.id,
+        line: section2.line,
+        message: `"## ${match.heading}" appears more than once; merge the two.`
+      });
+      continue;
+    }
+    seen.add(match.id);
+    found.push({ section: match, parsed: section2 });
+  }
+  let lastIndex = -1;
+  for (const { section: section2, parsed: p } of found) {
+    const index = definition.indexOf(section2);
+    if (index < lastIndex) {
+      problems.push({
+        code: "section-order",
+        section: section2.id,
+        line: p.line,
+        message: `Move "## ${section2.heading}" up: the order is ${definition.map((d) => d.heading).join(", ")}.`
+      });
+    }
+    lastIndex = Math.max(lastIndex, index);
+  }
+  for (const section2 of definition) {
+    const entry = found.find((f) => f.section === section2);
+    if (entry === void 0) {
+      if (section2.required) {
+        problems.push({
+          code: "missing-section",
+          section: section2.id,
+          message: `Add "## ${section2.heading}": ${section2.hint}`
+        });
+      }
+      continue;
+    }
+    if (contentOf(entry.parsed) === "") {
+      problems.push({
+        code: "empty-section",
+        section: section2.id,
+        line: entry.parsed.line,
+        message: section2.required ? `Fill in "## ${section2.heading}": ${section2.hint}` : `Delete the empty optional section "## ${section2.heading}".`
+      });
+      continue;
+    }
+    const content = contentOf(entry.parsed);
+    if (section2.id === "acceptance-criteria") lintAcceptanceCriteria(entry.parsed, problems);
+    if (section2.id === "user-story") {
+      const stories = content.split(/\n\s*\n|\n(?=\s*(?:[-*+]|\d+[.)])\s)/).map((s) => s.replace(/\s+/g, " ").trim()).filter((s) => s !== "");
+      for (const story of stories) {
+        if (!/\bAs an?\b.+?,\s*I want\b.+?,\s*so that\b.+/i.test(story)) {
+          problems.push({
+            code: "user-story",
+            section: "user-story",
+            line: entry.parsed.line,
+            message: `Write each user story as "As a <role>, I want <capability>, so that <benefit>.": "${story.slice(0, 60)}${story.length > 60 ? "\u2026" : ""}"`
+          });
+        }
+      }
+    }
+    if (section2.id === "steps-to-reproduce" && !entry.parsed.lines.some((l) => /^\s{0,3}\d+[.)]\s+\S/.test(l.text))) {
+      problems.push({
+        code: "steps-not-numbered",
+        section: section2.id,
+        line: entry.parsed.line,
+        message: "Write the steps as a numbered list (1., 2., \u2026) a stranger can repeat."
+      });
+    }
+    if (section2.id === "frequency" && !/^(?:always|once|intermittent \(\d+ of \d+ tries\))\.?$/i.test(content.replace(/`/g, ""))) {
+      problems.push({
+        code: "frequency",
+        section: section2.id,
+        line: entry.parsed.line,
+        message: "Write the frequency as `always`, `intermittent (n of m tries)` or `once`."
+      });
+    }
+  }
+  for (const { text: text2, line } of parsed.prose) {
+    if (/<(?:details|summary)\b/i.test(text2)) continue;
+    if (text2.includes("<!--")) {
+      problems.push({
+        code: "template-comment",
+        line,
+        message: "Remove the template hint comment."
+      });
+    }
+    const withoutComments = stripComments(text2);
+    for (const match of withoutComments.matchAll(/<\/?([a-z][a-z0-9 _-]*)>|\bN\/A\b/gi)) {
+      const tag = match[1]?.toLowerCase();
+      if (tag !== void 0 && HTML_TAGS.has(tag)) continue;
+      problems.push({
+        code: "placeholder",
+        line,
+        message: `Replace the placeholder "${match[0]}" with the real content, or delete the line.`
+      });
+    }
+    for (const pattern of AMBIGUOUS_TERMS) {
+      const match = pattern.exec(withoutComments);
+      if (match !== null) {
+        problems.push({
+          code: "ambiguous-term",
+          line,
+          message: `Ambiguous wording "${match[0]}": replace it with something verifiable.`
+        });
+      }
+    }
+  }
+  for (const finding2 of findSecrets(body)) {
+    problems.push({
+      code: "secret",
+      line: finding2.line,
+      message: `Line ${String(finding2.line)} looks like a ${finding2.pattern}: remove or redact it before filing.`
+    });
+  }
+  for (const finding2 of findSecrets(title)) {
+    problems.push({
+      code: "secret",
+      message: `The title looks like it contains a ${finding2.pattern}: remove it.`
+    });
+  }
+  lintDetailsBlocks(body, problems);
+  return {
+    ok: problems.length === 0,
+    kind,
+    title,
+    body,
+    sections: found.map((f) => f.section.id),
+    problems
+  };
+}
+var IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+var OTHER_MAX_BYTES = 25 * 1024 * 1024;
+var INLINE_WHOLE_LINES = 200;
+var INLINE_KEEP_LINES = 80;
+var IMAGE_EXTENSIONS = /* @__PURE__ */ new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "svg",
+  "ico",
+  "tif",
+  "tiff",
+  "heic",
+  "avif"
+]);
+var VIDEO_EXTENSIONS = /* @__PURE__ */ new Set(["mp4", "mov", "webm", "m4v", "avi", "mkv"]);
+function extensionOf(name) {
+  const dot = name.lastIndexOf(".");
+  return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
+}
+function kindByName(name) {
+  const extension = extensionOf(name);
+  if (IMAGE_EXTENSIONS.has(extension)) return "image";
+  return VIDEO_EXTENSIONS.has(extension) ? "video" : "binary";
+}
+function sizeCapFor(name) {
+  return kindByName(name) === "image" ? IMAGE_MAX_BYTES : OTHER_MAX_BYTES;
+}
+function baseName(path) {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+function looksLikeText(bytes) {
+  const sample = bytes.subarray(0, 8192);
+  if (sample.includes(0)) return false;
+  for (let cut = 0; cut <= 3 && cut <= sample.length; cut++) {
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(sample.subarray(0, sample.length - cut));
+      return true;
+    } catch {
+    }
+  }
+  return false;
+}
+function fenceFor(text2) {
+  let longest = 0;
+  for (const match of text2.matchAll(/`{3,}/g)) longest = Math.max(longest, match[0].length);
+  return "`".repeat(Math.max(3, longest + 1));
+}
+function formatBytes(bytes) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${String(bytes)} B`;
+}
+function renderInline(name, text2) {
+  const all = text2.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
+  const total = all.length;
+  const trimmed = total > INLINE_WHOLE_LINES;
+  let kept;
+  let summary;
+  if (trimmed) {
+    const tailStart = total - INLINE_KEEP_LINES + 1;
+    kept = [
+      ...all.slice(0, INLINE_KEEP_LINES),
+      `\u2026 ${String(total - 2 * INLINE_KEEP_LINES)} lines cut (${String(INLINE_KEEP_LINES + 1)}\u2013${String(tailStart - 1)}) \u2026`,
+      ...all.slice(-INLINE_KEEP_LINES)
+    ];
+    summary = `${name} (lines 1\u2013${String(INLINE_KEEP_LINES)} and ${String(tailStart)}\u2013${String(total)} of ${String(total)})`;
+  } else {
+    kept = all;
+    summary = `${name} (${String(total)} line${total === 1 ? "" : "s"})`;
+  }
+  const content = kept.join("\n");
+  const fence = fenceFor(content);
+  const block = [
+    `<details><summary>${summary.replace(/[<>&]/g, "")}</summary>`,
+    "",
+    fence,
+    content,
+    fence,
+    "",
+    "</details>"
+  ].join("\n");
+  return { block, lines: total, trimmed };
+}
+async function planAttachment(input2, options) {
+  const name = baseName(input2.path);
+  const guess = kindByName(name);
+  const cap = sizeCapFor(name);
+  const base = { path: input2.path, name, bytes: input2.bytes };
+  if (input2.bytes > cap) {
+    return {
+      ...base,
+      kind: guess,
+      action: "rejected",
+      reason: `${formatBytes(input2.bytes)} is over the ${guess === "image" ? "10 MB image" : "25 MB"} limit; shrink, crop or split it`
+    };
+  }
+  const bytes = await input2.read();
+  const kind = guess === "binary" && looksLikeText(bytes) ? "text" : guess;
+  if (kind === "text") {
+    const text2 = new TextDecoder("utf-8").decode(bytes);
+    const secrets = findSecrets(text2);
+    if (secrets.length > 0) {
+      return {
+        ...base,
+        kind,
+        action: "blocked",
+        reason: `contains what looks like a secret (${[...new Set(secrets.map((s) => s.pattern))].join(", ")}) on line ${secrets.map((s) => String(s.line)).join(", ")}; redact it, then plan again`,
+        secrets
+      };
+    }
+    const { block, lines, trimmed } = renderInline(name, text2);
+    return {
+      ...base,
+      kind,
+      action: "inline",
+      reason: trimmed ? `text, ${String(lines)} lines: inlined with the first and last ${String(INLINE_KEEP_LINES)}` : `text, ${String(lines)} lines: inlined whole`,
+      lines,
+      trimmed,
+      inline: block
+    };
+  }
+  return options.trackerUploads ? { ...base, kind, action: "attach", reason: `${kind}: upload it with the tracker's own tool` } : {
+    ...base,
+    kind,
+    action: "pending-upload",
+    reason: `${kind}: the tracker cannot take uploads from the agent; the user drags it into the issue after filing`
+  };
+}
+var HOW = {
+  inline: "inline, below",
+  attach: "uploaded",
+  "pending-upload": "pending upload",
+  blocked: "blocked",
+  rejected: "rejected"
+};
+function renderAttachmentsSection(plans) {
+  const usable = plans.filter((p) => p.action !== "blocked" && p.action !== "rejected");
+  if (usable.length === 0) return "";
+  const lines = ["## Attachments", ""];
+  for (const plan of usable) {
+    lines.push(`- \`${plan.name}\`: <what it shows> (${HOW[plan.action]})`);
+  }
+  for (const plan of usable) {
+    if (plan.inline !== void 0) lines.push("", plan.inline);
+  }
+  return `${lines.join("\n")}
+`;
+}
+var ISSUE_FORM_DIR = ".github/ISSUE_TEMPLATE";
+var FORM_INTRO = {
+  feature: {
+    name: "Feature request",
+    description: "A problem, a user story and testable acceptance criteria."
+  },
+  bug: {
+    name: "Bug report",
+    description: "Steps to reproduce, expected and actual result, and the environment."
+  }
+};
+function yamlString(value) {
+  return JSON.stringify(value);
+}
+function renderIssueForm(kind, labelMap = {}) {
+  const intro = FORM_INTRO[kind];
+  const label = labelMap[KIND_LABELS[kind]] ?? KIND_LABELS[kind];
+  const lines = [
+    "# Generated by `sentinel setup --issue-forms` from the sentinel issue format",
+    "# (docs/issue-format.md in the sentinel repository). Re-run it instead of editing by hand.",
+    `name: ${yamlString(intro.name)}`,
+    `description: ${yamlString(intro.description)}`,
+    `labels: [${yamlString(label)}]`,
+    "body:",
+    "  - type: markdown",
+    "    attributes:",
+    `      value: ${yamlString(`Title: ${TITLE_RULES[kind]}. Leave optional fields empty when there is nothing to say.`)}`
+  ];
+  for (const section2 of ISSUE_SECTIONS[kind]) {
+    lines.push(
+      "  - type: textarea",
+      `    id: ${section2.id}`,
+      "    attributes:",
+      `      label: ${yamlString(section2.heading)}`,
+      `      description: ${yamlString(section2.hint)}`,
+      `      placeholder: ${yamlString(section2.example)}`,
+      "    validations:",
+      `      required: ${String(section2.required)}`
+    );
+  }
+  return { path: `${ISSUE_FORM_DIR}/${kind}.yml`, content: `${lines.join("\n")}
+` };
+}
+
 // src/core/git-worktree-manager.ts
 import { constants } from "fs";
 import { appendFile, copyFile, mkdir as mkdir2, readFile as readFile2, realpath, stat } from "fs/promises";
@@ -25298,6 +26458,11 @@ var TRACKER_VERBS = [
     verb: "link-pr",
     meaning: 'connect a pull request (tracker link, or "Fixes <id>" in the PR body)'
   },
+  { verb: "update", meaning: "replace an issue's title or body" },
+  {
+    verb: "attach",
+    meaning: "store a file on an issue, if the tracker can take uploads; otherwise list it for the user to upload"
+  },
   { verb: "close", meaning: "close or resolve an issue" }
 ];
 var LOCAL_COMMANDS = {
@@ -25308,6 +26473,8 @@ var LOCAL_COMMANDS = {
   comment: "sentinel issue comment <id> --body <text>",
   "set-status": "sentinel issue label <id> --add <status label> (or close it)",
   "link-pr": 'sentinel issue comment <id> --body "PR: <url>", and "Fixes #<id>" in the PR body',
+  update: "sentinel issue update <id> [--title <title>] [--body-file <path>]",
+  attach: "sentinel issue attach <id> <file>",
   close: "sentinel issue close <id>"
 };
 function describeTracker(section2) {
@@ -25683,7 +26850,7 @@ function guarded(deps, action) {
       } else if (error63 instanceof ProviderError) {
         deps.stderr(`sentinel: ${error63.message}`);
         deps.setExitCode(ExitCode.Provider);
-      } else if (error63 instanceof BranchNameError || error63 instanceof StateError || error63 instanceof PrdError || error63 instanceof ScaffoldError || error63 instanceof MiningError || error63 instanceof GuardrailError || error63 instanceof SetupError || error63 instanceof WorktreeError) {
+      } else if (error63 instanceof BranchNameError || error63 instanceof StateError || error63 instanceof PrdError || error63 instanceof ScaffoldError || error63 instanceof MiningError || error63 instanceof GuardrailError || error63 instanceof IssueFormatError || error63 instanceof SetupError || error63 instanceof WorktreeError) {
         deps.stderr(`sentinel: ${error63.message}`);
         deps.setExitCode(ExitCode.Failure);
       } else {
@@ -26234,12 +27401,19 @@ function registerGuardrails(program2, deps) {
 }
 
 // src/cli/issue.ts
-import { readFile as readFile6 } from "fs/promises";
+import { readFile as readFile6, stat as stat3 } from "fs/promises";
 import { isAbsolute as isAbsolute3, join as join9, resolve as resolve3 } from "path";
 
 // src/core/local-tracker.ts
-import { mkdir as mkdir5, readdir as readdir2, readFile as readFile5, writeFile as writeFile5 } from "fs/promises";
-import { join as join8 } from "path";
+import {
+  mkdir as mkdir5,
+  open as open2,
+  readdir as readdir2,
+  readFile as readFile5,
+  unlink,
+  writeFile as writeFile5
+} from "fs/promises";
+import { basename, join as join8, relative as relative3 } from "path";
 var FILE_PATTERN = /^(\d{1,9})(?:-[a-z0-9-]*)?\.md$/;
 var COMMENTS_HEADING = "## Comments";
 function parseLocalId(id) {
@@ -26395,7 +27569,7 @@ var LocalTracker = class {
     }
     throw new TrackerError(`could not allocate a new issue id in ${this.dir}`);
   }
-  async update(id, change) {
+  async change(id, change) {
     const issue2 = await this.get(id);
     const next = change(issue2);
     await writeFile5(issue2.path, renderLocalIssue(next), "utf8");
@@ -26404,13 +27578,13 @@ var LocalTracker = class {
   async comment(id, body) {
     const text2 = body.trim();
     if (text2 === "") throw new TrackerError("a comment needs a body");
-    return this.update(id, (issue2) => ({
+    return this.change(id, (issue2) => ({
       ...issue2,
       comments: [...issue2.comments, { at: this.now().toISOString(), body: text2 }]
     }));
   }
   label(id, change) {
-    return this.update(id, (issue2) => ({
+    return this.change(id, (issue2) => ({
       ...issue2,
       labels: [
         ...new Set(
@@ -26422,9 +27596,125 @@ var LocalTracker = class {
     }));
   }
   setStatus(id, status) {
-    return this.update(id, (issue2) => ({ ...issue2, status }));
+    return this.change(id, (issue2) => ({ ...issue2, status }));
+  }
+  /** The `update` verb: replaces the title and/or the body; comments and labels stay. */
+  update(id, input2) {
+    const title = input2.title?.trim();
+    if (title === void 0 && input2.body === void 0) {
+      throw new TrackerError("nothing to update: pass a new title, a new body or both");
+    }
+    if (title === "") throw new TrackerError("an issue needs a title");
+    return this.change(id, (issue2) => ({
+      ...issue2,
+      title: title ?? issue2.title,
+      body: input2.body === void 0 ? issue2.body : input2.body.trim()
+    }));
+  }
+  /** Directory that holds an issue's attachments. */
+  attachmentsDir(id) {
+    return join8(this.dir, ATTACHMENTS_DIR, String(id));
+  }
+  /**
+   * The `attach` verb: copies `source` to `<dir>/attachments/<id>/<name>` and links it from the
+   * issue's `## Attachments` section (replacing a bullet that names the file, or adding one).
+   * Refuses to overwrite an attachment of the same name.
+   */
+  async attach(id, source, options = {}) {
+    const issue2 = await this.get(id);
+    const name = basename(source);
+    if (name === "" || name === "." || name === ".." || /[`\n\r]/.test(name)) {
+      throw new TrackerError(`cannot attach "${source}": rename the file first`);
+    }
+    let bytes;
+    let handle;
+    try {
+      handle = await open2(source, "r");
+    } catch (error63) {
+      if (error63.code === "ENOENT") {
+        throw new TrackerError(`cannot attach "${source}": file not found`, "not-found");
+      }
+      throw error63;
+    }
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new TrackerError(`cannot attach "${source}": not a file`);
+      if (options.maxBytes !== void 0 && info.size > options.maxBytes) {
+        throw new TrackerError(
+          `cannot attach "${name}": ${String(info.size)} bytes is over the ${String(options.maxBytes)}-byte limit`
+        );
+      }
+      bytes = new Uint8Array(await handle.readFile());
+    } finally {
+      await handle.close();
+    }
+    if (looksLikeText(bytes)) {
+      const secrets = findSecrets(new TextDecoder("utf-8").decode(bytes));
+      if (secrets.length > 0) {
+        throw new TrackerError(
+          `cannot attach "${name}": line ${secrets.map((f) => String(f.line)).join(", ")} looks like a secret; redact it first`
+        );
+      }
+    }
+    const dir = this.attachmentsDir(issue2.id);
+    await mkdir5(dir, { recursive: true });
+    const target = join8(dir, name);
+    try {
+      await writeFile5(target, bytes, { flag: "wx" });
+    } catch (error63) {
+      if (error63.code === "EEXIST") {
+        throw new TrackerError(`#${String(issue2.id)} already has an attachment named ${name}`);
+      }
+      throw error63;
+    }
+    const link = relative3(this.dir, target).split("\\").join("/");
+    try {
+      const updated = await this.change(issue2.id, (current) => ({
+        ...current,
+        body: linkAttachment(current.body, name, link)
+      }));
+      return { issue: updated, path: target, link };
+    } catch (error63) {
+      await unlink(target).catch(() => void 0);
+      throw error63;
+    }
   }
 };
+var ATTACHMENTS_DIR = "attachments";
+function linkAttachment(body, name, link) {
+  const linked = `[\`${name}\`](${link.split("/").map((part) => encodeURIComponent(part).replace(/\(/g, "%28").replace(/\)/g, "%29")).join("/")})`;
+  const lines = body === "" ? [] : body.split("\n");
+  const fenced = fencedLines(lines);
+  const isHeading = (i, pattern) => fenced[i] === "prose" && pattern.test(lines[i] ?? "");
+  const heading = lines.findIndex((_, i) => isHeading(i, /^##\s+Attachments\s*$/i));
+  if (heading !== -1) {
+    let end = lines.findIndex((_, i) => i > heading && isHeading(i, /^##\s/));
+    if (end === -1) end = lines.length;
+    const plain2 = `\`${name}\``;
+    for (let i = heading + 1; i < end; i++) {
+      const line = lines[i] ?? "";
+      if (/^\s*[-*]\s/.test(line) && line.includes(plain2) && !line.includes(linked)) {
+        lines[i] = line.replace(plain2, linked).replace("(pending upload)", "(uploaded)");
+        return lines.join("\n");
+      }
+    }
+    let insert = heading + 1;
+    while (insert < end && (lines[insert] === "" || /^\s*[-*]\s/.test(lines[insert] ?? ""))) {
+      insert += 1;
+    }
+    while (insert > heading + 1 && lines[insert - 1] === "") insert -= 1;
+    const bullet = `- ${linked} (uploaded)`;
+    lines.splice(insert, 0, ...insert === heading + 1 ? ["", bullet] : [bullet]);
+    return lines.join("\n");
+  }
+  return [
+    ...lines,
+    ...lines.length > 0 ? [""] : [],
+    "## Attachments",
+    "",
+    `- ${linked} (uploaded)`
+  ].join("\n");
+}
 
 // src/cli/issue.ts
 function splitList(values) {
@@ -26523,7 +27813,9 @@ function printIssue(deps, issue2, json2) {
 }
 async function readBody(deps, options) {
   if (options.bodyFile !== void 0) {
-    return readFile6(resolve3(deps.cwd, options.bodyFile), "utf8");
+    const text2 = await deps.files.readText(resolve3(deps.cwd, options.bodyFile));
+    if (text2 === void 0) throw new TrackerError(`body file not found: ${options.bodyFile}`);
+    return text2;
   }
   return options.body;
 }
@@ -26608,14 +27900,114 @@ function registerIssue(program2, deps) {
         );
       } else {
         const { config: config2 } = await loadCliConfig(deps);
-        const open2 = await (await localTracker(deps, config2)).list({ status: "open" });
-        candidates = open2.map((i) => ({ id: String(i.id), title: i.title }));
+        const open3 = await (await localTracker(deps, config2)).list({ status: "open" });
+        candidates = open3.map((i) => ({ id: String(i.id), title: i.title }));
       }
       const ranked = rankDuplicates(title, candidates);
       deps.stdout(
         options.json === true ? JSON.stringify(ranked, null, 2) : ranked.length === 0 ? "no similar issues found" : ranked.map((c) => `${c.id}	${c.title}`).join("\n")
       );
     })
+  );
+  issue2.command("template").description("Print the empty issue body for a kind, with the required and optional sections").argument("<kind>", "feature or bug").option("--json", "output machine-readable JSON").action(
+    guarded(deps, (rawKind, options) => {
+      const kind = parseIssueKind(rawKind);
+      deps.stdout(
+        options.json === true ? JSON.stringify(
+          {
+            kind,
+            title: TITLE_RULES[kind],
+            sections: ISSUE_SECTIONS[kind],
+            body: renderTemplate2(kind)
+          },
+          null,
+          2
+        ) : `<!-- Title: ${TITLE_RULES[kind]} -->
+
+${renderTemplate2(kind)}`
+      );
+      return Promise.resolve();
+    })
+  );
+  issue2.command("lint").description(
+    "Check an issue draft against the format; exit 0 when it may be filed, 2 to fix it"
+  ).argument("<file>", 'Markdown body; a first line "# <title>" is taken as the title').requiredOption("--kind <kind>", "feature or bug").option("--title <title>", 'the issue title (instead of a "# <title>" first line)').option("--json", "output machine-readable JSON").action(
+    guarded(
+      deps,
+      async (file2, options) => {
+        const kind = parseIssueKind(options.kind);
+        const text2 = await deps.files.readText(resolve3(deps.cwd, file2));
+        if (text2 === void 0) throw new IssueFormatError(`issue draft not found: ${file2}`);
+        const split = splitTitle(text2);
+        const fromFile = options.title === void 0;
+        const result = lintIssue({
+          kind,
+          title: (fromFile ? split.title : options.title) ?? "",
+          body: fromFile ? split.body : text2
+        });
+        if (options.json === true) {
+          deps.stdout(JSON.stringify(result, null, 2));
+        } else if (result.ok) {
+          deps.stdout(`ok: the ${kind} "${result.title}" may be filed`);
+        } else {
+          deps.stdout(
+            [
+              `${String(result.problems.length)} problem(s) to fix, then lint again:`,
+              ...result.problems.map(
+                (p) => `  - ${p.line === void 0 ? "" : `line ${String(p.line)}: `}${p.message}`
+              )
+            ].join("\n")
+          );
+        }
+        if (!result.ok) deps.setExitCode(ExitCode.Refine);
+      }
+    )
+  );
+  issue2.command("attachments").description(
+    "Plan how each file goes on an issue (inline, attach, pending upload, blocked, rejected) and render the Attachments section"
+  ).argument("<files...>", "files to attach").option(
+    "--tracker-uploads",
+    "the tracker can take uploads from your tools (the local tracker can)"
+  ).option("--json", "output machine-readable JSON").action(
+    guarded(
+      deps,
+      async (files, options) => {
+        const plans = [];
+        for (const file2 of files) {
+          const path = resolve3(deps.cwd, file2);
+          let size;
+          try {
+            const info = await stat3(path);
+            if (!info.isFile()) throw new IssueFormatError(`not a file: ${file2}`);
+            size = info.size;
+          } catch (error63) {
+            if (error63.code === "ENOENT") {
+              throw new IssueFormatError(`attachment not found: ${file2}`);
+            }
+            throw error63;
+          }
+          plans.push(
+            await planAttachment(
+              { path: file2, bytes: size, read: () => readFile6(path) },
+              { trackerUploads: options.trackerUploads === true }
+            )
+          );
+        }
+        const ok = plans.every((p) => p.action !== "blocked" && p.action !== "rejected");
+        const section2 = renderAttachmentsSection(plans);
+        if (options.json === true) {
+          deps.stdout(JSON.stringify({ ok, files: plans, section: section2 }, null, 2));
+        } else {
+          deps.stdout(
+            [
+              ...plans.map((p) => `${p.action.padEnd(14)} ${p.path}  ${p.reason}`),
+              ...section2 === "" ? [] : ["", section2.trimEnd()]
+            ].join("\n")
+          );
+        }
+        if (!ok) deps.setExitCode(ExitCode.Refine);
+      }
+    )
   );
   issue2.command("create").description("Create a local issue").requiredOption("--title <title>", "issue title").option("--body <text>", "issue body (Markdown)").option("--body-file <path>", "read the body from a file").option("--label <label>", "label (repeatable)", collect).option("--json", "output machine-readable JSON").action(
     guarded(
@@ -26675,6 +28067,27 @@ function registerIssue(program2, deps) {
       const { config: config2 } = await loadCliConfig(deps);
       const updated = await (await localTracker(deps, config2)).label(id, { add: options.add, remove: options.remove });
       deps.stdout(`#${String(updated.id)} labels: ${updated.labels.join(", ") || "(none)"}`);
+    })
+  );
+  issue2.command("update").description("Replace a local issue's title or body (comments and labels stay)").argument("<id>", "issue number").option("--title <title>", "new title").option("--body <text>", "new body (Markdown)").option("--body-file <path>", "read the new body from a file").option("--json", "output machine-readable JSON").action(
+    guarded(
+      deps,
+      async (id, options) => {
+        const { config: config2 } = await loadCliConfig(deps);
+        const updated = await (await localTracker(deps, config2)).update(id, { title: options.title, body: await readBody(deps, options) });
+        deps.stdout(
+          options.json === true ? JSON.stringify(updated, null, 2) : `updated #${String(updated.id)} ${updated.title}`
+        );
+      }
+    )
+  );
+  issue2.command("attach").description("Copy a file into <localDir>/attachments/<id>/ and link it from the local issue").argument("<id>", "issue number").argument("<file>", "file to attach").option("--json", "output machine-readable JSON").action(
+    guarded(deps, async (id, file2, options) => {
+      const { config: config2 } = await loadCliConfig(deps);
+      const result = await (await localTracker(deps, config2)).attach(id, resolve3(deps.cwd, file2), { maxBytes: sizeCapFor(file2) });
+      deps.stdout(
+        options.json === true ? JSON.stringify({ id: result.issue.id, path: result.path, link: result.link }, null, 2) : `attached ${result.link} to #${String(result.issue.id)}`
+      );
     })
   );
   for (const [name, status] of [
@@ -26916,7 +28329,7 @@ function registerPr(program2, deps) {
 
 // src/cli/prd.ts
 import { createHash as createHash2 } from "crypto";
-import { basename, extname, resolve as resolve5 } from "path";
+import { basename as basename2, extname, resolve as resolve5 } from "path";
 
 // src/templates/prd-template.ts
 var PRD_TEMPLATE = `# PRD: {{TITLE}}
@@ -26978,415 +28391,6 @@ TODO: List endpoints with method, path, request and response, for example:
 | E2E         | TODO what is covered   | TODO tool    |
 | Load        | TODO target and scale  | TODO tool    |
 `;
-
-// src/core/prd-validator.ts
-var DIMENSIONS = [
-  "clarity",
-  "testability",
-  "completeness",
-  "security",
-  "feasibility"
-];
-var scoresSchema = external_exports.strictObject({
-  clarity: external_exports.number().min(0).max(100),
-  testability: external_exports.number().min(0).max(100),
-  completeness: external_exports.number().min(0).max(100),
-  security: external_exports.number().min(0).max(100),
-  feasibility: external_exports.number().min(0).max(100)
-});
-var ESCALATION_MESSAGE = "Confidence threshold not met. Recommended action: Escalate to a higher-reasoning model.";
-function parseHeading(line) {
-  let level = 0;
-  while (level < line.length && line[level] === "#") level += 1;
-  if (level === 0 || level > 6) return null;
-  const next = line[level];
-  if (next !== " " && next !== "	") return null;
-  let title = line.slice(level).trim();
-  while (title.endsWith("#")) title = title.slice(0, -1);
-  return { level, title: title.trim() };
-}
-var FENCE = /^\s*(```|~~~)/;
-function parseSections(markdown) {
-  const lines = markdown.split(/\r?\n/);
-  const sections2 = [];
-  const codeFreeLines = [];
-  let inFence = false;
-  let current;
-  const body = [];
-  const flush = () => {
-    if (current !== void 0) sections2.push({ ...current, body: [...body] });
-    body.length = 0;
-  };
-  lines.forEach((text2, index) => {
-    const line = index + 1;
-    if (FENCE.test(text2)) {
-      inFence = !inFence;
-      codeFreeLines.push("");
-      body.push({ text: text2, line });
-      return;
-    }
-    codeFreeLines.push(inFence ? "" : text2);
-    const heading = inFence ? null : parseHeading(text2);
-    if (heading !== null) {
-      flush();
-      current = { title: heading.title, level: heading.level, line, body: [] };
-      return;
-    }
-    body.push({ text: text2, line });
-  });
-  flush();
-  return { sections: sections2, codeFreeLines };
-}
-function sectionWithChildren(sections2, index) {
-  const start = sections2[index];
-  if (start === void 0) return [];
-  const lines = [...start.body];
-  for (let i = index + 1; i < sections2.length; i += 1) {
-    const next = sections2[i];
-    if (next === void 0 || next.level <= start.level) break;
-    lines.push({ text: `${"#".repeat(next.level)} ${next.title}`, line: next.line }, ...next.body);
-  }
-  return lines;
-}
-function findSection(sections2, pattern) {
-  const index = sections2.findIndex((s) => pattern.test(s.title));
-  return index === -1 ? void 0 : sectionWithChildren(sections2, index);
-}
-var plain = (lines) => lines.map((l) => l.text).join("\n");
-var wordCount = (text2) => text2.split(/\s+/).filter(Boolean).length;
-var FR_START = /^\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)?[*_]*FR-(\d+)\b/i;
-var NFR_ITEM = /^(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+[*_]*NFR-\d+|[*_]*NFR-\d+)/i;
-var GWT_LINE = /^\s*(?:[-*+]\s+|\d+[.)]\s+)?[*_]*(given|when|then|and|but)\b/i;
-var GWT_INLINE = /\bgiven\b.+\bwhen\b.+\bthen\b/is;
-function extractFrBlocks(body) {
-  const blocks = [];
-  let current;
-  for (const { text: text2, line } of body) {
-    const start = FR_START.exec(text2);
-    if (start !== null) {
-      current = { id: `FR-${start[1] ?? ""}`, line, lines: [text2] };
-      blocks.push(current);
-    } else if (current !== void 0) {
-      current.lines.push(text2);
-    }
-  }
-  return blocks;
-}
-function scenarioState(lines) {
-  const joined = lines.join("\n");
-  if (GWT_INLINE.test(joined.replace(/\n/g, " "))) return "complete";
-  const keywords = [];
-  for (const text2 of lines) {
-    const match = GWT_LINE.exec(text2);
-    if (match !== null) keywords.push((match[1] ?? "").toLowerCase());
-  }
-  if (keywords.length === 0) return "none";
-  const first = (word) => keywords.indexOf(word);
-  const given = first("given");
-  const when = first("when");
-  const then = first("then");
-  return given !== -1 && when > given && then > when ? "complete" : "incomplete";
-}
-var MEASURE = /\d[\d,.]*[ \t]?(?:ms|milliseconds?|s|sec|secs|seconds?|min|mins|minutes?|h|hrs?|hours?|days?|weeks?|%|percent|rps|req\/s|qps|tps|requests?|users?|kb|mb|gb|tb|kib|mib|gib|nines|\/s|\/sec|\/min)(?![a-z0-9])/i;
-function isMeasurable(text2) {
-  return MEASURE.test(text2) || /\bp(?:50|90|95|99|99\.9)\b.*\d/i.test(text2);
-}
-var AMBIGUOUS = [
-  /\b(?:fast|faster|quick|quickly|slow)\b/i,
-  /\buser[- ]friendly\b/i,
-  /\b(?:easy|easily|simple|intuitive|seamless|seamlessly|robust|flexible|modern)\b/i,
-  /\b(?:efficient|efficiently|reasonable|reasonably|adequate|adequately|sufficient|sufficiently)\b/i,
-  /\b(?:appropriate|appropriately)\b/i,
-  /\betc\b\.?/i,
-  /\band so on\b/i,
-  /\b(?:as needed|if necessary|where possible|to be determined)\b/i,
-  /\b(?:tbd|tbc|todo)\b/i
-];
-var TIERS = [
-  ["unit", /\bunit\b/i],
-  ["integration", /\bintegration\b/i],
-  ["E2E", /\b(?:e2e|end[- ]to[- ]end)\b/i],
-  ["load", /\b(?:load|performance|stress)\b/i]
-];
-function analyzePrd(markdown) {
-  const { sections: sections2, codeFreeLines } = parseSections(markdown);
-  const issues = [];
-  const add = (issue2) => {
-    issues.push(issue2);
-  };
-  const context = findSection(sections2, /\b(context|problem|background|overview)\b/i);
-  if (context === void 0 || wordCount(plain(context)) < 15) {
-    add({
-      code: "missing-context",
-      message: 'Add a "Context & Problem Statement" section (at least a short paragraph).',
-      caps: { completeness: 55, clarity: 65 }
-    });
-  }
-  const functionalIndex = sections2.findIndex(
-    (s) => /\bfunctional requirements\b/i.test(s.title) && !/\bnon[- ]?functional\b/i.test(s.title)
-  );
-  const functionalBody = functionalIndex === -1 ? sections2.flatMap((s) => s.body) : sectionWithChildren(sections2, functionalIndex);
-  const frBlocks = extractFrBlocks(functionalBody);
-  if (frBlocks.length === 0) {
-    add({
-      code: "no-functional-requirements",
-      message: 'No functional requirements found. Number them FR-1, FR-2, \u2026 under "Functional Requirements".',
-      caps: { completeness: 40, testability: 50 }
-    });
-  }
-  const seen = /* @__PURE__ */ new Set();
-  for (const block of frBlocks) {
-    const key = block.id.toUpperCase();
-    if (seen.has(key)) {
-      add({
-        code: "duplicate-requirement-id",
-        message: `${block.id} is defined more than once.`,
-        caps: { clarity: 70 },
-        line: block.line
-      });
-    }
-    seen.add(key);
-    const state = scenarioState(block.lines);
-    if (state === "none") {
-      add({
-        code: "fr-no-scenario",
-        message: `${block.id} has no Given/When/Then scenario.`,
-        caps: { testability: 60 },
-        line: block.line
-      });
-    } else if (state === "incomplete") {
-      add({
-        code: "fr-incomplete-scenario",
-        message: `${block.id} has a scenario that is missing Given, When or Then (in that order).`,
-        caps: { testability: 70 },
-        line: block.line
-      });
-    }
-  }
-  const nfrBody = findSection(sections2, /\bnon[- ]?functional\b|\bnfrs?\b|\bquality attributes\b/i);
-  let nfrCount = 0;
-  if (nfrBody === void 0) {
-    add({
-      code: "no-nfr",
-      message: 'Add a "Non-Functional Requirements" section with measurable targets.',
-      caps: { completeness: 60, testability: 70 }
-    });
-  } else {
-    const rows = [];
-    let inTable = false;
-    for (const entry of nfrBody) {
-      const trimmed = entry.text.trim();
-      if (trimmed === "") {
-        inTable = false;
-      } else if (trimmed.startsWith("|")) {
-        if (/^\|[\s:|-]+\|?$/.test(trimmed)) continue;
-        if (inTable) rows.push(entry);
-        inTable = true;
-      } else {
-        inTable = false;
-        if (NFR_ITEM.test(trimmed)) rows.push(entry);
-      }
-    }
-    nfrCount = rows.length;
-    if (rows.length === 0) {
-      add({
-        code: "no-nfr",
-        message: "The Non-Functional Requirements section lists no requirements.",
-        caps: { completeness: 60, testability: 70 }
-      });
-    }
-    for (const row of rows) {
-      if (!isMeasurable(row.text)) {
-        add({
-          code: "nfr-unmeasurable",
-          message: `Non-functional requirement is not measurable (give a number and a unit): "${row.text.trim().slice(0, 80)}"`,
-          caps: { testability: 65, feasibility: 70 },
-          line: row.line
-        });
-      }
-    }
-  }
-  const security = findSection(sections2, /\bsecurity\b/i);
-  if (security === void 0) {
-    add({
-      code: "no-security-section",
-      message: 'Add a "Security" section covering authentication, authorisation (RBAC) and input validation.',
-      caps: { security: 40 }
-    });
-  } else {
-    const text2 = plain(security);
-    if (!/\b(?:authenticat\w*|authn|login|sign[- ]?in|oauth\w*|oidc|sso|jwt|saml|mfa|api key\w*)\b/i.test(
-      text2
-    )) {
-      add({
-        code: "security-authentication",
-        message: "Security section does not cover authentication.",
-        caps: { security: 60 }
-      });
-    }
-    if (!/\b(?:authori[sz]\w*|authz|rbac|abac|permissions?|roles?|access control|acl)\b/i.test(text2)) {
-      add({
-        code: "security-authorization",
-        message: "Security section does not cover authorisation / RBAC.",
-        caps: { security: 60 }
-      });
-    }
-    if (!/\b(?:input validation|validat\w*|sanitis\w*|sanitiz\w*|injection|escap\w*)\b/i.test(text2)) {
-      add({
-        code: "security-input-validation",
-        message: "Security section does not cover input validation.",
-        caps: { security: 65 }
-      });
-    }
-  }
-  const data = findSection(sections2, /\bdata (?:models?|model|schema|entities)\b|\bschema\b/i);
-  if (data === void 0 || wordCount(plain(data)) < 8) {
-    add({
-      code: "missing-data-model",
-      message: 'Add a "Data Models" section (entities, fields and relations).',
-      caps: { completeness: 65, feasibility: 80 }
-    });
-  }
-  const api = findSection(sections2, /\bapi\b|\bcontracts?\b|\binterfaces?\b/i);
-  const apiText = api === void 0 ? "" : plain(api);
-  if (api === void 0 || !(/\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/\S*/.test(apiText) || /```|^\s*\|/m.test(apiText))) {
-    add({
-      code: "missing-api-contract",
-      message: 'Add an "API Contracts" section with endpoints (e.g. `POST /orders`) or schemas.',
-      caps: { completeness: 65, feasibility: 80 }
-    });
-  }
-  const matrix = findSection(
-    sections2,
-    /\btest(?:ing)? (?:strategy|matrix|plan)\b|\btest strategy\b/i
-  );
-  if (matrix === void 0) {
-    add({
-      code: "missing-test-matrix",
-      message: 'Add a "Test Strategy Matrix" covering unit, integration, E2E and load tests.',
-      caps: { testability: 55, completeness: 75 }
-    });
-  } else {
-    const text2 = plain(matrix);
-    for (const [name, pattern] of TIERS) {
-      if (!pattern.test(text2)) {
-        add({
-          code: "test-matrix-tier",
-          message: `The test matrix does not cover ${name} tests.`,
-          caps: { testability: 65 }
-        });
-      }
-    }
-  }
-  let ambiguous = 0;
-  codeFreeLines.forEach((text2, index) => {
-    for (const pattern of AMBIGUOUS) {
-      const match = pattern.exec(text2);
-      if (match !== null) {
-        ambiguous += 1;
-        add({
-          code: "ambiguous-term",
-          message: `Ambiguous wording "${match[0]}": replace it with something verifiable.`,
-          caps: {},
-          line: index + 1
-        });
-      }
-    }
-  });
-  return {
-    issues,
-    stats: {
-      functionalRequirements: frBlocks.length,
-      nonFunctionalRequirements: nfrCount,
-      ambiguousTerms: ambiguous
-    }
-  };
-}
-function capsFor(analysis) {
-  const caps = {
-    clarity: 100,
-    testability: 100,
-    completeness: 100,
-    security: 100,
-    feasibility: 100
-  };
-  for (const issue2 of analysis.issues) {
-    for (const dimension of DIMENSIONS) {
-      const cap = issue2.caps[dimension];
-      if (cap !== void 0) caps[dimension] = Math.min(caps[dimension], cap);
-    }
-  }
-  const n = analysis.stats.ambiguousTerms;
-  if (n > 0) caps.clarity = Math.min(caps.clarity, n > 5 ? 65 : n > 2 ? 75 : 85);
-  return caps;
-}
-var round1 = (n) => Math.round(n * 10) / 10;
-function decide(caps, scores, thresholds, evaluationsBefore2) {
-  if (scores === void 0) {
-    const best = DIMENSIONS.map((d) => caps[d]);
-    const bestMean = best.reduce((a, b) => a + b, 0) / best.length;
-    const blocked = bestMean < thresholds.threshold || Math.min(...best) < thresholds.dimensionFloor;
-    return blocked ? {
-      nextAction: "refine",
-      pass: false,
-      reason: "The structural issues cap the achievable score below the pass rule; fix them first."
-    } : {
-      nextAction: "score",
-      pass: false,
-      reason: "Structure is acceptable: self-score the five dimensions with the rubric and re-run with --scores."
-    };
-  }
-  const effective = {};
-  for (const d of DIMENSIONS) effective[d] = Math.min(scores[d], caps[d]);
-  const values = DIMENSIONS.map((d) => effective[d]);
-  const mean = round1(values.reduce((a, b) => a + b, 0) / values.length);
-  const min = Math.min(...values);
-  const pass = mean >= thresholds.threshold && min >= thresholds.dimensionFloor;
-  if (pass) {
-    return {
-      nextAction: "accept",
-      pass,
-      effectiveScores: effective,
-      mean,
-      min,
-      reason: "The PRD meets the threshold."
-    };
-  }
-  const refinementsDone = evaluationsBefore2;
-  if (refinementsDone >= thresholds.maxRefinements) {
-    return {
-      nextAction: "escalate",
-      pass,
-      effectiveScores: effective,
-      mean,
-      min,
-      reason: `Still below the threshold after ${String(thresholds.maxRefinements)} refinement passes.`
-    };
-  }
-  const why = mean < thresholds.threshold ? `mean ${String(mean)} is below ${String(thresholds.threshold)}` : `lowest dimension ${String(min)} is below the floor ${String(thresholds.dimensionFloor)}`;
-  return {
-    nextAction: "refine",
-    pass,
-    effectiveScores: effective,
-    mean,
-    min,
-    reason: `Refine the PRD: ${why}.`
-  };
-}
-function validatePrd(markdown, options) {
-  const analysis = analyzePrd(markdown);
-  const caps = capsFor(analysis);
-  const before = options.evaluationsBefore ?? 0;
-  const decision = decide(caps, options.scores, options.config.prd, before);
-  return {
-    ...decision,
-    issues: analysis.issues,
-    stats: analysis.stats,
-    caps,
-    evaluation: options.scores === void 0 ? before : before + 1,
-    message: decision.nextAction === "escalate" ? ESCALATION_MESSAGE : decision.reason
-  };
-}
 
 // src/templates/prd-rubric.ts
 var RUBRIC = {
@@ -27455,7 +28459,7 @@ var EXIT2 = {
   escalate: ExitCode.Escalate
 };
 function slugFor(file2, explicit) {
-  const slug2 = slugify2(explicit ?? basename(file2, extname(file2)), 60);
+  const slug2 = slugify2(explicit ?? basename2(file2, extname(file2)), 60);
   if (slug2 === "") throw new PrdError("cannot derive a slug; pass --slug");
   return slug2;
 }
@@ -27659,11 +28663,11 @@ function registerRfc(program2, deps) {
 
 // src/cli/setup.ts
 import { mkdir as mkdir6, writeFile as writeFile7 } from "fs/promises";
-import { basename as basename2, dirname as dirname6, join as join12, resolve as resolve6 } from "path";
+import { basename as basename3, dirname as dirname6, join as join12, resolve as resolve6 } from "path";
 
 // src/core/readme-renderer.ts
 var MAX_ITEMS = 6;
-function listItems(text2) {
+function listItems2(text2) {
   if (!isSubstantive(text2)) return [];
   const source = text2 ?? "";
   const parts = source.includes("\n") ? source.split("\n") : source.split(/[;,]/);
@@ -27678,8 +28682,8 @@ function node2(id, label) {
   return `  ${id}["${mermaidLabel(label)}"]`;
 }
 function contextDiagram(name, answers) {
-  const users = listItems(answers.users);
-  const systems = listItems(answers.integrations);
+  const users = listItems2(answers.users);
+  const systems = listItems2(answers.integrations);
   const lines = ["flowchart LR", node2("system", name)];
   (users.length > 0 ? users : ["Users"]).forEach((user, index) => {
     lines.push(node2(`u${String(index)}`, user), `  u${String(index)} --> system`);
@@ -27706,7 +28710,7 @@ function section(title, body) {
   return body === void 0 || body.trim() === "" ? [] : [`## ${title}`, "", body.trim(), ""];
 }
 function bullets(text2) {
-  const items = listItems(text2);
+  const items = listItems2(text2);
   return items.length === 0 ? void 0 : items.map((item) => `- ${item}`).join("\n");
 }
 function renderReadme(input2) {
@@ -27970,9 +28974,9 @@ async function askInTerminal2(known, deps) {
   const collected = {};
   const asked = /* @__PURE__ */ new Set();
   for (; ; ) {
-    const open2 = nextQuestions({ ...known, ...collected }).filter((q) => !asked.has(q.id));
-    if (open2.length === 0) break;
-    for (const question of open2) {
+    const open3 = nextQuestions({ ...known, ...collected }).filter((q) => !asked.has(q.id));
+    if (open3.length === 0) break;
+    for (const question of open3) {
       asked.add(question.id);
       const hint = question.hint === void 0 ? "" : ` (${question.hint})`;
       const reply = await ask(`${question.prompt}${hint}
@@ -27991,7 +28995,10 @@ async function refuseToOverwrite(root, relPath, deps) {
 function registerSetup(program2, deps) {
   program2.command("setup").description(
     "Phase 0: record the domain (questions and answers), then write test workflows and a README"
-  ).option("--questions", "print the open questions and the stack report, change nothing").option("--answers <file>", "JSON file of question id to answer; merged into the domain file").option("--stack <ecosystem>", `stack to use in an empty repo: ${ECOSYSTEMS.join(", ")}`).option("--workflows", "write the GitHub test workflows").option("--readme", "write README.md from the domain answers").option("--name <name>", "project name for the README (default: the folder name)").option("--force", "overwrite files that already exist").option("--dry-run", "report what would be written without writing").option("--json", "output machine-readable JSON").action(
+  ).option("--questions", "print the open questions and the stack report, change nothing").option("--answers <file>", "JSON file of question id to answer; merged into the domain file").option("--stack <ecosystem>", `stack to use in an empty repo: ${ECOSYSTEMS.join(", ")}`).option("--workflows", "write the GitHub test workflows").option("--readme", "write README.md from the domain answers").option(
+    "--issue-forms",
+    "write GitHub issue forms (.github/ISSUE_TEMPLATE/feature.yml and bug.yml) in the sentinel issue format"
+  ).option("--name <name>", "project name for the README (default: the folder name)").option("--force", "overwrite files that already exist").option("--dry-run", "report what would be written without writing").option("--json", "output machine-readable JSON").action(
     guarded(deps, async (options) => {
       const root = await findRepoRoot(deps.cwd, deps.files) ?? deps.cwd;
       const { config: config2 } = await loadCliConfig(deps);
@@ -28008,7 +29015,7 @@ function registerSetup(program2, deps) {
       let incoming = {};
       if (options.answers !== void 0) {
         incoming = await readAnswersFile(options.answers, deps);
-      } else if (deps.interactive === true && options.questions !== true && options.workflows !== true && options.readme !== true) {
+      } else if (deps.interactive === true && options.questions !== true && options.workflows !== true && options.readme !== true && options.issueForms !== true) {
         incoming = await askInTerminal2(answers, deps);
       }
       const changed = Object.keys(incoming).length > 0;
@@ -28059,12 +29066,36 @@ function registerSetup(program2, deps) {
         }
         if (options.force !== true) await refuseToOverwrite(root, "README.md", deps);
         const content = renderReadme({
-          name: options.name ?? basename2(root),
+          name: options.name ?? basename3(root),
           answers,
           projects
         });
         if (!dryRun) await writeNewFile(join12(root, "README.md"), content, options.force === true);
         files.push("README.md");
+      }
+      if (options.issueForms === true) {
+        const tracker = config2.issueProvider.tracker;
+        if (tracker !== null && normalizeTracker(tracker) !== "github") {
+          throw new SetupError(
+            `issue forms are for GitHub Issues, but issueProvider.tracker is ${normalizeTracker(tracker)}`
+          );
+        }
+        const forms = ISSUE_KINDS.map(
+          (kind) => renderIssueForm(kind, config2.issueProvider.labelMap)
+        );
+        if (options.force !== true) {
+          for (const form of forms) await refuseToOverwrite(root, form.path, deps);
+        }
+        for (const form of forms) {
+          if (!dryRun) {
+            await writeNewFile(
+              resolveInside(root, ".", form.path),
+              form.content,
+              options.force === true
+            );
+          }
+          files.push(form.path);
+        }
       }
       const complete = isComplete(answers);
       const next = nextQuestions(answers).map(toPublic);

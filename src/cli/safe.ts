@@ -2,6 +2,7 @@ import { BranchNameError } from '../core/branch-namer.js';
 import { ConfigError } from '../core/config.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { GuardrailError } from '../core/guardrails.js';
+import { IssueFormatError } from '../core/issue-format.js';
 import { WorktreeError } from '../core/git-worktree-manager.js';
 import { MiningError } from '../core/mining.js';
 import { PrdError } from '../core/prd-state.js';
@@ -37,6 +38,7 @@ export function guarded<Args extends unknown[]>(
         error instanceof ScaffoldError ||
         error instanceof MiningError ||
         error instanceof GuardrailError ||
+        error instanceof IssueFormatError ||
         error instanceof SetupError ||
         error instanceof WorktreeError
       ) {

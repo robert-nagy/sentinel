@@ -18,7 +18,16 @@ Write the PRD yourself; sentinel only checks it. The validator is deterministic 
 
 1. Read the issue (`get`) when the user gave an id, and `.sentinel/domain.json` when it exists.
 2. Create the file: `node scripts/sentinel.mjs prd new <slug> --issue <id> --json`. It prints the path under the configured PRD directory.
-3. Fill every section of the template. Each functional requirement `FR-n` needs at least one Given/When/Then scenario. Each non-functional requirement needs a number and a unit. Cover authentication, authorisation (RBAC) and input validation, data models, API contracts, and a test matrix with unit, integration, E2E and load tiers. Avoid vague words ("fast", "user-friendly", "etc.", "TBD").
+3. If the issue is in sentinel's issue format (`##` headings such as Problem, User story and Acceptance criteria for a feature, or Summary, Steps to reproduce, Expected and Actual for a bug, as `sentinel-intake` files them), start from its sections instead of free text:
+   - Problem and User story (or a bug's Summary and Impact) → 1. Context & Problem Statement.
+   - Out of scope → the non-goals in 1. Context.
+   - each acceptance criterion `AC-n` → one functional requirement `FR-n` in 2. Functional Requirements, keeping its Given/When/Then as the scenario.
+   - Constraints → 3. Non-Functional Requirements (with their numbers and units), and 4. Security for security limits.
+   - Context and Attachments → background to read; link them from the PRD rather than copying them.
+
+   Keep the issue's wording where it is already precise, and fill every PRD section the issue does not cover.
+
+4. Fill every section of the template. Each functional requirement `FR-n` needs at least one Given/When/Then scenario. Each non-functional requirement needs a number and a unit. Cover authentication, authorisation (RBAC) and input validation, data models, API contracts, and a test matrix with unit, integration, E2E and load tiers. Avoid vague words ("fast", "user-friendly", "etc.", "TBD").
 
 ## Score and validate
 

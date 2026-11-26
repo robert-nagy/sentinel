@@ -2,6 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { Command } from 'commander';
 import { ExitCode } from '../core/exit-codes.js';
+import { ISSUE_KINDS, renderIssueForm } from '../core/issue-format.js';
+import { normalizeTracker } from '../core/issue-tracker.js';
 import { renderReadme } from '../core/readme-renderer.js';
 import { findRepoRoot } from '../core/repo.js';
 import { ScaffoldError, resolveInside, writeNewFile } from '../core/scaffold.js';
@@ -35,6 +37,7 @@ interface SetupOptions {
   stack?: string;
   workflows?: boolean;
   readme?: boolean;
+  issueForms?: boolean;
   name?: string;
   force?: boolean;
   dryRun?: boolean;
@@ -92,6 +95,10 @@ export function registerSetup(program: Command, deps: CliDeps): void {
     .option('--stack <ecosystem>', `stack to use in an empty repo: ${ECOSYSTEMS.join(', ')}`)
     .option('--workflows', 'write the GitHub test workflows')
     .option('--readme', 'write README.md from the domain answers')
+    .option(
+      '--issue-forms',
+      'write GitHub issue forms (.github/ISSUE_TEMPLATE/feature.yml and bug.yml) in the sentinel issue format',
+    )
     .option('--name <name>', 'project name for the README (default: the folder name)')
     .option('--force', 'overwrite files that already exist')
     .option('--dry-run', 'report what would be written without writing')
@@ -124,7 +131,8 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           deps.interactive === true &&
           options.questions !== true &&
           options.workflows !== true &&
-          options.readme !== true
+          options.readme !== true &&
+          options.issueForms !== true
         ) {
           incoming = await askInTerminal(answers, deps);
         }
@@ -186,6 +194,31 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           });
           if (!dryRun) await writeNewFile(join(root, 'README.md'), content, options.force === true);
           files.push('README.md');
+        }
+
+        if (options.issueForms === true) {
+          const tracker = config.issueProvider.tracker;
+          if (tracker !== null && normalizeTracker(tracker) !== 'github') {
+            throw new SetupError(
+              `issue forms are for GitHub Issues, but issueProvider.tracker is ${normalizeTracker(tracker)}`,
+            );
+          }
+          const forms = ISSUE_KINDS.map((kind) =>
+            renderIssueForm(kind, config.issueProvider.labelMap),
+          );
+          if (options.force !== true) {
+            for (const form of forms) await refuseToOverwrite(root, form.path, deps);
+          }
+          for (const form of forms) {
+            if (!dryRun) {
+              await writeNewFile(
+                resolveInside(root, '.', form.path),
+                form.content,
+                options.force === true,
+              );
+            }
+            files.push(form.path);
+          }
         }
 
         const complete = isComplete(answers);

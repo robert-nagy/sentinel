@@ -237,6 +237,12 @@ export const TRACKER_VERBS = [
     verb: 'link-pr',
     meaning: 'connect a pull request (tracker link, or "Fixes <id>" in the PR body)',
   },
+  { verb: 'update', meaning: "replace an issue's title or body" },
+  {
+    verb: 'attach',
+    meaning:
+      'store a file on an issue, if the tracker can take uploads; otherwise list it for the user to upload',
+  },
   { verb: 'close', meaning: 'close or resolve an issue' },
 ] as const;
 
@@ -249,6 +255,8 @@ const LOCAL_COMMANDS: Readonly<Record<string, string>> = {
   comment: 'sentinel issue comment <id> --body <text>',
   'set-status': 'sentinel issue label <id> --add <status label> (or close it)',
   'link-pr': 'sentinel issue comment <id> --body "PR: <url>", and "Fixes #<id>" in the PR body',
+  update: 'sentinel issue update <id> [--title <title>] [--body-file <path>]',
+  attach: 'sentinel issue attach <id> <file>',
   close: 'sentinel issue close <id>',
 };
 

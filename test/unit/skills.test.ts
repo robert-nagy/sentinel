@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { runCommand } from '../../src/core/exec.js';
 import { GUARDRAIL_RULES } from '../../src/core/guardrails.js';
+import { TRACKER_VERBS } from '../../src/core/issue-tracker.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const pluginDir = join(root, 'plugins', 'sentinel');
@@ -94,6 +95,14 @@ describe('skill files', () => {
       }
     });
 
+    it('names only neutral tracker verbs', () => {
+      const known: readonly string[] = TRACKER_VERBS.map((v) => v.verb);
+      const sentence = /neutral verbs ((?:`[a-z-]+`(?:, | and )?)+)/.exec(text)?.[1];
+      if (sentence === undefined) return;
+      const named = [...sentence.matchAll(/`([a-z-]+)`/g)].map((m) => m[1] ?? '');
+      for (const verb of named) expect(known, `${verb} in ${name}`).toContain(verb);
+    });
+
     it('only names CLI commands the committed bundle has', async () => {
       const bundle = join(skillsDir, name, 'scripts', 'sentinel.mjs');
       expect(existsSync(bundle)).toBe(true);
@@ -124,6 +133,19 @@ describe('sub-agents', () => {
       for (const [pattern, label] of TRACKER_PATTERNS) {
         expect(pattern.test(text), `${label} in ${file}`).toBe(false);
       }
+    }
+  });
+});
+
+describe('tracker verbs', () => {
+  it('include the M9 verbs update and attach', () => {
+    expect(TRACKER_VERBS.map((v) => v.verb)).toEqual(expect.arrayContaining(['update', 'attach']));
+  });
+
+  it('are all named by sentinel-intake', () => {
+    const text = readFileSync(join(skillsDir, 'sentinel-intake', 'SKILL.md'), 'utf8');
+    for (const { verb } of TRACKER_VERBS) {
+      if (verb !== 'dedupe') expect(text, verb).toContain(`\`${verb}\``);
     }
   });
 });

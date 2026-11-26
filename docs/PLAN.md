@@ -1,7 +1,7 @@
 # sentinel — Implementation Plan
 
 > **Status:** v4 — v2 decisions locked after the design-grilling session (2026-11-02); issue trackers revised on 2026-11-04 to use the host agent's own tooling (ADR-0005); distribution revised on 2026-11-09 from an npm package to a plugin marketplace (ADR-0006); issue intake and a standard issue format added on 2026-11-26 (ADR-0007, M9). See §11 for the full decision log.
-> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5 and M6 are done; M7's smoke test, M8 and M9 (issue intake) remain (§9). M4 (MCP) is deferred.
+> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5, M6 and M9 (issue intake, except its manual check) are done; M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
 > Source: _Refined Requirements Specification: `sentinel`_ (PDLC/SDLC platform spec + master generator prompt).
 > Repo at planning time: empty (`README.md` = `# sentinel`), remote `github.com/robert-nagy/sentinel`, branch `main`.
 
@@ -80,7 +80,7 @@ sentinel/
 │   ├── plugin.json                      # Agent Plugins 1.0 (generated)
 │   ├── skills/
 │   │   ├── sentinel-setup/    SKILL.md · scripts/sentinel.mjs
-│   │   ├── sentinel-intake/   SKILL.md · scripts/sentinel.mjs   # planned (M9)
+│   │   ├── sentinel-intake/   SKILL.md · scripts/sentinel.mjs   # M9
 │   │   ├── sentinel-prd/      SKILL.md · references/rubric.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc/     SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc-auto/ SKILL.md · scripts/sentinel.mjs
@@ -102,7 +102,7 @@ sentinel/
 │   │   ├── git-worktree-manager.ts
 │   │   ├── issue-tracker.ts             # intent, aliases, forge detection, resolve rule, describe()
 │   │   ├── local-tracker.ts             # the one tracker sentinel implements: Markdown files
-│   │   ├── issue-format.ts              # planned (M9): sections per kind, template, lint, attachments, issue forms
+│   │   ├── issue-format.ts              # M9: sections per kind, template, lint, attachments, issue forms
 │   │   ├── duplicates.ts · mining.ts    # title-similarity ranking; mine search/draft/create
 │   │   ├── code-host.ts                 # interface: createPR, prStatus, checks, failedLogs, comment
 │   │   ├── hosts/ github.ts
@@ -219,7 +219,7 @@ Other commands:
 
 Issues as Markdown files with front matter (`id`, `title`, `status: open|closed`, `labels`, `created`) under `issueProvider.localDir` (default `docs/issues`), named `<id>-<slug>.md`, committed with the repo. Ids are sequential integers. Comments are appended under a `## Comments` heading. `sentinel issue create|get|list|comment|label|close|reopen` operate on it; for any other tracker they exit with code 4 and point the agent at its own tooling.
 
-### `issue-format.ts` — the issue contract _(ADR-0007, planned in M9)_
+### `issue-format.ts` — the issue contract _(ADR-0007, M9)_
 
 One definition of the sections per kind (`feature`, `bug`; see [docs/issue-format.md](issue-format.md)), used by everything that writes or reads an issue:
 
@@ -275,16 +275,16 @@ All skills follow the Agent Skills spec: a folder with `SKILL.md`; `name` must m
 
 **Bundled CLI invocation (decision Q20).** Every skill folder contains `scripts/sentinel.mjs`, a single-file build of the CLI at the same commit as the skill. Skill bodies call it by a path relative to their own folder (`node scripts/sentinel.mjs prd validate … --json`); where this plan writes `sentinel <command>` inside a skill, that is the invocation meant. Skills and CLI ship together, so there is no version pinning and nothing to drift.
 
-| Skill                | Phase | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `disable-model-invocation`       |
-| -------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → GitHub workflows → README + diagrams → `AGENTS.md` guardrails → GitHub issue forms (M9) → bootstrap branch + PR → hand off to babysit.                                                                                                                                                                                                                                            | true                             |
-| `sentinel-intake`    | 1     | _(planned, M9)_ Read what the user wrote (or `get` an issue to refine) → pick the kind → ask only for missing or vague sections, one question at a time with a suggested answer, reading the code instead of asking where it can → `issue attachments` → `issue lint` until 0 → `issue resolve` → `dedupe` → propose priority → **STOP for approval** → `create` (or `update`, posting the old body as a comment) → `attach` → list _pending upload_ files → offer `sentinel-prd`. | false (the agent may suggest it) |
-| `sentinel-prd`       | 1     | Draft the PRD from the template using `.sentinel/domain.json` and the issue (its sections mapped per [docs/issue-format.md](issue-format.md) from M9) → self-score with the rubric → `prd validate` → refine (≤3) → accept or escalate.                                                                                                                                                                                                                                            | false (the agent may suggest it) |
-| `sentinel-mine`      | 1     | `gh search repos` for comparable high-star projects → extract feature/API surfaces → gap list in `docs/feature-gaps.md` → **stop for user approval** → `issue resolve` → `list` candidates + `issue duplicates` to skip duplicates → `create` the approved issues with `labelMap`.                                                                                                                                                                                                 | true                             |
-| `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                                                                                                                                                                                                                 | true                             |
-| `sentinel-sdlc-auto` | 2     | Same as `sentinel-sdlc` with no RFC stop; still never merges.                                                                                                                                                                                                                                                                                                                                                                                                                      | true                             |
-| `sentinel-babysit`   | 2     | Run `babysit --once` in a loop: read the packet → patch → push → repeat until green or `GIVE_UP`.                                                                                                                                                                                                                                                                                                                                                                                  | true                             |
-| `sentinel-review`    | any   | Stand-alone review of uncommitted work plus the branch vs its PR target (or a given scope) with `sentinel-reviewer` (inline checklist where there is no sub-agent) → report findings → fix only on request.                                                                                                                                                                                                                                                                        | false (the agent may suggest it) |
+| Skill                | Phase | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `disable-model-invocation`       |
+| -------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| `sentinel-setup`     | 0     | Detect empty state → grilling → stack proposal/analysis → choose test tiers (confirm installs) → GitHub workflows → README + diagrams → `AGENTS.md` guardrails → GitHub issue forms (M9) → bootstrap branch + PR → hand off to babysit.                                                                                                                                                                                                                            | true                             |
+| `sentinel-intake`    | 1     | `issue resolve` → read what the user wrote (or `get` an issue to refine) → pick the kind → ask only for missing or vague sections, one question at a time with a suggested answer, reading the code instead of asking where it can → `issue attachments` → `issue lint` until 0 → `dedupe` → propose priority → **STOP for approval** → `create` (or `update`, posting the old body as a comment) → `attach` → list _pending upload_ files → offer `sentinel-prd`. | false (the agent may suggest it) |
+| `sentinel-prd`       | 1     | Draft the PRD from the template using `.sentinel/domain.json` and the issue (its sections mapped per [docs/issue-format.md](issue-format.md) from M9) → self-score with the rubric → `prd validate` → refine (≤3) → accept or escalate.                                                                                                                                                                                                                            | false (the agent may suggest it) |
+| `sentinel-mine`      | 1     | `gh search repos` for comparable high-star projects → extract feature/API surfaces → gap list in `docs/feature-gaps.md` → **stop for user approval** → `issue resolve` → `list` candidates + `issue duplicates` to skip duplicates → `create` the approved issues with `labelMap`.                                                                                                                                                                                 | true                             |
+| `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                                                                                                                                                                                                 | true                             |
+| `sentinel-sdlc-auto` | 2     | Same as `sentinel-sdlc` with no RFC stop; still never merges.                                                                                                                                                                                                                                                                                                                                                                                                      | true                             |
+| `sentinel-babysit`   | 2     | Run `babysit --once` in a loop: read the packet → patch → push → repeat until green or `GIVE_UP`.                                                                                                                                                                                                                                                                                                                                                                  | true                             |
+| `sentinel-review`    | any   | Stand-alone review of uncommitted work plus the branch vs its PR target (or a given scope) with `sentinel-reviewer` (inline checklist where there is no sub-agent) → report findings → fix only on request.                                                                                                                                                                                                                                                        | false (the agent may suggest it) |
 
 Shared guardrails (repeated in every skill and in AGENTS.md):
 
@@ -350,7 +350,7 @@ sentinel branch name --issue <id> [--title] [--label] [--issue-type] [--type fea
 sentinel worktree add <id> [--type] | remove <id> | prune
 sentinel issue resolve [--available <slugs>] | detect | use <tracker> | describe
 sentinel issue duplicates <title> [--candidates <file>]
-sentinel issue template <feature|bug> | lint <file> --kind <kind>   # M9, any tracker
+sentinel issue template <feature|bug> | lint <file> --kind <kind> [--title <title>]   # M9, any tracker
 sentinel issue attachments <files…> [--tracker-uploads]   # M9: inline / attach / pending plan
 sentinel issue attach <id> <file>                            # M9, local tracker only
 sentinel issue create|get|list|comment|label|close|reopen|update    # local tracker only (update: M9)
@@ -489,12 +489,12 @@ _Was "Jira & Azure DevOps trackers (≈4 days)"; replaced by ADR-0005._
 _M9a (core, no skill, can start now). M9b (skill and skill changes) once M9a is in the bundle. Independent of M7 and M8; ships in the first marketplace release if it is ready, otherwise in the next._
 
 - [x] Research and format decision: [ADR-0007](adr/0007-issue-intake-format.md), [docs/issue-format.md](issue-format.md).
-- [ ] M9a: `issue-format.ts` with the section definitions; `issue template`, `issue lint` (golden good/bad issues per kind, reusing the PRD ambiguity list and a secret-pattern list).
-- [ ] M9a: `issue attachments` planner (text sniffing, trimming, size caps, secret block) and the local tracker's `issue attach` and `issue update`; fixtures for logs, images and a file with a token.
-- [ ] M9a: `setup --issue-forms` generating `feature.yml` and `bug.yml`; a test that the forms and the lint agree on every section id.
-- [ ] M9a: the neutral verbs `update` and `attach` in `issue describe` and the skill lint test's verb list.
-- [ ] M9b: `sentinel-intake` SKILL.md: gap-driven interview, lint gate, dedupe, priority proposal, **STOP for approval**, create or refine (old body kept as a comment), attachments with the _pending upload_ hand-off, offer `sentinel-prd`.
-- [ ] M9b: `sentinel-prd` maps issue sections onto the PRD; `sentinel-setup` offers the GitHub issue forms; README skills table and quickstart.
+- [x] M9a: `issue-format.ts` with the section definitions; `issue template`, `issue lint` (golden good/bad issues per kind, reusing the PRD ambiguity list and a secret-pattern list).
+- [x] M9a: `issue attachments` planner (text sniffing, trimming, size caps, secret block) and the local tracker's `issue attach` and `issue update`; fixtures for logs, images and a file with a token.
+- [x] M9a: `setup --issue-forms` generating `feature.yml` and `bug.yml`; a test that the forms and the lint agree on every section id.
+- [x] M9a: the neutral verbs `update` and `attach` in `issue describe` and the skill lint test's verb list.
+- [x] M9b: `sentinel-intake` SKILL.md: gap-driven interview, lint gate, dedupe, priority proposal, **STOP for approval**, create or refine (old body kept as a comment), attachments with the _pending upload_ hand-off, offer `sentinel-prd`.
+- [x] M9b: `sentinel-prd` maps issue sections onto the PRD; `sentinel-setup` offers the GitHub issue forms; README skills table and quickstart.
 - [ ] Manual check: one feature and one bug through `sentinel-intake` on GitHub (with a screenshot, so the hand-off is exercised) and on the local tracker, then `sentinel-prd` on the feature.
 
 ### Sequencing: what can run in parallel
