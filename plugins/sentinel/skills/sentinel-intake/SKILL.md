@@ -19,7 +19,7 @@ You need the tracker before the interview: refining starts with `get`, and the a
 ## Start from what the user wrote
 
 1. If the user gave an issue id, `get` it. You are **refining** that issue: keep its original title and body exactly as they are, for the comment you post later.
-2. Pick the kind. Something that worked, or is documented to work, and does not: `bug`. Anything else: `feature`. Chores and refactors are features with an extra `kind/chore` or `kind/refactor` label. Ask only if you cannot tell.
+2. Pick the kind. Something that worked, or is documented to work, and does not: `bug`. Anything else: `feature`. Chores and refactors are features with an extra `kind/chore` or `kind/refactor` label; write their user story from the point of view of whoever benefits, often the maintainers. Ask only if you cannot tell.
 3. Run `node scripts/sentinel.mjs issue template <kind> --json`. It lists every section with its id, heading, whether it is required, and a hint, plus the title rule.
 4. Sort what the user wrote (or the existing issue says) into those sections. Note which required sections are missing and which are vague: no numbers, no named role, a criterion without Given, when and then, a step a stranger could not repeat.
 

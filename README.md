@@ -12,7 +12,7 @@ pass a quality gate, then issue → isolated worktree → RFC → test-driven im
 request.
 
 > **Status: early development.** Versions 0.1.0 to 0.3.0 are tagged, but sentinel is not yet listed
-> in any tool's public marketplace; the plugin installs from this repository and all seven skills
+> in any tool's public marketplace; the plugin installs from this repository and all eight skills
 > ship today. See the
 > [implementation plan](docs/PLAN.md) for the roadmap.
 
@@ -56,10 +56,15 @@ support them.
 
 1. **Check the setup.** "Run the sentinel-doctor skill." It runs the bundled CLI and reports Node,
    git, `gh` and configuration problems.
-2. **Write a PRD.** "Use sentinel-prd to write a PRD for issue 42." The agent drafts the document
+2. **File an issue.** "Use sentinel-intake to file a bug: checkout ignores discount codes." The
+   agent asks only about what is missing, one question at a time, lints the draft against the
+   [standard issue format](docs/issue-format.md), checks for duplicates, proposes a priority and
+   **stops for your approval** before it files the issue. Given an issue id, it rewrites that issue
+   into the format and keeps the old text as a comment.
+3. **Write a PRD.** "Use sentinel-prd to write a PRD for issue 42." The agent drafts the document
    from the template, scores itself against the rubric, and `sentinel prd validate` accepts it,
    asks for a refinement, or escalates after the refinement limit.
-3. **Implement an issue.** "Use sentinel-sdlc on issue 42." The agent resolves your tracker, creates
+4. **Implement an issue.** "Use sentinel-sdlc on issue 42." The agent resolves your tracker, creates
    a worktree on a branch named by sentinel, writes an RFC and **stops for your approval**, then
    implements test-first, reviews the diff, opens a pull request and babysits its CI. It never
    merges.
@@ -76,12 +81,12 @@ support them.
 | `sentinel-babysit`   | shipped | Watches a pull request's CI and fixes failures until green                                     |
 | `sentinel-mine`      | shipped | Finds feature gaps in comparable projects and files issues on approval                         |
 | `sentinel-review`    | shipped | Reviews a branch, staged or uncommitted work, or a PR, and reports findings                    |
-| `sentinel-intake`    | planned | Interviews you and files a feature or bug in the [standard issue format](docs/issue-format.md) |
+| `sentinel-intake`    | shipped | Interviews you and files a feature or bug in the [standard issue format](docs/issue-format.md) |
 
 `sentinel-sdlc` and `sentinel-sdlc-auto` hand the pull request to the `sentinel-babysit` loop: the
 agent fixes real CI failures and pushes until the checks are green, or sentinel gives up after
 `babysit.maxAttempts` and leaves a comment for a human. `sentinel-mine` stops for your approval of
-the gap list before it files anything.
+the gap list before it files anything, and `sentinel-intake` for your approval of the issue.
 
 ## Guardrails
 
@@ -98,8 +103,8 @@ an always-on rule shipped in the plugin.
 
 ## Issue trackers
 
-Skills describe tracker work as neutral verbs (`get`, `list`, `create`, `comment`, `set-status`,
-`link-pr`, `close`) and your agent carries them out with whatever tool reaches your tracker.
+Skills describe tracker work as neutral verbs (`get`, `list`, `create`, `comment`, `update`,
+`attach`, `set-status`, `link-pr`, `close`) and your agent carries them out with whatever tool reaches your tracker.
 sentinel only decides **which** tracker to use, in code
 ([ADR-0005](docs/adr/0005-agent-native-issue-trackers.md)).
 
@@ -158,12 +163,14 @@ the instructions the agent follows for the configured tracker.
 `labelMap` translates sentinel's neutral labels into the tracker's own label, issue type or status
 name. The skills use these keys:
 
-| Neutral key          | Used when                                                     |
-| -------------------- | ------------------------------------------------------------- |
-| `kind/feature`       | filing a feature (`sentinel mine create` labels gaps with it) |
-| `kind/bug`           | marking a bug                                                 |
-| `status/in-progress` | `set-status` after the worktree is created                    |
-| `status/in-review`   | `set-status` after the pull request is opened                 |
+| Neutral key                                                             | Used when                                                     |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `kind/feature`                                                          | filing a feature (`sentinel mine create` labels gaps with it) |
+| `kind/bug`                                                              | marking a bug                                                 |
+| `kind/chore`, `kind/refactor`                                           | a chore or refactor, filed as a feature (`sentinel-intake`)   |
+| `priority/critical`, `priority/high`, `priority/medium`, `priority/low` | the priority `sentinel-intake` proposes and you confirm       |
+| `status/in-progress`                                                    | `set-status` after the worktree is created                    |
+| `status/in-review`                                                      | `set-status` after the pull request is opened                 |
 
 sentinel hands the map to the agent through `sentinel issue describe` and does not check the
 values. Map what differs in your tracker; an unmapped key reaches the agent as the neutral
@@ -253,7 +260,7 @@ GitLab. The values below use GitLab's scoped labels as an example.
 }
 ```
 
-**Local Markdown tracker** (built in; managed with `sentinel issue create|get|list|comment|label|close|reopen`).
+**Local Markdown tracker** (built in; managed with `sentinel issue create|get|list|comment|label|update|attach|close|reopen`).
 _Not yet smoke-tested end to end; covered by unit tests._ Labels are stored verbatim, so no
 `labelMap` is needed. `localDir` defaults to `docs/issues`.
 
@@ -267,7 +274,7 @@ _Not yet smoke-tested end to end; covered by unit tests._ Labels are stored verb
 ```
 
 Any other tracker works the same way: pick a slug, describe where the work lives in `location`, add
-team conventions to `notes`, and map the four neutral keys.
+team conventions to `notes`, and map the neutral keys.
 
 ## Configuration
 
@@ -336,6 +343,10 @@ sentinel guardrails write            # managed block in AGENTS.md
 sentinel setup --questions --json    # open domain questions and the detected stack
 sentinel babysit 17 --once --json    # one look at a PR's CI: wait, done, patch or give-up
 sentinel mine search "task tracker"  # popular comparable repositories
+sentinel issue template bug          # empty bug report in the standard issue format
+sentinel issue lint draft.md --kind bug --title "checkout: total ignores discount code"
+sentinel issue attachments server.log screenshot.png   # inline, upload or pending upload, per file
+sentinel setup --issue-forms         # GitHub issue forms in the same format
 ```
 
 The `setup` command is built, but the skill that drives it is still to come (table above).

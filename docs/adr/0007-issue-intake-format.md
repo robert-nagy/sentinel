@@ -1,6 +1,6 @@
 # ADR-0007: A standard issue format, written by an intake interview and checked in code
 
-- **Status:** Accepted (planned; implemented in M9)
+- **Status:** Accepted (implemented in M9)
 - **Date:** 2026-11-26
 - **Related:** [ADR-0002](0002-no-llm-calls.md) (sentinel never calls an LLM),
   [ADR-0005](0005-agent-native-issue-trackers.md) (trackers reached through the agent's tools)

@@ -121,13 +121,19 @@ into the issue (GitHub has no upload API). The local tracker stores files under
 
 ## Lint rules
 
-`sentinel issue lint <file> --kind feature|bug --json` exits 0 when the issue may be filed, 2 with
-a list of problems otherwise:
+`sentinel issue lint <file> --kind feature|bug [--title <title>] --json` exits 0 when the issue may
+be filed, 2 with a list of problems otherwise. The file is the body; the title comes from `--title`,
+or from a first line `# <title>` when `--title` is left out. Issues opened through the GitHub issue
+forms render each field as a `###` heading and do not pass as they are: `sentinel-intake` can
+rewrite them into the format. The checks:
 
 - the title matches the kind's rule and is at most 72 characters;
 - every required section is present, in order, and not empty;
-- every acceptance criterion has `AC-n:` and Given, when and then;
-- no placeholder (`TODO`, `TBD`, `<role>`) and no term from the PRD ambiguity list ("fast",
+- no unknown, duplicated or empty sections, and no text before the first heading;
+- every acceptance criterion has `AC-n:` (numbered from 1, in order) and Given, when and then;
+- every user story reads `As a …, I want …, so that ….`; bug steps are a numbered list; Frequency
+  is one of the three forms;
+- no template hint comment, no placeholder (`TODO`, `TBD`, `N/A`, `<role>`) and no term from the PRD ambiguity list ("fast",
   "user-friendly", "etc." …);
 - no secret pattern anywhere in the body, including inlined attachments;
 - inlined text respects the limits above.
