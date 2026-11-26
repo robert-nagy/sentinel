@@ -16,7 +16,7 @@ Three layers, kept strictly separate:
 | Layer                     | What it is                                                                                                                                                                                                                                                 | Runs where                                                   |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | **A. Deterministic core** | TypeScript library + CLI: config, branch naming, stack detection, git worktrees, tracker resolution + local tracker, code host (PRs/CI), PRD structural validation, CI log parsing, state, file generation. Same input → same output; fully unit-testable. | the bundled `sentinel` CLI                                   |
-| **B. Skills**             | The workflow intelligence, written as **Agent Skills (`SKILL.md`)**: `sentinel-setup`, `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto`, `sentinel-babysit`, `sentinel-mine`, plus one sub-agent, `sentinel-reviewer`.                                | The host agent (Claude Code, VS Code/Copilot, Codex, Cursor) |
+| **B. Skills**             | The workflow intelligence, written as **Agent Skills (`SKILL.md`)**: `sentinel-setup`, `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto`, `sentinel-babysit`, `sentinel-mine`, `sentinel-review`, plus one sub-agent, `sentinel-reviewer`.             | The host agent (Claude Code, VS Code/Copilot, Codex, Cursor) |
 | **C. Packaging**          | The repo is a plugin marketplace: one hand-written catalog and manifest (Claude Code format), thin generated manifests for the other tools, and the bundled CLI copied into every skill. No installer.                                                     | the host tool's plugin install                               |
 
 ### Core principle: sentinel never calls an LLM _(decision Q1)_
@@ -36,7 +36,7 @@ The host agent does all the reasoning. Sentinel supplies (1) skills that tell th
 | 5   | "push fixes until green"                                                                                  | Capped: `maxAttempts` (default 5), stop when the same failure signature repeats twice, one flaky re-run before patching, never force-push, never push to the default branch.                    |
 | 6   | Auto-install test frameworks                                                                              | Propose → confirm. `--yes` for non-interactive runs.                                                                                                                                            |
 | 7   | Per-tool commands/rules (`.claude/commands`, `.cursor/rules/*.mdc` for workflows, `.opencode/agent.json`) | Workflows are **skills** shipped in one plugin and installed from the marketplace (ADR-0006). Per-tool files shrink to generated manifests, a Cursor guardrail rule and the reviewer sub-agent. |
-| 8   | Slash commands `/prd`, `/sdlc-worktree`, `/setup-repo`                                                    | Skills named **`/sentinel-setup`, `/sentinel-prd`, `/sentinel-sdlc`, `/sentinel-sdlc-auto`, `/sentinel-babysit`, `/sentinel-mine`**.                                                            |
+| 8   | Slash commands `/prd`, `/sdlc-worktree`, `/setup-repo`                                                    | Skills named **`/sentinel-setup`, `/sentinel-prd`, `/sentinel-sdlc`, `/sentinel-sdlc-auto`, `/sentinel-babysit`, `/sentinel-mine`, `/sentinel-review`**.                                        |
 | 9   | One "issue provider" concept                                                                              | Split into **`issueProvider`** (which tracker, recorded as intent) and **`codeHost`** (github only in v0.1). PRs, CI babysitting and generated workflows depend on `codeHost`.                  |
 | 10  | Issue providers: GitHub, Jira, Linear, Azure DevOps                                                       | **Any tracker the host agent can reach** (MCP server or CLI), plus a built-in **local markdown** tracker. Sentinel ships no remote tracker clients (ADR-0005).                                  |
 | 11  | `.agents/` "universal format"                                                                             | `AGENTS.md` carries the repo guardrails. `.agents/skills/` is no longer an install target (ADR-0006).                                                                                           |
@@ -84,7 +84,8 @@ sentinel/
 │   │   ├── sentinel-sdlc/     SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-sdlc-auto/ SKILL.md · scripts/sentinel.mjs
 │   │   ├── sentinel-babysit/  SKILL.md · scripts/sentinel.mjs
-│   │   └── sentinel-mine/     SKILL.md · scripts/sentinel.mjs
+│   │   ├── sentinel-mine/     SKILL.md · scripts/sentinel.mjs
+│   │   └── sentinel-review/   SKILL.md · scripts/sentinel.mjs
 │   ├── agents/sentinel-reviewer.md
 │   └── rules/sentinel-guardrails.mdc    # Cursor
 ├── src/
@@ -269,6 +270,7 @@ All skills follow the Agent Skills spec: a folder with `SKILL.md`; `name` must m
 | `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                 | true                             |
 | `sentinel-sdlc-auto` | 2     | Same as `sentinel-sdlc` with no RFC stop; still never merges.                                                                                                                                                                                                                      | true                             |
 | `sentinel-babysit`   | 2     | Run `babysit --once` in a loop: read the packet → patch → push → repeat until green or `GIVE_UP`.                                                                                                                                                                                  | true                             |
+| `sentinel-review`    | any   | Stand-alone review of uncommitted work plus the branch vs its PR target (or a given scope) with `sentinel-reviewer` (inline checklist where there is no sub-agent) → report findings → fix only on request.                                                                        | false (the agent may suggest it) |
 
 Shared guardrails (repeated in every skill and in AGENTS.md):
 
@@ -287,10 +289,11 @@ Shared guardrails (repeated in every skill and in AGENTS.md):
 - unhandled errors and rejected promises
 - unsafe deserialisation
 - unvalidated input
+- logic errors and broken edge cases
 - missing tests for each tier
 - docs left out of sync
 
-It returns findings as JSON. On tools whose plugins carry no sub-agent (Codex; Copilot until verified), `sentinel-sdlc` runs the same checklist inline.
+It returns findings as JSON. On tools whose plugins carry no sub-agent (Codex; Copilot until verified), `sentinel-sdlc` runs the same checklist inline. The `sentinel-review` skill exposes the same reviewer outside an SDLC run, for hand-made changes, staged work or someone else's PR.
 
 ---
 
