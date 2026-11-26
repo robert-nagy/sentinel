@@ -1,7 +1,7 @@
 # sentinel — Implementation Plan
 
 > **Status:** v4 — v2 decisions locked after the design-grilling session (2026-11-02); issue trackers revised on 2026-11-04 to use the host agent's own tooling (ADR-0005); distribution revised on 2026-11-09 from an npm package to a plugin marketplace (ADR-0006). See §11 for the full decision log.
-> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5a and M6a are done; M5b, M6b, M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
+> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5 and M6 are done; M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
 > Source: _Refined Requirements Specification: `sentinel`_ (PDLC/SDLC platform spec + master generator prompt).
 > Repo at planning time: empty (`README.md` = `# sentinel`), remote `github.com/robert-nagy/sentinel`, branch `main`.
 
@@ -414,7 +414,7 @@ Implemented in #16 to #19. Still open: the npm deprecation and recording the per
 
 ### M3 — Skills & guardrails (≈3 days)
 
-- [x] Write `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto` and the `sentinel-reviewer` sub-agent in `plugins/sentinel/`; skills call `node scripts/sentinel.mjs`. The other three skills ship with the milestone that adds their CLI command (`sentinel-setup` in M5b, `sentinel-babysit` and `sentinel-mine` in M6b), because the lint test below rejects a skill that names a command the bundle lacks. Until M6b, `sentinel-sdlc` ends by opening the PR and telling the user to watch CI.
+- [x] Write `sentinel-prd`, `sentinel-sdlc`, `sentinel-sdlc-auto` and the `sentinel-reviewer` sub-agent in `plugins/sentinel/`; skills call `node scripts/sentinel.mjs`. The other three skills ship with the milestone that adds their CLI command (`sentinel-setup` in M5b, `sentinel-babysit` and `sentinel-mine` in M6b), because the lint test below rejects a skill that names a command the bundle lacks. Until M6b, `sentinel-sdlc` ended by opening the PR and telling the user to watch CI; since M6b it hands off to the babysit loop.
 - [x] `sentinel guardrails write`: managed block in `AGENTS.md`, `CLAUDE.md` pointer when that file exists; `--dry-run`; idempotent.
 - [x] Cursor always-on guardrail rule shipped in the plugin (`rules/sentinel-guardrails.mdc`).
 - [x] Skills use only the neutral tracker verbs and `issue resolve`; a lint test fails if a skill hard-codes `gh issue`, `glab issue` or a tracker REST call.
@@ -445,6 +445,9 @@ _M6a (core, no skills, can start now): the checklist items below. M6b (skills): 
 - [x] `log-parser.ts` + fixtures for each toolchain.
 - [x] `pr-babysitter.ts` state machine, `--once` / `--watch`, flaky re-run, signature dedupe, give-up comment.
 - [x] `sentinel mine` search → draft → approved-create, with dedupe via `findDuplicates`.
+- [x] `sentinel-babysit` skill: `babysit --once` loop, patch and push on exit 2, stop on give-up (exit 3); never force-pushes (M6b).
+- [x] `sentinel-mine` skill: search → draft `docs/feature-gaps.md` → **STOP for approval** → `issue resolve` → `mine create` with candidates; files `toCreate` with neutral verbs (M6b).
+- [x] `sentinel-sdlc` and `sentinel-sdlc-auto` hand off to the babysit loop after opening the PR (M6b).
 
 ### M7 — Tracker coverage, without clients (≈1 day)
 

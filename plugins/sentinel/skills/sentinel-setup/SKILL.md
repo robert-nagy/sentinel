@@ -57,7 +57,8 @@ Read `stack` from the last `--json` result.
 
 1. Commit in the worktree, in small focused commits: `.sentinel/domain.json`, the workflows, `README.md`, `AGENTS.md` (and `CLAUDE.md` if it changed), `sentinel.config.json` and the local issue file if you wrote them, and the manifest and lockfile changes from any test tools you installed. Do not commit the answers file or anything under `.sentinel/state/`.
 2. Open the PR: `node scripts/sentinel.mjs pr create --issue <issue-id> --title "Bootstrap repository with sentinel" --json`. It pushes the branch and targets the default branch. Then `link-pr` and `set-status` (in review) on the issue.
-3. Tell the user the PR link. If the `sentinel-babysit` skill is installed, offer to watch CI with it; otherwise CI is theirs to watch. A merge is a human decision.
+3. Hand off to the babysit loop with the pull request `number` that `pr create` printed, following the `sentinel-babysit` skill: run `node scripts/sentinel.mjs babysit <pr> --once --json` in the worktree and act on the result. On `wait` or `rerun` (exit `0`), wait `babysit.pollIntervalSec` seconds and run it again; after `babysit.timeoutMin` minutes of waiting with no change, stop and tell the user CI is still pending. On `patch` (exit `2`), fix the failure in `packet` inside the worktree, commit, push with a plain `git push`, and run it again; if `reason` says it is the same failing run as before, push or wait instead of making another fix. On `done` (exit `0`), go on. On `give-up` (exit `3`), stop: sentinel has commented on the PR, and a human takes over. On any other exit code, stop and show the error. Never skip or weaken a test to make CI pass.
+4. Tell the user the PR link and the CI result. A merge is a human decision.
 
 ## Guardrails
 
