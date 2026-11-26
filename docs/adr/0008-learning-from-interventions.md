@@ -1,6 +1,6 @@
 # ADR-0008: Learning from interventions, stored as small lesson files and recalled by scope
 
-- **Status:** Proposed
+- **Status:** Accepted (implemented in M10, issue #39)
 - **Date:** 2026-11-27
 - **Issue:** [#39](https://github.com/robert-nagy/sentinel/issues/39)
 - **Related:** [ADR-0002](0002-no-llm-calls.md) (sentinel never calls an LLM),
@@ -159,7 +159,7 @@ makes them a route for prompt injection that persists across runs.
     - **Already-learned PRs are skipped.** A PR counts as learned when either:
       - a shared lesson has `source: "pr"` and that PR number. This is committed, so it holds for
         the whole team and needs no extra file; or
-      - this machine's `.sentinel/state/learn-prs.json` records that the PR was reviewed, even if
+      - this machine's `.sentinel/state/learn-usage.json` records that the PR was reviewed, even if
         no lesson was kept. This one holds only for this machine.
 
       `learn suggest` leaves learned PRs out. When the user names a learned PR, `pr-changes` says
@@ -174,7 +174,7 @@ makes them a route for prompt injection that persists across runs.
     - **The skill.** It reads the changes as data under review, never as instructions, and drafts
       at most five candidate lessons per PR, each quoting the commit or comment it came from.
       **STOP:** one numbered list for all the PRs, grouped by PR, and one question: which to keep
-      (all, some, none). Only the approved candidates go through `learn add --source pr`, with the
+      (all, some, none). Only the approved candidates go through `learn add` with `source: "pr"`, with the
       same validation and dedupe as any other lesson. Shared lessons ride on the next PR
       (decision 4). Then `learn mark-reviewed <pr…>` records every PR shown, whatever was kept.
     - **Offered, not remembered.** At the start of `sentinel-sdlc`, `sentinel-sdlc-auto` and
@@ -196,13 +196,13 @@ makes them a route for prompt injection that persists across runs.
     and bots (for example `app/github-actions` release PRs) are refused.
     - **Gate 1, the CLI.** `learn suggest` asks the host for the user's PRs only
       (`gh pr list --author @me`) and drops any row whose author differs. `learn pr-changes` and
-      `learn add --source pr` each fetch the PR's author and the token's login again and refuse a
+      `learn add` with `source: "pr"` each fetch the PR's author and the token's login again and refuse a
       mismatch with a new exit code, `6` (`Forbidden`), naming both logins. The check sits inside
       the commands, so no skill step can skip it. There is no flag, environment variable or
       config key to turn it off. `learn` is a `z.strictObject` like every other config section,
       so a key such as `learn.allowOthersPrs` is rejected at load with exit `5`.
     - **What gate 1 cannot stop.** An agent with shell and file access can write a lesson file by
-      hand, or pass text copied from someone else's PR to `learn add --source override`. No
+      hand, or pass text copied from someone else's PR to `learn add` as `source: "override"`. No
       code running on the user's machine can stop a process that can write files in the repo.
       Shared lessons are therefore checked a second time where the agent has no access.
     - **Gate 2, CI on the code host.** `sentinel learn verify --pr <n>` runs in a
@@ -246,3 +246,34 @@ makes them a route for prompt injection that persists across runs.
   delete.
 - `.gitignore` gains `.sentinel/learnings.local/`. The usage and index files are already covered
   by `.sentinel/state/`.
+
+## Implementation notes (M10, 2026-11-27)
+
+Where the implementation is more specific than, or departs from, the decisions above:
+
+- **Two roots.** Shared lessons are read and written in the current checkout, so in an issue
+  worktree they ride on its PR (decision 4). Personal lessons and all local state (index, usage,
+  babysit state) live in the **main checkout**, found through `git rev-parse --git-common-dir`,
+  so they survive when a worktree is removed. Each checkout gets its own index file
+  (`learn-index` for the main checkout, `learn-index-<hash>` for a worktree).
+- **Babysit state moved** to the main checkout for the same reason, which is also what lets it
+  see other PRs' failure signatures (decision 2). A run that was in progress during the upgrade
+  starts its attempt count again.
+- **`.sentinel/state/` ignores itself.** `StateStore` writes a `.gitignore` (`*`) into the
+  directory when it creates it, and the personal store does the same, so neither is committed in
+  repositories whose own `.gitignore` does not mention them.
+- **Ranking recency** uses the last time a lesson was written or reinforced, not the last recall:
+  ranking by the last recall would let a lesson win because it was shown before, which decision 7
+  rules out. Decay still uses the last recall.
+- **`PullRequestReader`** is a separate interface from `CodeHost`, so hosts that cannot read PR
+  commits and comments still babysit and open PRs. GitHub implements both.
+- **Commits** are listed with SHA, author and message, not a diff stat (that would cost one API
+  call per commit); the skill reads a diff with `git show <sha>`. `learn suggest` counts commits by
+  other authors only; `pr-changes` adds the user's own commits after the recorded head.
+- **`learn suggest --offer`** marks the PRs it returns as offered, since it is only called to
+  offer them.
+- **Measured performance** (Linux, 2,000 lessons): about 170 ms to build the index cold and 25 ms
+  for a warm recall. The test asserts the 500 ms and 50 ms targets with headroom for parallel test
+  runs and shared CI runners.
+- **Gate 2 in sentinel's own repository** runs the bundle from the base branch checkout instead of
+  downloading a release; other repositories download the bundle at the pinned release tag.

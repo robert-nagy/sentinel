@@ -1,6 +1,6 @@
 # RFC: Learn from user corrections across runs
 
-> Issue: #39 | Created: 2026-11-26 | Status: Draft (unattended run, `sentinel-sdlc-auto`)
+> Issue: #39 | Created: 2026-11-26 | Status: Implemented (unattended run, `sentinel-sdlc-auto`)
 
 ## Summary
 
@@ -146,6 +146,19 @@ deleted.
 - The recorded head SHA can include a human commit pushed while the babysitter was still
   watching; commits by other authors are always included, so only the user's own hand-made
   commits in that window can be missed.
+
+## Departures from the first draft
+
+- Personal lessons and all local state (index, usage, babysit state) live in the main checkout
+  (`git rev-parse --git-common-dir`), shared lessons in the current checkout; one index per
+  checkout. The first draft put everything under the current repository root, which in an issue
+  worktree would lose usage and personal lessons when the worktree is removed.
+- The babysit state moved to the main checkout as a consequence.
+- The PR reads are a separate `PullRequestReader` interface rather than new `CodeHost` methods.
+- `learn suggest` counts only commits by other authors; `pr-changes` also lists the user's own
+  commits after the recorded head SHA.
+- `learn verify` exits `2` when lesson changes break the rule (a check failure), and `6` is kept
+  for refusals of the user's own commands.
 
 ## Open questions
 
