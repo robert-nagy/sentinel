@@ -208,6 +208,8 @@ describe('describeTracker', () => {
       'comment',
       'set-status',
       'link-pr',
+      'update',
+      'attach',
       'close',
     ]);
     expect(formatTrackerDescription(d)).toContain('sentinel issue resolve');
