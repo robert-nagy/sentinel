@@ -66,15 +66,16 @@ support them.
    `sentinel-sdlc-auto` does the same without the approval stop, for runs you explicitly want
    unattended.
 
-| Skill                | Status  | What it does                                                           |
-| -------------------- | ------- | ---------------------------------------------------------------------- |
-| `sentinel-doctor`    | shipped | Checks that sentinel can run here                                      |
-| `sentinel-prd`       | shipped | Drafts and validates a PRD                                             |
-| `sentinel-sdlc`      | shipped | Issue to pull request, with an RFC approval stop                       |
-| `sentinel-sdlc-auto` | shipped | Same, without the approval stop                                        |
-| `sentinel-setup`     | shipped | Bootstraps a repository: domain questions, test tiers, CI workflows    |
-| `sentinel-babysit`   | shipped | Watches a pull request's CI and fixes failures until green             |
-| `sentinel-mine`      | shipped | Finds feature gaps in comparable projects and files issues on approval |
+| Skill                | Status  | What it does                                                                |
+| -------------------- | ------- | --------------------------------------------------------------------------- |
+| `sentinel-doctor`    | shipped | Checks that sentinel can run here                                           |
+| `sentinel-prd`       | shipped | Drafts and validates a PRD                                                  |
+| `sentinel-sdlc`      | shipped | Issue to pull request, with an RFC approval stop                            |
+| `sentinel-sdlc-auto` | shipped | Same, without the approval stop                                             |
+| `sentinel-setup`     | shipped | Bootstraps a repository: domain questions, test tiers, CI workflows         |
+| `sentinel-babysit`   | shipped | Watches a pull request's CI and fixes failures until green                  |
+| `sentinel-mine`      | shipped | Finds feature gaps in comparable projects and files issues on approval      |
+| `sentinel-review`    | shipped | Reviews a branch, staged or uncommitted work, or a PR, and reports findings |
 
 `sentinel-sdlc` and `sentinel-sdlc-auto` hand the pull request to the `sentinel-babysit` loop: the
 agent fixes real CI failures and pushes until the checks are green, or sentinel gives up after
