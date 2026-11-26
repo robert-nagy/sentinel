@@ -23,7 +23,8 @@ disable-model-invocation: true
 6. Review the diff with the `sentinel-reviewer` sub-agent if your tool has it. Otherwise run its checklist yourself: injection, secrets in the diff, missing authorisation, unhandled errors, unsafe deserialisation, unvalidated input, a missing test for any tier, and docs left out of sync. Fix what you find and re-run the review until it returns no findings.
 7. Update docs that the change affects (README, RFC, API notes).
 8. Open the PR: `node scripts/sentinel.mjs pr create --issue <issue-id> --title "<title>" --json`, then `link-pr` and `set-status` (in review) on the issue.
-9. Tell the user the PR link and that CI is theirs to watch; a merge is a human decision.
+9. Hand off to the babysit loop with the pull request `number` that `pr create` printed, following the `sentinel-babysit` skill: run `node scripts/sentinel.mjs babysit <pr> --once --json` and act on the result. On `wait` or `rerun` (exit `0`), wait `babysit.pollIntervalSec` seconds and run it again; after `babysit.timeoutMin` minutes of waiting with no change, stop and tell the user CI is still pending. On `patch` (exit `2`), fix the failure in `packet` inside the worktree, commit, push with a plain `git push`, and run it again; if `reason` says it is the same failing run as before, push or wait instead of making another fix. On `done` (exit `0`), go on. On `give-up` (exit `3`), stop: sentinel has commented on the PR, and a human takes over. On any other exit code, stop and show the error. Never skip or weaken a test to make CI pass.
+10. Tell the user the PR link and the CI outcome; a merge is a human decision.
 
 ## Guardrails
 
