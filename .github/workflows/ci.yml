@@ -55,42 +55,27 @@ jobs:
       - name: E2E tests (built CLI)
         run: npm run test:e2e
 
-  plugin-smoke:
-    name: Plugin smoke test (${{ matrix.os }})
+  plugin-install:
+    name: Plugin install E2E (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      # No npm install: a plugin install is a git clone, so the committed bundle must run
-      # as it is. Copy one skill folder away from the repo and run it the way a skill does.
-      - name: Run the bundled CLI from a copied skill folder
+          cache: npm
+      # npm ci installs only the test runner: the test copies the plugin out of the repo as a
+      # marketplace install would and runs each skill's committed bundle from that copy.
+      - run: npm ci
+      # Pinned so a Claude Code release cannot break PRs unannounced; bump it on purpose.
+      - name: Install the Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.332
+      - name: Install the plugin from each marketplace and run every skill's bundled CLI
         env:
-          SKILL_SRC: ${{ github.workspace }}/plugins/sentinel/skills/sentinel-doctor
-        run: |
-          cp -r "$SKILL_SRC" "$RUNNER_TEMP/skill"
-          cd "$RUNNER_TEMP/skill"
-          node scripts/sentinel.mjs --version
-          node scripts/sentinel.mjs --help
-          node scripts/sentinel.mjs doctor --json
-
-  plugin-validate:
-    name: Claude Code plugin validate (advisory)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-      - run: npm install -g @anthropic-ai/claude-code
-      - run: claude plugin validate .
-      - run: claude plugin validate plugins/sentinel
+          # With the CLI on PATH the test also validates and does a real `claude plugin install`.
+          SENTINEL_REQUIRE_CLAUDE: '1'
+        run: npx vitest run --config vitest.e2e.config.ts test/e2e/plugin-install.test.ts

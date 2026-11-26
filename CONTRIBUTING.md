@@ -9,7 +9,7 @@ Thanks for helping. This guide covers the workflow; the design lives in
 npm ci
 npm run check      # lint + format check + typecheck + unit tests
 npm run build      # bundle to dist/ with tsup
-npm run test:e2e   # runs the built CLI; build first
+npm run test:e2e   # built CLI (build first) + plugin install from the marketplaces
 ```
 
 Node.js ≥ 22 and git are required; `gh` is needed for anything that touches pull requests.
@@ -38,7 +38,10 @@ On merge to `main` the Release workflow opens a "chore: version packages" PR; me
 - sentinel never calls an LLM ([ADR-0002](docs/adr/0002-no-llm-calls.md)). Rules belong in
   deterministic code and tests, not in prompt text alone.
 - Core logic takes its file system, process runner and clock as injectable dependencies so tests
-  need no real GitHub. Unit tests live in `test/unit`; `test/e2e` runs the built CLI.
+  need no real GitHub. Unit tests live in `test/unit`; `test/e2e` runs the built CLI and, in
+  `plugin-install.test.ts`, installs the plugin from each marketplace catalog and runs every skill's
+  committed bundle (it also does a real `claude plugin install` into a throwaway config dir when the
+  `claude` CLI is on PATH).
 - Exit codes are part of the contract: see the table in the [README](README.md#exit-codes).
 
 ## The plugin and its bundle

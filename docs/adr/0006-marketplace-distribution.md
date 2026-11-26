@@ -110,7 +110,8 @@ features that the other tools do not share.
   documents no plugin sub-agents; there the review checklist runs inline in the skill.
 - **Coexistence of manifests.** One report says Claude Code rejects a plugin that has only a
   root `plugin.json`. Whether it accepts a root `plugin.json` next to `.claude-plugin/` needs a
-  smoke test (`claude plugin validate`).
+  smoke test (`claude plugin validate`). Claude Code 2.1.332 validates and installs the plugin
+  with both present (2026-11-26); the plugin install E2E test in CI now checks this on every PR.
 - **Whether `@robert-nagy/sentinel` was published** has to be checked on npmjs.com before
   deciding between deprecating and doing nothing.
 

@@ -456,6 +456,7 @@ _Was "Jira & Azure DevOps trackers (≈4 days)"; replaced by ADR-0005._
 ### M8 — Hardening & 0.1.0 release (≈2–3 days)
 
 - [ ] E2E: install the plugin from a local marketplace on 3 OSes → run each skill's bundled CLI → assert versions match; dogfood one real issue through `/sentinel-sdlc` to a green PR on this repo.
+  - Automated half done: `test/e2e/plugin-install.test.ts` resolves the plugin from each of the three catalogs, copies its tracked files to a temp dir, runs every skill's `scripts/sentinel.mjs --version` and `doctor --json` from outside any repo and checks the versions against `package.json` and the plugin manifests. When the `claude` CLI is on PATH (required in CI, pinned) it also validates and does a real `claude plugin install` into a throwaway config dir. CI job "Plugin install E2E" runs it on ubuntu, macOS and Windows; it replaces the "Plugin smoke test" and the advisory `claude plugin validate` job. Still open: the `/sentinel-sdlc` dogfood run.
 - [x] Docs: README (install per tool, quickstart, config reference, tracker setup), CONTRIBUTING, SECURITY.md, CODE_OF_CONDUCT.
 - [ ] Submit the plugin to Cursor's marketplace.
 - [ ] Release `0.1.0`: version PR → tag `v0.1.0` → GitHub Release.
