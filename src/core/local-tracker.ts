@@ -9,6 +9,7 @@ import {
 } from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
 import { slugify } from './branch-namer.js';
+import { parseFrontMatter } from './front-matter.js';
 import { fencedLines, findSecrets, looksLikeText } from './issue-format.js';
 import { TrackerError } from './issue-tracker.js';
 
@@ -82,43 +83,14 @@ export function parseLocalId(id: string | number): number {
   return Number(text);
 }
 
-function parseScalar(raw: string): unknown {
-  const value = raw.trim();
-  if (value.startsWith('"') || value.startsWith('[')) {
-    try {
-      return JSON.parse(value);
-    } catch {
-      // Hand-edited flow sequence such as [a, b]: split it ourselves.
-      if (value.startsWith('[') && value.endsWith(']')) {
-        return value
-          .slice(1, -1)
-          .split(',')
-          .map((s) => s.trim().replace(/^["']|["']$/g, ''))
-          .filter((s) => s !== '');
-      }
-      return value;
-    }
-  }
-  if (value.startsWith("'") && value.endsWith("'") && value.length >= 2) {
-    return value.slice(1, -1).replace(/''/g, "'");
-  }
-  return value;
-}
-
 /** Splits a document into front matter fields and the Markdown that follows. */
 function splitFrontMatter(
   text: string,
   path: string,
 ): { fields: Map<string, unknown>; rest: string } {
-  const normalized = text.replace(/\r\n/g, '\n');
-  const match = /^---\n([\s\S]*?)\n---\n?/.exec(normalized);
-  if (!match) throw new TrackerError(`${path} has no front matter`, 'invalid');
-  const fields = new Map<string, unknown>();
-  for (const line of (match[1] ?? '').split('\n')) {
-    const kv = /^([A-Za-z][\w-]*):(.*)$/.exec(line);
-    if (kv) fields.set(kv[1] ?? '', parseScalar(kv[2] ?? ''));
-  }
-  return { fields, rest: normalized.slice(match[0].length) };
+  const parsed = parseFrontMatter(text);
+  if (parsed === undefined) throw new TrackerError(`${path} has no front matter`, 'invalid');
+  return parsed;
 }
 
 function parseComments(section: string): LocalComment[] {
