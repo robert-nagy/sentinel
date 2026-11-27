@@ -276,4 +276,11 @@ Where the implementation is more specific than, or departs from, the decisions a
   for a warm recall. The test asserts the 500 ms and 50 ms targets with headroom for parallel test
   runs and shared CI runners.
 - **Gate 2 in sentinel's own repository** runs the bundle from the base branch checkout instead of
-  downloading a release; other repositories download the bundle at the pinned release tag.
+  downloading a release. Other repositories download the bundle from the **commit** the release
+  tag points to, resolved by `setup --learn-verify` (a tag can be moved, a commit cannot); when
+  the commit cannot be resolved it falls back to the tag and says so.
+- **Gate 2 hardening** (from the review of the M10 PR): any changed path under
+  `.sentinel/learnings` in any letter case, or `.sentinel` itself, counts as a lesson change; a
+  lesson must be a regular file exactly under `.sentinel/learnings/`; and the check fails closed
+  when the host lists fewer files than the PR changes (GitHub lists at most 3,000). The store
+  also ignores a symlinked store directory or lesson file, so a planted lesson is never recalled.

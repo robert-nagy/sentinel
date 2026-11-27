@@ -128,8 +128,13 @@ describe('renderLearnVerifyWorkflow', () => {
     expect(text).toContain('learn verify --pr "$PR"');
   });
 
-  it('pins the release tag when downloading', () => {
+  it('pins the commit when given one, else the release tag', () => {
+    const sha = 'b'.repeat(40);
+    expect(renderLearnVerifyWorkflow('1.2.3', 'release', sha)).toContain(
+      `/sentinel/${sha}/plugins/`,
+    );
     expect(renderLearnVerifyWorkflow('1.2.3', 'release')).toContain('/sentinel/v1.2.3/plugins/');
+    expect(() => renderLearnVerifyWorkflow('1.2.3', 'release', 'main')).toThrow(/commit SHA/);
   });
 });
 

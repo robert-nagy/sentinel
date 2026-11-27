@@ -23958,7 +23958,7 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
     const n = requirePrNumber(pr);
     const out = await this.api(`pulls/${n}`, `read pull request ${n}`, [
       "--jq",
-      "{number, login: .user.login, type: .user.type, association: .author_association, headSha: .head.sha, merged}"
+      "{number, login: .user.login, type: .user.type, association: .author_association, headSha: .head.sha, merged, changedFiles: .changed_files}"
     ]);
     const raw = this.json(
       external_exports.object({
@@ -23967,7 +23967,8 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
         type: external_exports.string().nullish(),
         association: external_exports.string(),
         headSha: external_exports.string(),
-        merged: external_exports.boolean().nullish()
+        merged: external_exports.boolean().nullish(),
+        changedFiles: external_exports.number().nullish()
       }),
       out,
       `read pull request ${n}`
@@ -23978,7 +23979,8 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
       isBot: isBot(raw.login, raw.type),
       association: raw.association,
       headSha: raw.headSha,
-      merged: raw.merged === true
+      merged: raw.merged === true,
+      changedFiles: raw.changedFiles ?? void 0
     };
   }
   async listMyMergedPullRequests(limit) {
@@ -24111,23 +24113,36 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
     }));
   }
   async readFileAtRef(path, ref) {
-    if (!/^[0-9a-f]{7,64}$/i.test(ref))
+    if (!/^[0-9a-f]{7,64}$/i.test(ref)) {
       throw new ProviderError("failed", `"${ref}" is not a commit SHA`);
+    }
     const encoded = path.split("/").map(encodeURIComponent).join("/");
+    const action = `read ${path} at ${ref}`;
     const result = await this.options.run(
       "gh",
-      [
-        "api",
-        "-H",
-        "Accept: application/vnd.github.raw",
-        this.repoPath(`contents/${encoded}?ref=${ref}`)
-      ],
+      ["api", this.repoPath(`contents/${encoded}?ref=${ref}`), "--jq", "{type, encoding, content}"],
       { cwd: this.options.cwd, timeoutMs: GH_TIMEOUT_MS }
     );
-    if (result.exitCode === 0) return result.stdout;
-    const error63 = ghError(result, `read ${path} at ${ref}`);
-    if (error63.kind === "not-found") return void 0;
-    throw error63;
+    if (result.exitCode !== 0) {
+      const error63 = ghError(result, action);
+      if (error63.kind === "not-found") return void 0;
+      throw error63;
+    }
+    if (result.stdout.trim().startsWith("[")) return { type: "dir" };
+    const raw = this.json(
+      external_exports.object({
+        type: external_exports.string(),
+        encoding: external_exports.string().nullish(),
+        content: external_exports.string().nullish()
+      }),
+      result.stdout,
+      action
+    );
+    if (raw.type !== "file") return { type: raw.type };
+    if (raw.encoding !== "base64" || raw.content == null) {
+      throw new ProviderError("failed", `could not ${action}: unexpected encoding`);
+    }
+    return { type: "file", text: Buffer.from(raw.content, "base64").toString("utf8") };
   }
 };
 function requireRunId(value) {
@@ -24147,7 +24162,7 @@ function isBot(login, type) {
 
 // src/core/learn-store.ts
 import { createHash as createHash2 } from "crypto";
-import { mkdir as mkdir2, readdir as readdir2, readFile as readFile2, rename as rename2, rm as rm2, stat, writeFile as writeFile2 } from "fs/promises";
+import { lstat, mkdir as mkdir2, readdir as readdir2, readFile as readFile2, rename as rename2, rm as rm2, stat, writeFile as writeFile2 } from "fs/promises";
 import { join as join4 } from "path";
 
 // src/core/duplicates.ts
@@ -25771,6 +25786,7 @@ var LessonStore = class _LessonStore {
     const previous = await this.readIndex();
     const entries = {};
     for (const store of ["shared", "personal"]) {
+      if (!await this.realDirectory(store)) continue;
       let names;
       try {
         names = await readdir2(this.dir(store));
@@ -25783,7 +25799,7 @@ var LessonStore = class _LessonStore {
         files.map(async (name) => {
           const path = join4(this.dir(store), name);
           try {
-            return { name, path, info: await stat(path) };
+            return { name, path, info: await lstat(path) };
           } catch {
             return void 0;
           }
@@ -25818,6 +25834,21 @@ var LessonStore = class _LessonStore {
     const changed = this.filesRead > 0 || Object.keys(entries).length !== Object.keys(previous.entries).length || Object.keys(entries).some((file2) => previous.entries[file2] === void 0);
     if (changed) await this.state.write(this.indexName, { version: INDEX_VERSION, entries });
     return Object.values(entries);
+  }
+  /** Whether every component of the store's directory below its root is a real directory. */
+  async realDirectory(store) {
+    let dir = store === "shared" ? this.root : this.mainRoot;
+    for (const part of STORE_DIRS[store].split("/")) {
+      dir = join4(dir, part);
+      try {
+        const info = await lstat(dir);
+        if (info.isSymbolicLink() || !info.isDirectory()) return false;
+      } catch (error63) {
+        if (error63.code === "ENOENT") return false;
+        throw error63;
+      }
+    }
+    return true;
   }
   async readIndex() {
     const index = await this.state.read(this.indexName);
@@ -29325,14 +29356,15 @@ async function markReviewed(reader, store, prs) {
   return unique;
 }
 var SHARED_PREFIX = `${STORE_DIRS.shared}/`;
-var PERSONAL_PREFIX = `${STORE_DIRS.personal}/`;
+var PERSONAL_PREFIX = `${STORE_DIRS.personal}/`.toLowerCase();
+function touchesStore(path) {
+  const p = path.toLowerCase();
+  return p === ".sentinel" || p.startsWith(".sentinel/learnings");
+}
 async function verifyLessonChanges(reader, pr) {
   const author = await reader.getPullRequestAuthor(pr);
-  const touched = (await reader.listPullRequestFiles(pr)).filter(
-    (f) => [f.path, f.previousPath ?? ""].some(
-      (p) => p.startsWith(SHARED_PREFIX) || p.startsWith(PERSONAL_PREFIX)
-    )
-  );
+  const listed = await reader.listPullRequestFiles(pr);
+  const touched = listed.filter((f) => touchesStore(f.path) || touchesStore(f.previousPath ?? ""));
   const problems = [];
   const base = {
     pr,
@@ -29340,6 +29372,12 @@ async function verifyLessonChanges(reader, pr) {
     association: author.association,
     files: touched.map((f) => f.path)
   };
+  if (author.changedFiles !== void 0 && listed.length < author.changedFiles) {
+    problems.push(
+      `the host listed only ${String(listed.length)} of ${String(author.changedFiles)} changed files, so lesson changes cannot be verified; split the pull request`
+    );
+    return { ...base, ok: false, problems };
+  }
   if (touched.length === 0) return { ...base, ok: true, problems };
   if (!WRITE_ACCESS.has(author.association.toUpperCase()) || author.isBot) {
     problems.push(
@@ -29347,11 +29385,17 @@ async function verifyLessonChanges(reader, pr) {
     );
   }
   for (const file2 of touched) {
-    if (file2.path.startsWith(PERSONAL_PREFIX)) {
+    if (file2.status === "removed" || !touchesStore(file2.path)) continue;
+    if (file2.path.toLowerCase().startsWith(PERSONAL_PREFIX)) {
       problems.push(`${file2.path}: personal lessons must never be committed`);
       continue;
     }
-    if (file2.status === "removed") continue;
+    if (!file2.path.startsWith(SHARED_PREFIX)) {
+      problems.push(
+        `${file2.path}: lessons belong in ${STORE_DIRS.shared}/ exactly (a real directory, same letter case)`
+      );
+      continue;
+    }
     const name = file2.path.slice(SHARED_PREFIX.length);
     if (name === ".gitignore" || name === "README.md") continue;
     if (name.includes("/") || !LESSON_ID_PATTERN.test(name.replace(/\.md$/, "")) || !name.endsWith(".md")) {
@@ -29360,11 +29404,16 @@ async function verifyLessonChanges(reader, pr) {
       );
       continue;
     }
-    const text2 = await reader.readFileAtRef(file2.path, author.headSha);
-    if (text2 === void 0) {
+    const entry = await reader.readFileAtRef(file2.path, author.headSha);
+    if (entry === void 0) {
       problems.push(`${file2.path}: could not be read at ${author.headSha}`);
       continue;
     }
+    if (entry.type !== "file" || entry.text === void 0) {
+      problems.push(`${file2.path}: must be a regular file, not a ${entry.type}`);
+      continue;
+    }
+    const text2 = entry.text;
     const parsed = parseLesson(text2);
     if (parsed.lesson === void 0) {
       problems.push(...parsed.problems.map((p) => `${file2.path}: ${p}`));
@@ -30468,10 +30517,14 @@ var LEARN_VERIFY_CHECK = "sentinel learn verify";
 var GITHUB_ACTIONS_APP_ID = 15368;
 var SENTINEL_REPO = "robert-nagy/sentinel";
 var BUNDLE_PATH = "plugins/sentinel/skills/sentinel-sdlc/scripts/sentinel.mjs";
-function renderLearnVerifyWorkflow(version2, source) {
+function renderLearnVerifyWorkflow(version2, source, commit) {
+  if (commit !== void 0 && !/^[0-9a-f]{40}$/.test(commit)) {
+    throw new Error(`"${commit}" is not a full commit SHA`);
+  }
+  const ref = commit ?? `v${version2}`;
   const fetch = source === "release" ? [
-    `      - name: Download sentinel v${version2}`,
-    `        run: curl -fsSL --retry 3 -o "$RUNNER_TEMP/sentinel.mjs" "https://raw.githubusercontent.com/${SENTINEL_REPO}/v${version2}/${BUNDLE_PATH}"`
+    `      - name: Download sentinel v${version2}${commit === void 0 ? "" : ` (commit ${commit.slice(0, 12)})`}`,
+    `        run: curl -fsSL --retry 3 -o "$RUNNER_TEMP/sentinel.mjs" "https://raw.githubusercontent.com/${SENTINEL_REPO}/${ref}/${BUNDLE_PATH}"`
   ] : [
     "      # The base branch, never the pull request: pull_request_target checks out the base.",
     "      - uses: actions/checkout@v5",
@@ -30681,13 +30734,26 @@ function registerSetup(program2, deps) {
         }
       }
       let ruleset;
+      const warnings = [];
       if (options.learnVerify === true) {
         const path = LEARN_VERIFY_WORKFLOW_PATH;
         if (options.force !== true) await refuseToOverwrite(root, path, deps);
+        const resolved = await deps.run(
+          "gh",
+          ["api", `repos/${SENTINEL_REPO}/commits/v${VERSION}`, "--jq", ".sha"],
+          { cwd: root, timeoutMs: 3e4 }
+        );
+        const commit = resolved.exitCode === 0 ? resolved.stdout.trim() : "";
+        const pinned = /^[0-9a-f]{40}$/.test(commit) ? commit : void 0;
+        if (pinned === void 0) {
+          warnings.push(
+            `could not resolve the commit of sentinel v${VERSION}, so the lesson check downloads by tag; re-run \`sentinel setup --learn-verify --force\` once gh can reach GitHub`
+          );
+        }
         if (!dryRun) {
           await writeNewFile(
             resolveInside(root, ".", path),
-            renderLearnVerifyWorkflow(VERSION, "release"),
+            renderLearnVerifyWorkflow(VERSION, "release", pinned),
             options.force === true
           );
           await new StateStore(root).write(LEARN_RULESET_STATE, learnVerifyRuleset());
@@ -30707,7 +30773,8 @@ function registerSetup(program2, deps) {
           proposal: stack.empty && options.stack === void 0
         },
         files,
-        ruleset
+        ruleset,
+        warnings
       };
       if (options.json === true) {
         deps.stdout(JSON.stringify(result, null, 2));
@@ -30719,6 +30786,7 @@ function registerSetup(program2, deps) {
           "",
           formatStackReport(stack),
           ...files.map((f) => `${prefix}wrote ${f}`),
+          ...warnings.map((w) => `warning: ${w}`),
           ...ruleset === void 0 ? [] : [
             `${prefix}ruleset to require "${LEARN_VERIFY_CHECK}": ${ruleset} (apply it with gh api --method POST repos/{owner}/{repo}/rulesets --input ${ruleset})`
           ]

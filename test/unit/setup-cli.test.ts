@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { main } from '../../src/cli/index.js';
-import { runCommand } from '../../src/core/exec.js';
+import { runCommand, type CommandRunner } from '../../src/core/exec.js';
 import { nodeFiles } from '../../src/core/fs.js';
 
 interface SetupResult {
@@ -23,12 +23,12 @@ afterEach(async () => {
   await rm(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-function cli(extra: { interactive?: boolean; replies?: string[] } = {}) {
+function cli(extra: { interactive?: boolean; replies?: string[]; run?: CommandRunner } = {}) {
   const out: string[] = [];
   const codes: number[] = [];
   const replies = [...(extra.replies ?? [])];
   const deps = {
-    run: runCommand,
+    run: extra.run ?? runCommand,
     files: nodeFiles,
     stdout: (t: string) => out.push(t),
     stderr: (t: string) => out.push(t),
@@ -174,20 +174,27 @@ describe('sentinel setup', () => {
     expect(again.codes).toContain(1);
   });
 
-  it('writes the lesson check workflow and a ruleset for the user to apply', async () => {
-    const c = cli();
+  const sha = 'a'.repeat(40);
+  const gh =
+    (stdout: string, exitCode = 0): CommandRunner =>
+    (command, args, options) =>
+      command === 'gh'
+        ? Promise.resolve({ exitCode, stdout, stderr: '', notFound: false, timedOut: false })
+        : runCommand(command, args, options);
+
+  it('writes the lesson check pinned to a commit, and a ruleset for the user to apply', async () => {
+    const c = cli({ run: gh(`${sha}\n`) });
     await c.run('setup', '--learn-verify', '--json');
-    const result = c.json() as SetupResult & { ruleset: string };
+    const result = c.json() as SetupResult & { ruleset: string; warnings: string[] };
     expect(result.files).toEqual(['.github/workflows/sentinel-lessons.yml']);
+    expect(result.warnings).toEqual([]);
     const workflow = await readFile(
       join(repo, '.github', 'workflows', 'sentinel-lessons.yml'),
       'utf8',
     );
     expect(workflow).toContain('pull_request_target:');
     expect(workflow).toContain('name: sentinel learn verify');
-    expect(workflow).toMatch(
-      /raw\.githubusercontent\.com\/robert-nagy\/sentinel\/v\d+\.\d+\.\d+\//,
-    );
+    expect(workflow).toContain(`raw.githubusercontent.com/robert-nagy/sentinel/${sha}/`);
     expect(workflow).not.toContain('actions/checkout');
     expect(result.ruleset).toBe('.sentinel/state/learn-ruleset.json');
     const ruleset = JSON.parse(await readFile(join(repo, result.ruleset), 'utf8')) as {
@@ -199,8 +206,20 @@ describe('sentinel setup', () => {
       'sentinel learn verify',
     );
 
-    const again = cli();
+    const again = cli({ run: gh(`${sha}\n`) });
     await again.run('setup', '--learn-verify');
     expect(again.codes.at(-1)).toBe(1);
+  });
+
+  it('falls back to the tag with a warning when the commit cannot be resolved', async () => {
+    const c = cli({ run: gh('', 1) });
+    await c.run('setup', '--learn-verify', '--json');
+    const result = c.json() as SetupResult & { warnings: string[] };
+    expect(result.warnings.join()).toMatch(/downloads by tag/);
+    const workflow = await readFile(
+      join(repo, '.github', 'workflows', 'sentinel-lessons.yml'),
+      'utf8',
+    );
+    expect(workflow).toMatch(/robert-nagy\/sentinel\/v\d+\.\d+\.\d+\//);
   });
 });

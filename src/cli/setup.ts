@@ -30,6 +30,7 @@ import { StateStore } from '../core/state.js';
 import {
   LEARN_VERIFY_CHECK,
   LEARN_VERIFY_WORKFLOW_PATH,
+  SENTINEL_REPO,
   learnVerifyRuleset,
   renderLearnVerifyWorkflow,
   renderWorkflows,
@@ -239,13 +240,27 @@ export function registerSetup(program: Command, deps: CliDeps): void {
         }
 
         let ruleset: string | undefined;
+        const warnings: string[] = [];
         if (options.learnVerify === true) {
           const path = LEARN_VERIFY_WORKFLOW_PATH;
           if (options.force !== true) await refuseToOverwrite(root, path, deps);
+          // Pin the download to the commit behind the release tag: a tag can be moved.
+          const resolved = await deps.run(
+            'gh',
+            ['api', `repos/${SENTINEL_REPO}/commits/v${VERSION}`, '--jq', '.sha'],
+            { cwd: root, timeoutMs: 30_000 },
+          );
+          const commit = resolved.exitCode === 0 ? resolved.stdout.trim() : '';
+          const pinned = /^[0-9a-f]{40}$/.test(commit) ? commit : undefined;
+          if (pinned === undefined) {
+            warnings.push(
+              `could not resolve the commit of sentinel v${VERSION}, so the lesson check downloads by tag; re-run \`sentinel setup --learn-verify --force\` once gh can reach GitHub`,
+            );
+          }
           if (!dryRun) {
             await writeNewFile(
               resolveInside(root, '.', path),
-              renderLearnVerifyWorkflow(VERSION, 'release'),
+              renderLearnVerifyWorkflow(VERSION, 'release', pinned),
               options.force === true,
             );
             // The ruleset is applied by the user (or the skill, after approval), never here.
@@ -268,6 +283,7 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           },
           files,
           ruleset,
+          warnings,
         };
         if (options.json === true) {
           deps.stdout(JSON.stringify(result, null, 2));
@@ -279,6 +295,7 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             '',
             formatStackReport(stack),
             ...files.map((f) => `${prefix}wrote ${f}`),
+            ...warnings.map((w) => `warning: ${w}`),
             ...(ruleset === undefined
               ? []
               : [

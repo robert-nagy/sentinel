@@ -246,7 +246,7 @@ export const LEARN_VERIFY_WORKFLOW_PATH = '.github/workflows/sentinel-lessons.ym
 export const LEARN_VERIFY_CHECK = 'sentinel learn verify';
 /** GitHub Actions' app id, so only Actions can satisfy the required check. */
 export const GITHUB_ACTIONS_APP_ID = 15368;
-const SENTINEL_REPO = 'robert-nagy/sentinel';
+export const SENTINEL_REPO = 'robert-nagy/sentinel';
 const BUNDLE_PATH = 'plugins/sentinel/skills/sentinel-sdlc/scripts/sentinel.mjs';
 
 /**
@@ -258,12 +258,21 @@ const BUNDLE_PATH = 'plugins/sentinel/skills/sentinel-sdlc/scripts/sentinel.mjs'
  * that use sentinel); `source: 'checkout'` runs the bundle from the base branch checkout (for
  * sentinel's own repository, which carries it).
  */
-export function renderLearnVerifyWorkflow(version: string, source: 'release' | 'checkout'): string {
+export function renderLearnVerifyWorkflow(
+  version: string,
+  source: 'release' | 'checkout',
+  /** The commit the release tag points to; a commit cannot be moved the way a tag can. */
+  commit?: string,
+): string {
+  if (commit !== undefined && !/^[0-9a-f]{40}$/.test(commit)) {
+    throw new Error(`"${commit}" is not a full commit SHA`);
+  }
+  const ref = commit ?? `v${version}`;
   const fetch =
     source === 'release'
       ? [
-          `      - name: Download sentinel v${version}`,
-          `        run: curl -fsSL --retry 3 -o "$RUNNER_TEMP/sentinel.mjs" "https://raw.githubusercontent.com/${SENTINEL_REPO}/v${version}/${BUNDLE_PATH}"`,
+          `      - name: Download sentinel v${version}${commit === undefined ? '' : ` (commit ${commit.slice(0, 12)})`}`,
+          `        run: curl -fsSL --retry 3 -o "$RUNNER_TEMP/sentinel.mjs" "https://raw.githubusercontent.com/${SENTINEL_REPO}/${ref}/${BUNDLE_PATH}"`,
         ]
       : [
           '      # The base branch, never the pull request: pull_request_target checks out the base.',
