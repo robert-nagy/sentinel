@@ -23801,6 +23801,19 @@ function ghError(result, action) {
 }
 var PR_FIELDS = "number,url,title,state,isDraft,headRefName,baseRefName,headRefOid";
 var GH_TIMEOUT_MS = 6e4;
+var MERGED_PRS_QUERY = `query($q: String!, $n: Int!) {
+  search(query: $q, type: ISSUE, first: $n) {
+    nodes {
+      ... on PullRequest {
+        number title url mergedAt headRefName
+        author { login }
+        commits(first: 100) { nodes { commit { authors(first: 1) { nodes { user { login } } } } } }
+        reviews(first: 50) { nodes { author { __typename login } body state } }
+        comments(first: 50) { nodes { author { __typename login } } }
+      }
+    }
+  }
+}`;
 var MAX_LOG_CHARS = 1e5;
 var ghPr = external_exports.object({
   number: external_exports.number(),
@@ -23984,22 +23997,29 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
     };
   }
   async listMyMergedPullRequests(limit) {
+    const action = "list your merged pull requests";
+    const repo = this.options.repo ?? await this.repository();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+      throw new ProviderError("failed", `could not ${action}: unexpected repository "${repo}"`);
+    }
     const out = await this.gh(
       [
-        "pr",
-        "list",
-        "--state",
-        "merged",
-        "--author",
-        "@me",
-        "--limit",
-        String(Math.max(1, Math.min(limit, 200))),
-        "--json",
-        "number,title,url,author,mergedAt,headRefName,commits,reviews,comments"
+        "api",
+        "graphql",
+        "-f",
+        `query=${MERGED_PRS_QUERY}`,
+        "-f",
+        `q=repo:${repo} is:pr is:merged author:@me sort:updated-desc`,
+        "-F",
+        `n=${String(Math.max(1, Math.min(limit, 100)))}`,
+        "--jq",
+        ".data.search.nodes"
       ],
-      "list your merged pull requests"
+      action
     );
-    const login = external_exports.object({ login: external_exports.string() }).nullish();
+    const login = external_exports.object({ login: external_exports.string(), __typename: external_exports.string().optional() }).nullish();
+    const name = (a) => a == null ? void 0 : a.__typename === "Bot" ? `${a.login}[bot]` : a.login;
+    const nodes = (item) => external_exports.object({ nodes: external_exports.array(item).nullish() }).nullish();
     const rows = this.json(
       external_exports.array(
         external_exports.object({
@@ -24009,15 +24029,19 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
           author: login,
           mergedAt: external_exports.string().nullish(),
           headRefName: external_exports.string(),
-          commits: external_exports.array(external_exports.object({ authors: external_exports.array(login).nullish() })).default([]),
-          reviews: external_exports.array(
+          commits: nodes(
+            external_exports.object({
+              commit: external_exports.object({ authors: nodes(external_exports.object({ user: login })) })
+            })
+          ),
+          reviews: nodes(
             external_exports.object({ author: login, body: external_exports.string().nullish(), state: external_exports.string().nullish() })
-          ).default([]),
-          comments: external_exports.array(external_exports.object({ author: login })).default([])
+          ),
+          comments: nodes(external_exports.object({ author: login }))
         })
       ),
       out,
-      "list your merged pull requests"
+      action
     );
     return rows.map((r) => ({
       number: r.number,
@@ -24026,15 +24050,17 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
       author: r.author?.login ?? "",
       mergedAt: r.mergedAt ?? "",
       head: r.headRefName,
-      commitAuthors: r.commits.map((c) => c.authors?.[0]?.login ?? void 0),
+      commitAuthors: (r.commits?.nodes ?? []).map(
+        (c) => c.commit.authors?.nodes?.[0]?.user?.login ?? void 0
+      ),
       // An approval without a body says nothing to learn from; a COMMENTED review with an
       // empty body usually carries inline comments, so it counts.
       commentAuthors: [
-        ...r.reviews.filter(
+        ...(r.reviews?.nodes ?? []).filter(
           (v) => (v.body ?? "").trim() !== "" || !["APPROVED", "DISMISSED"].includes(v.state ?? "")
         ),
-        ...r.comments
-      ].map((c) => c.author?.login).filter((l) => l !== void 0)
+        ...r.comments?.nodes ?? []
+      ].map((c) => name(c.author)).filter((l) => l !== void 0)
     })).sort((a, b) => a.mergedAt < b.mergedAt ? 1 : a.mergedAt > b.mergedAt ? -1 : 0);
   }
   async listPullRequestCommits(pr) {

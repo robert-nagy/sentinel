@@ -162,7 +162,8 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
     );
   });
 
-  it("lists only the user's merged PRs, newest first, with commit and comment authors", async () => {
+  it("lists only the user's merged PRs with one GraphQL search, newest first", async () => {
+    const user = (l: string | null) => ({ user: l === null ? null : { login: l } });
     const rows = [
       {
         number: 1,
@@ -171,13 +172,25 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
         author: { login: 'me' },
         mergedAt: '2026-01-01T00:00:00Z',
         headRefName: 'feat/1',
-        commits: [{ authors: [{ login: 'me' }, { login: 'claude' }] }, { authors: [] }],
-        reviews: [
-          { author: { login: 'dana' }, body: 'use path.join here', state: 'COMMENTED' },
-          { author: { login: 'erin' }, body: '', state: 'APPROVED' },
-          { author: { login: 'finn' }, body: '', state: 'COMMENTED' },
-        ],
-        comments: [{ author: null }],
+        commits: {
+          nodes: [
+            { commit: { authors: { nodes: [user('me'), user('claude')] } } },
+            { commit: { authors: { nodes: [user(null)] } } },
+          ],
+        },
+        reviews: {
+          nodes: [
+            { author: { login: 'dana' }, body: 'use path.join here', state: 'COMMENTED' },
+            { author: { login: 'erin' }, body: '', state: 'APPROVED' },
+            { author: { login: 'finn' }, body: '', state: 'COMMENTED' },
+            {
+              author: { __typename: 'Bot', login: 'github-advanced-security' },
+              body: '',
+              state: 'COMMENTED',
+            },
+          ],
+        },
+        comments: { nodes: [{ author: null }] },
       },
       {
         number: 2,
@@ -188,17 +201,19 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
         headRefName: 'feat/2',
       },
     ];
-    const { run, calls } = fakeRun((l) =>
-      l.startsWith('gh pr list') ? ok(JSON.stringify(rows)) : undefined,
-    );
+    const { run, calls } = fakeRun((l) => {
+      if (l.startsWith('gh repo view')) return ok('o/r\n');
+      if (l.startsWith('gh api graphql')) return ok(JSON.stringify(rows));
+      return undefined;
+    });
     const prs = await new GitHubCodeHost({ run, cwd: '/r' }).listMyMergedPullRequests(100);
-    expect(calls[0]?.args).toEqual(
-      expect.arrayContaining(['--author', '@me', '--state', 'merged']),
-    );
+    const query = calls.find((c) => c.args[0] === 'api')?.args ?? [];
+    expect(query).toContain('q=repo:o/r is:pr is:merged author:@me sort:updated-desc');
+    expect(query.join(' ')).toMatch(/commits\(first: 100\)/);
     expect(prs.map((p) => p.number)).toEqual([2, 1]);
     expect(prs[1]).toMatchObject({
       commitAuthors: ['me', undefined],
-      commentAuthors: ['dana', 'finn'],
+      commentAuthors: ['dana', 'finn', 'github-advanced-security[bot]'],
     });
   });
 

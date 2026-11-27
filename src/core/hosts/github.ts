@@ -56,6 +56,21 @@ export function ghError(
 
 const PR_FIELDS = 'number,url,title,state,isDraft,headRefName,baseRefName,headRefOid';
 const GH_TIMEOUT_MS = 60_000;
+
+/** The user's merged PRs with commit authors, reviews and comments, in GitHub's node limits. */
+const MERGED_PRS_QUERY = `query($q: String!, $n: Int!) {
+  search(query: $q, type: ISSUE, first: $n) {
+    nodes {
+      ... on PullRequest {
+        number title url mergedAt headRefName
+        author { login }
+        commits(first: 100) { nodes { commit { authors(first: 1) { nodes { user { login } } } } } }
+        reviews(first: 50) { nodes { author { __typename login } body state } }
+        comments(first: 50) { nodes { author { __typename login } } }
+      }
+    }
+  }
+}`;
 /** Failed logs can be huge; the failure is almost always at the end. */
 export const MAX_LOG_CHARS = 100_000;
 
@@ -279,22 +294,34 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
   }
 
   async listMyMergedPullRequests(limit: number): Promise<PullRequestSummary[]> {
+    const action = 'list your merged pull requests';
+    const repo = this.options.repo ?? (await this.repository());
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
+      throw new ProviderError('failed', `could not ${action}: unexpected repository "${repo}"`);
+    }
+    // One search with small, explicit page sizes: `gh pr list --json commits` asks for up to
+    // a million GraphQL nodes for 100 PRs and GitHub refuses it.
     const out = await this.gh(
       [
-        'pr',
-        'list',
-        '--state',
-        'merged',
-        '--author',
-        '@me',
-        '--limit',
-        String(Math.max(1, Math.min(limit, 200))),
-        '--json',
-        'number,title,url,author,mergedAt,headRefName,commits,reviews,comments',
+        'api',
+        'graphql',
+        '-f',
+        `query=${MERGED_PRS_QUERY}`,
+        '-f',
+        `q=repo:${repo} is:pr is:merged author:@me sort:updated-desc`,
+        '-F',
+        `n=${String(Math.max(1, Math.min(limit, 100)))}`,
+        '--jq',
+        '.data.search.nodes',
       ],
-      'list your merged pull requests',
+      action,
     );
-    const login = z.object({ login: z.string() }).nullish();
+    const login = z.object({ login: z.string(), __typename: z.string().optional() }).nullish();
+    // GraphQL gives bot logins without the `[bot]` suffix REST uses; add it from the type.
+    const name = (a: z.infer<typeof login>) =>
+      a == null ? undefined : a.__typename === 'Bot' ? `${a.login}[bot]` : a.login;
+    const nodes = <T extends z.ZodType>(item: T) =>
+      z.object({ nodes: z.array(item).nullish() }).nullish();
     const rows = this.json(
       z.array(
         z.object({
@@ -304,17 +331,19 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
           author: login,
           mergedAt: z.string().nullish(),
           headRefName: z.string(),
-          commits: z.array(z.object({ authors: z.array(login).nullish() })).default([]),
-          reviews: z
-            .array(
-              z.object({ author: login, body: z.string().nullish(), state: z.string().nullish() }),
-            )
-            .default([]),
-          comments: z.array(z.object({ author: login })).default([]),
+          commits: nodes(
+            z.object({
+              commit: z.object({ authors: nodes(z.object({ user: login })) }),
+            }),
+          ),
+          reviews: nodes(
+            z.object({ author: login, body: z.string().nullish(), state: z.string().nullish() }),
+          ),
+          comments: nodes(z.object({ author: login })),
         }),
       ),
       out,
-      'list your merged pull requests',
+      action,
     );
     return rows
       .map((r) => ({
@@ -324,17 +353,19 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
         author: r.author?.login ?? '',
         mergedAt: r.mergedAt ?? '',
         head: r.headRefName,
-        commitAuthors: r.commits.map((c) => c.authors?.[0]?.login ?? undefined),
+        commitAuthors: (r.commits?.nodes ?? []).map(
+          (c) => c.commit.authors?.nodes?.[0]?.user?.login ?? undefined,
+        ),
         // An approval without a body says nothing to learn from; a COMMENTED review with an
         // empty body usually carries inline comments, so it counts.
         commentAuthors: [
-          ...r.reviews.filter(
+          ...(r.reviews?.nodes ?? []).filter(
             (v) =>
               (v.body ?? '').trim() !== '' || !['APPROVED', 'DISMISSED'].includes(v.state ?? ''),
           ),
-          ...r.comments,
+          ...(r.comments?.nodes ?? []),
         ]
-          .map((c) => c.author?.login)
+          .map((c) => name(c.author))
           .filter((l): l is string => l !== undefined),
       }))
       .sort((a, b) => (a.mergedAt < b.mergedAt ? 1 : a.mergedAt > b.mergedAt ? -1 : 0));

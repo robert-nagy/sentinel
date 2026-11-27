@@ -317,3 +317,10 @@ Where the implementation is more specific than, or departs from, the decisions a
   match. `**` inside a segment (`a**b`) means `*`.
 - **`recurring`** in babysit counts a lesson with the same signature even when it is archived;
   only active lessons are returned in `lessons`.
+- **Listing merged PRs** uses one GraphQL search with small page sizes (`commits(first: 100)`,
+  authors `first: 1`, reviews and comments `first: 50`); `gh pr list --json commits` asks for up
+  to a million nodes for 100 PRs and GitHub refuses it. Bot authors are recognised from GraphQL's
+  `Bot` type, which has no `[bot]` suffix.
+- **Known limitation: agent accounts.** A commit authored by an AI agent's own GitHub account
+  (for example one linked to a `noreply@anthropic.com` address) counts as a commit by someone
+  else, so it shows up in `suggest` and `pr-changes`. The user's pick filters it out.

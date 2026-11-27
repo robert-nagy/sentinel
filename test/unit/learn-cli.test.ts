@@ -65,7 +65,8 @@ function fakeGh(
       line.includes('/files')
     )
       return Promise.resolve(ok(''));
-    if (line.startsWith('gh pr list')) return Promise.resolve(ok('[]'));
+    if (line.startsWith('gh repo view')) return Promise.resolve(ok('o/r\n'));
+    if (line.startsWith('gh api graphql')) return Promise.resolve(ok('[]'));
     return Promise.resolve(ok(''));
   };
 }
