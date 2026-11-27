@@ -46,7 +46,7 @@ Show one numbered list for all the pull requests, grouped by pull request. For e
 
 ## Store what the user kept
 
-1. For each kept candidate, write it to a draft file in `.sentinel/state/` (front matter between `---` lines, then the body) and run `node scripts/sentinel.mjs learn add --file <draft> --json`, adding `--local` for a personal one.
+1. For each kept candidate, write it to a draft file in your temp directory, outside the repository (front matter between `---` lines, then the body) and run `node scripts/sentinel.mjs learn add --file <draft> --json`, adding `--local` for a personal one.
 2. Act on the exit code: `0` with `action` `added` or `merged` (it matched a lesson that already exists, which now counts once more); `2`: fix the listed problems and run it again; `6`: the pull request is not the user's own, so drop the candidate.
 3. Run `node scripts/sentinel.mjs learn mark-reviewed <pr…>` for every pull request you showed, whatever the user kept, so `learn suggest` does not list them again.
 4. Delete the draft files.

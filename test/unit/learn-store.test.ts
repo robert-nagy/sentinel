@@ -281,6 +281,36 @@ describe('LessonStore.prune and restore', () => {
     expect(await readdir(join(root, STORE_DIRS.shared))).toEqual([`${id}.md`]);
   });
 
+  it('starts the decay clock when this machine first sees an old lesson', async () => {
+    const summary = 'Team rule from long ago';
+    const lesson = {
+      id: lessonId(summary, '2025-01-10'),
+      summary,
+      scope: ['src/**'],
+      tags: [],
+      source: 'override' as const,
+      created: '2025-01-10',
+      body: 'Still true.',
+    };
+    await mkdir(join(root, STORE_DIRS.shared), { recursive: true });
+    await writeFile(join(root, STORE_DIRS.shared, `${lesson.id}.md`), renderLesson(lesson), 'utf8');
+    const s = store();
+    expect(await s.prune()).toEqual([]);
+    expect((await s.recall({ paths: ['src/a.ts'] })).map((l) => l.id)).toEqual([lesson.id]);
+    now = new Date('2027-03-15T10:00:00Z'); // over 90 days after first seen and last recalled
+    expect(await s.prune()).toEqual([lesson.id]);
+  });
+
+  it('refuses to write a lesson through a symlinked store', async () => {
+    if (process.platform === 'win32') return;
+    const elsewhere = join(root, 'elsewhere');
+    await mkdir(elsewhere, { recursive: true });
+    await mkdir(join(root, '.sentinel'), { recursive: true });
+    await symlink(elsewhere, join(root, STORE_DIRS.shared), 'dir');
+    await expect(store().add(draft('Planted'), { store: 'shared' })).rejects.toThrow(/symlink/);
+    expect(await readdir(elsewhere)).toEqual([]);
+  });
+
   it('keeps a lesson active while it is being recalled', async () => {
     const s = store();
     const { id } = await s.add(draft('Busy rule'), { store: 'shared' });

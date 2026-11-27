@@ -244,8 +244,9 @@ makes them a route for prompt injection that persists across runs.
   reviewer's text needs the user's explicit pick; every lesson is visible in the PR diff, capped in
   size, scanned for secrets, framed as data below the guardrails, and removable with one file
   delete.
-- `.gitignore` gains `.sentinel/learnings.local/`. The usage and index files are already covered
-  by `.sentinel/state/`.
+- Nothing has to be added to a repository's `.gitignore`: `.sentinel/learnings.local/` and
+  `.sentinel/state/` each carry their own `.gitignore` (`*`), written by sentinel when it creates
+  them. Skills write lesson drafts to the agent's temp directory, outside the repository.
 
 ## Implementation notes (M10, 2026-11-27)
 
@@ -306,3 +307,8 @@ Where the implementation is more specific than, or departs from, the decisions a
 - **Usage across checkouts.** `learn prune` keeps usage entries for shared lessons it cannot see,
   since another worktree or branch may have them; only personal entries whose file is gone are
   dropped.
+- **Decay on a new machine** counts from the day this machine first saw a lesson (`firstSeen`
+  in the usage state), not from the day it was written, so a fresh clone does not archive the
+  team's older lessons before it ever recalls them.
+- **Glob limits.** Repeated `**` collapse before matching and a glob may have at most eight
+  wildcard groups, so a crafted scope cannot make recall backtrack for long.

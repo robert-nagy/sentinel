@@ -1,7 +1,10 @@
 import type { Command } from 'commander';
 import { ExitCode } from '../core/exit-codes.js';
 import { GitHubCodeHost } from '../core/hosts/github.js';
-import { LessonStore, type RecalledLesson } from '../core/learn-store.js';
+import { prChanges } from '../core/learn-pr.js';
+import { LessonStore, type LearnSettings, type RecalledLesson } from '../core/learn-store.js';
+import { LearnError } from '../core/learnings.js';
+import { ProviderError } from '../core/provider-error.js';
 import { babysatPullRequests, babysit, type BabysitAction } from '../core/pr-babysitter.js';
 import { findMainRoot, findRepoRoot } from '../core/repo.js';
 import { StateStore } from '../core/state.js';
@@ -63,6 +66,25 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
             lessons = lessons.filter((l) => l.match === 'signature');
           }
         }
+        // A merged PR of the user's own with changes by others is worth offering to
+        // sentinel-learn-pr right away (ADR-0008, decision 12). Never fails the babysit run.
+        let learnable = false;
+        if (
+          result.action === 'done' &&
+          result.pr.state === 'merged' &&
+          config.learn.enabled &&
+          config.learn.offerPrLessons
+        ) {
+          learnable = await offerable(
+            host,
+            root,
+            mainRoot,
+            state,
+            result.pr.number,
+            deps,
+            config.learn,
+          );
+        }
         const output = {
           action: result.action,
           reason: result.reason,
@@ -72,6 +94,7 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
           recurring: recurringPrs.length > 0 || lessons.length > 0,
           recurringPrs,
           lessons: lessons.map(({ id, summary, body, path }) => ({ id, summary, body, path })),
+          learnable,
         };
         deps.stdout(
           options.json === true
@@ -89,4 +112,32 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
         deps.setExitCode(EXIT[result.action]);
       }),
     );
+}
+
+/** Whether a merged PR is the user's own, unlearned, never offered, with changes by others. */
+async function offerable(
+  host: GitHubCodeHost,
+  root: string,
+  mainRoot: string,
+  state: StateStore,
+  pr: number,
+  deps: CliDeps,
+  settings: LearnSettings,
+): Promise<boolean> {
+  const store = new LessonStore(root, { now: deps.now, settings, mainRoot });
+  try {
+    if ((await store.readUsage()).prs[String(pr)]?.offeredAt !== undefined) return false;
+    const heads = new Map<number, string>();
+    const info = (await babysatPullRequests(state)).get(pr);
+    if (info?.headSha !== undefined) heads.set(pr, info.headSha);
+    const [changes] = await prChanges(host, store, [pr], heads);
+    if (changes === undefined || changes.learned !== undefined) return false;
+    if (changes.commits.length === 0 && changes.comments.length === 0) return false;
+    await store.markPrs([pr], 'offeredAt');
+    return true;
+  } catch (error) {
+    // Not the user's PR, or the host could not tell: just do not offer it.
+    if (error instanceof LearnError || error instanceof ProviderError) return false;
+    throw error;
+  }
 }

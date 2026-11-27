@@ -180,4 +180,73 @@ describe('sentinel babysit', () => {
     await cli(run).run('babysit', '7', '--once');
     expect(await new StateStore(repo).read('babysit-pr-7')).toMatchObject({ headSha: 'abc1234' });
   });
+
+  describe('learnable', () => {
+    const merged =
+      (author: string, commits: string): CommandRunner =>
+      (command, args) => {
+        const text = args.join(' ');
+        if (text.startsWith('pr view'))
+          return Promise.resolve(
+            ok(
+              JSON.stringify({
+                number: 7,
+                url: 'https://github.com/o/r/pull/7',
+                title: 't',
+                state: 'MERGED',
+                isDraft: false,
+                headRefName: 'feat/7',
+                baseRefName: 'main',
+              }),
+            ),
+          );
+        if (text === 'api user --jq .login') return Promise.resolve(ok('me\n'));
+        if (text.endsWith('repos/{owner}/{repo}/pulls/7'))
+          return Promise.resolve(
+            ok(
+              JSON.stringify({
+                number: 7,
+                login: author,
+                type: 'User',
+                association: 'OWNER',
+                headSha: 'abcdef1',
+                merged: true,
+              }),
+            ),
+          );
+        if (text.includes('pulls/7/commits')) return Promise.resolve(ok(commits));
+        return Promise.resolve(ok(''));
+      };
+    const byDana = JSON.stringify({
+      sha: 'c3',
+      login: 'dana',
+      type: 'User',
+      message: 'fix',
+      url: '',
+    });
+
+    it('is true once for a merged PR of your own with commits by others', async () => {
+      const first = cli(merged('me', byDana));
+      await first.run('babysit', '7', '--once', '--json');
+      expect(JSON.parse(first.out.join('')) as unknown).toMatchObject({
+        action: 'done',
+        learnable: true,
+      });
+      const again = cli(merged('me', byDana));
+      await again.run('babysit', '7', '--once', '--json');
+      expect(JSON.parse(again.out.join('')) as unknown).toMatchObject({ learnable: false });
+    });
+
+    it("is false for someone else's PR or one with nothing to learn", async () => {
+      for (const run of [merged('dana', byDana), merged('me', '')]) {
+        const c = cli(run);
+        await c.run('babysit', '7', '--once', '--json');
+        expect(JSON.parse(c.out.join('')) as unknown).toMatchObject({
+          action: 'done',
+          learnable: false,
+        });
+        expect(c.codes.at(-1)).toBe(0);
+      }
+    });
+  });
 });

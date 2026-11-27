@@ -62,6 +62,8 @@ export interface UsageEntry {
   readonly recalls: number;
   readonly lastUsed?: string | undefined;
   readonly lastReinforced?: string | undefined;
+  /** When this machine first saw the lesson; decay never counts from before it. */
+  readonly firstSeen?: string | undefined;
   /** The date the lesson was archived on this machine. */
   readonly archived?: string | undefined;
 }
@@ -387,10 +389,16 @@ export class LessonStore {
 
     const dir = this.dir(options.store);
     await mkdir(dir, { recursive: true });
+    if (!(await this.realDirectory(options.store))) {
+      throw new LearnError(
+        `${STORE_DIRS[options.store]} goes through a symlink or is not a directory; lessons are only written to a real directory`,
+      );
+    }
     if (options.store === 'personal') await this.ensureIgnored(dir);
     await writeAtomic(join(dir, `${lesson.id}.md`), renderLesson(lesson));
     usage.lessons[key(options.store, lesson.id)] = {
       ...EMPTY_USAGE,
+      firstSeen: this.today(),
       lastReinforced: this.today(),
     };
     await this.writeUsage(usage);
@@ -534,9 +542,12 @@ export class LessonStore {
     const active: { k: string; id: string; rank: (number | string)[] }[] = [];
     for (const { store, meta } of entries) {
       const k = key(store, meta.id);
-      const use = usage.lessons[k] ?? EMPTY_USAGE;
+      // A lesson this machine has not seen before (a fresh clone, a teammate's lesson) starts
+      // its decay clock today, not on the day it was written.
+      const use: UsageEntry = usage.lessons[k] ?? { ...EMPTY_USAGE, firstSeen: today };
+      usage.lessons[k] = use;
       if (use.archived !== undefined) continue;
-      const last = [use.lastUsed, use.lastReinforced]
+      const last = [use.firstSeen, use.lastUsed, use.lastReinforced]
         .filter((d): d is string => d !== undefined)
         .reduce((a, b) => (b > a ? b : a), meta.created);
       if (daysBetween(last, today) > archiveAfterDays) {

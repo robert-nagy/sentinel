@@ -172,7 +172,10 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
         mergedAt: '2026-01-01T00:00:00Z',
         headRefName: 'feat/1',
         commits: [{ authors: [{ login: 'me' }, { login: 'claude' }] }, { authors: [] }],
-        reviews: [{ author: { login: 'dana' } }],
+        reviews: [
+          { author: { login: 'dana' }, body: 'use path.join here' },
+          { author: { login: 'erin' }, body: '' },
+        ],
         comments: [{ author: null }],
       },
       {

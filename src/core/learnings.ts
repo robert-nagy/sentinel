@@ -89,8 +89,12 @@ function check(
   { fields, body }: Fields,
   id: string | undefined,
   created: string,
+  stored = false,
 ): { lesson?: Lesson; problems: string[] } {
   const problems: string[] = [];
+  if (stored && optionalString(fields.get('source')) === undefined) {
+    problems.push('source is required in a stored lesson');
+  }
   const summary = optionalString(fields.get('summary'));
   if (summary === undefined) problems.push('summary is required');
   else if (summary.includes('\n')) problems.push('summary must be one line');
@@ -200,7 +204,7 @@ export function parseLesson(text: string): LessonParse {
   if (parts === undefined) return { problems: ['the lesson needs front matter between --- lines'] };
   const id = optionalString(parts.fields.get('id'));
   const created = optionalString(parts.fields.get('created')) ?? '';
-  const result = check(parts, id, created);
+  const result = check(parts, id, created, true);
   if (id === undefined || !LESSON_ID_PATTERN.test(id))
     return { problems: [...result.problems, 'id must look like L-yyyymmdd-abcdef'] };
   return result;

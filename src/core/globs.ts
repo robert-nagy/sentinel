@@ -6,6 +6,21 @@
  */
 
 export const MAX_GLOB_LENGTH = 200;
+/** Wildcard groups per glob; more could make matching backtrack badly. */
+export const MAX_WILDCARDS = 8;
+
+/** Collapses runs that mean the same thing (`**\/**\/` → `**\/`, `***` → `**`). */
+function collapse(glob: string): string {
+  let g = glob;
+  for (;;) {
+    const next = g
+      .replace(/\*{3,}/g, '**')
+      .replace(/(?:\*\*\/){2,}/g, '**/')
+      .replace(/\*\*\/\*\*(?=$|\/)/g, '**');
+    if (next === g) return g;
+    g = next;
+  }
+}
 
 /** `\` → `/`, no leading `./`. */
 export function normalizePath(path: string): string {
@@ -34,6 +49,9 @@ export function validateGlob(glob: string): string | undefined {
     }
   }
   if (depth !== 0) return `"${glob}" has unbalanced braces`;
+  const wildcards = (collapse(g).match(/\*+|\?/g) ?? []).length;
+  if (wildcards > MAX_WILDCARDS)
+    return `"${glob}" has more than ${String(MAX_WILDCARDS)} wildcards`;
   return undefined;
 }
 
@@ -41,7 +59,7 @@ const SPECIAL = /[.+^$()|\\]/;
 
 /** Compiles a valid glob to an anchored regular expression over `/`-separated paths. */
 export function compileGlob(glob: string): RegExp {
-  const g = normalizePath(glob.trim());
+  const g = collapse(normalizePath(glob.trim()));
   let out = '';
   let i = 0;
   while (i < g.length) {

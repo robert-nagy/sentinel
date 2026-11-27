@@ -47,6 +47,7 @@ describe('validateGlob', () => {
     ['src/{a,{b,c}}', 'nested'],
     ['src/{a', 'unbalanced'],
     ['x'.repeat(201), 'long'],
+    ['a*/b*/c*/d*/e*/f*/g*/h*/i*', 'wildcards'],
   ])('rejects %j', (glob, word) => {
     expect(validateGlob(glob)).toContain(word);
   });
@@ -62,5 +63,17 @@ describe('globSpecificity', () => {
   it('counts literal characters, so deeper scopes rank higher', () => {
     expect(globSpecificity('**')).toBe(0);
     expect(globSpecificity('src/core/*.ts')).toBeGreaterThan(globSpecificity('src/**'));
+  });
+});
+
+describe('glob matching stays fast', () => {
+  it('collapses repeated ** so a pathological glob cannot backtrack', () => {
+    const glob = `${'**/'.repeat(60)}x.ts`;
+    expect(validateGlob(glob)).toBeUndefined();
+    const path = `${'a/'.repeat(40)}y.ts`;
+    const start = performance.now();
+    expect(compileGlob(glob).test(path)).toBe(false);
+    expect(compileGlob(glob).test(`${'a/'.repeat(40)}x.ts`)).toBe(true);
+    expect(performance.now() - start).toBeLessThan(200);
   });
 });

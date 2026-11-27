@@ -101,6 +101,15 @@ describe('renderLesson / parseLesson', () => {
     expect(parseLesson(text)).toEqual({ lesson, problems: [] });
   });
 
+  it('requires source in a stored lesson, though a draft may leave it out', () => {
+    const stored = renderLesson(
+      parseLessonDraft(good, { created: '2026-11-27' }).lesson ?? (undefined as never),
+    );
+    expect(parseLesson(stored.replace(/^source:.*\n/m, '')).problems.join()).toContain(
+      'source is required',
+    );
+  });
+
   it('flags a stored lesson whose id is missing', () => {
     expect(parseLesson(good).problems.join('\n')).toContain('id');
   });

@@ -305,7 +305,7 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
           mergedAt: z.string().nullish(),
           headRefName: z.string(),
           commits: z.array(z.object({ authors: z.array(login).nullish() })).default([]),
-          reviews: z.array(z.object({ author: login })).default([]),
+          reviews: z.array(z.object({ author: login, body: z.string().nullish() })).default([]),
           comments: z.array(z.object({ author: login })).default([]),
         }),
       ),
@@ -321,7 +321,8 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
         mergedAt: r.mergedAt ?? '',
         head: r.headRefName,
         commitAuthors: r.commits.map((c) => c.authors?.[0]?.login ?? undefined),
-        commentAuthors: [...r.reviews, ...r.comments]
+        // A plain approval has no body: nothing to learn from it.
+        commentAuthors: [...r.reviews.filter((v) => (v.body ?? '').trim() !== ''), ...r.comments]
           .map((c) => c.author?.login)
           .filter((l): l is string => l !== undefined),
       }))
