@@ -167,7 +167,7 @@ describe('suggest', () => {
     await store.markPrs([4], 'reviewedAt');
     const merged = Array.from({ length: 30 }, (_, i) => summary(i + 1));
     merged[1] = summary(2, {
-      commitAuthors: ['me', 'dana', undefined],
+      commitAuthors: ['me', 'dana', undefined, 'renovate[bot]'],
       commentAuthors: ['dana', 'me', 'renovate[bot]'],
     });
     merged[5] = summary(6, { author: 'dana' }); // not mine: dropped even if the host returned it

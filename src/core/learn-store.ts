@@ -11,7 +11,7 @@ import {
   renderLesson,
   type Lesson,
 } from './learnings.js';
-import { StateStore } from './state.js';
+import { StateError, StateStore } from './state.js';
 
 /**
  * The lesson store (ADR-0008). Lesson files hold content only and live in two directories:
@@ -320,7 +320,13 @@ export class LessonStore {
   }
 
   private async readIndex(): Promise<IndexFile> {
-    const index = await this.state.read<IndexFile>(this.indexName);
+    let index: IndexFile | undefined;
+    try {
+      index = await this.state.read<IndexFile>(this.indexName);
+    } catch (error) {
+      // The index is a derived cache: a corrupt copy is simply rebuilt.
+      if (!(error instanceof StateError)) throw error;
+    }
     if (index?.version !== INDEX_VERSION || typeof index.entries !== 'object') {
       return { version: INDEX_VERSION, entries: {} };
     }

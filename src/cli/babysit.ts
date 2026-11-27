@@ -64,10 +64,17 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
               mainRoot,
             });
             // Archived lessons still make a failure recurring; recall gives the active bodies.
-            knownSignature = (await lessonStore.withSignature(signature)).length > 0;
-            lessons = (await lessonStore.recall({ signature, limit: 3 })).filter(
-              (l) => l.match === 'signature',
-            );
+            // Lessons are a hint: a broken store must never hide the failure packet.
+            try {
+              knownSignature = (await lessonStore.withSignature(signature)).length > 0;
+              lessons = (await lessonStore.recall({ signature, limit: 3 })).filter(
+                (l) => l.match === 'signature',
+              );
+            } catch (error) {
+              deps.stderr(
+                `sentinel: lessons could not be read (${error instanceof Error ? error.message : String(error)}); continuing without them`,
+              );
+            }
           }
         }
         // A merged PR of the user's own with changes by others is worth offering to

@@ -305,7 +305,11 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
           mergedAt: z.string().nullish(),
           headRefName: z.string(),
           commits: z.array(z.object({ authors: z.array(login).nullish() })).default([]),
-          reviews: z.array(z.object({ author: login, body: z.string().nullish() })).default([]),
+          reviews: z
+            .array(
+              z.object({ author: login, body: z.string().nullish(), state: z.string().nullish() }),
+            )
+            .default([]),
           comments: z.array(z.object({ author: login })).default([]),
         }),
       ),
@@ -321,8 +325,15 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
         mergedAt: r.mergedAt ?? '',
         head: r.headRefName,
         commitAuthors: r.commits.map((c) => c.authors?.[0]?.login ?? undefined),
-        // A plain approval has no body: nothing to learn from it.
-        commentAuthors: [...r.reviews.filter((v) => (v.body ?? '').trim() !== ''), ...r.comments]
+        // An approval without a body says nothing to learn from; a COMMENTED review with an
+        // empty body usually carries inline comments, so it counts.
+        commentAuthors: [
+          ...r.reviews.filter(
+            (v) =>
+              (v.body ?? '').trim() !== '' || !['APPROVED', 'DISMISSED'].includes(v.state ?? ''),
+          ),
+          ...r.comments,
+        ]
           .map((c) => c.author?.login)
           .filter((l): l is string => l !== undefined),
       }))

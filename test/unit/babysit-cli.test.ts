@@ -183,6 +183,19 @@ describe('sentinel babysit', () => {
     expect(JSON.parse(out.join('')) as unknown).toMatchObject({ recurring: true, lessons: [] });
   });
 
+  it('still prints the packet when the lessons cannot be read', async () => {
+    const log = 'ci\tbuild\t2026-01-01T00:00:00Z src/a.ts(1,1): error TS2322: bad';
+    await mkdir(join(repo, '.sentinel', 'state'), { recursive: true });
+    await writeFile(join(repo, '.sentinel', 'state', 'learn-usage.json'), '{broken', 'utf8');
+    const { run, out, codes } = cli(
+      fakeGh([{ name: 'ci', bucket: 'fail', workflow: 'CI', link }], log),
+    );
+    await run('babysit', '7', '--once', '--json');
+    const json = out.find((line) => line.trim().startsWith('{')) ?? '';
+    expect(JSON.parse(json) as unknown).toMatchObject({ action: 'patch', lessons: [] });
+    expect(codes.at(-1)).toBe(2);
+  });
+
   it('records the head SHA of the open pull request', async () => {
     const run: CommandRunner = (command, args) => {
       const text = args.join(' ');

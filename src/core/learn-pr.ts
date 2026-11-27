@@ -105,7 +105,9 @@ export async function suggest(
     // `--author @me` is applied by the host; this is the same rule, checked again here.
     if (pr.author.toLowerCase() !== login) continue;
     if (learned.has(pr.number)) continue;
-    const otherCommits = pr.commitAuthors.filter((a) => a?.toLowerCase() !== login).length;
+    const otherCommits = pr.commitAuthors.filter(
+      (a) => a === undefined || (a.toLowerCase() !== login && !isBotLogin(a)),
+    ).length;
     const reviewComments = pr.commentAuthors.filter(
       (a) => a.toLowerCase() !== login && !isBotLogin(a),
     ).length;

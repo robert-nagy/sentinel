@@ -24010,7 +24010,9 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
           mergedAt: external_exports.string().nullish(),
           headRefName: external_exports.string(),
           commits: external_exports.array(external_exports.object({ authors: external_exports.array(login).nullish() })).default([]),
-          reviews: external_exports.array(external_exports.object({ author: login, body: external_exports.string().nullish() })).default([]),
+          reviews: external_exports.array(
+            external_exports.object({ author: login, body: external_exports.string().nullish(), state: external_exports.string().nullish() })
+          ).default([]),
           comments: external_exports.array(external_exports.object({ author: login })).default([])
         })
       ),
@@ -24025,8 +24027,14 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
       mergedAt: r.mergedAt ?? "",
       head: r.headRefName,
       commitAuthors: r.commits.map((c) => c.authors?.[0]?.login ?? void 0),
-      // A plain approval has no body: nothing to learn from it.
-      commentAuthors: [...r.reviews.filter((v) => (v.body ?? "").trim() !== ""), ...r.comments].map((c) => c.author?.login).filter((l) => l !== void 0)
+      // An approval without a body says nothing to learn from; a COMMENTED review with an
+      // empty body usually carries inline comments, so it counts.
+      commentAuthors: [
+        ...r.reviews.filter(
+          (v) => (v.body ?? "").trim() !== "" || !["APPROVED", "DISMISSED"].includes(v.state ?? "")
+        ),
+        ...r.comments
+      ].map((c) => c.author?.login).filter((l) => l !== void 0)
     })).sort((a, b) => a.mergedAt < b.mergedAt ? 1 : a.mergedAt > b.mergedAt ? -1 : 0);
   }
   async listPullRequestCommits(pr) {
@@ -25946,7 +25954,12 @@ var LessonStore = class _LessonStore {
     return true;
   }
   async readIndex() {
-    const index = await this.state.read(this.indexName);
+    let index;
+    try {
+      index = await this.state.read(this.indexName);
+    } catch (error63) {
+      if (!(error63 instanceof StateError)) throw error63;
+    }
     if (index?.version !== INDEX_VERSION || typeof index.entries !== "object") {
       return { version: INDEX_VERSION, entries: {} };
     }
@@ -26305,7 +26318,9 @@ async function suggest(reader, store, options = {}) {
   for (const pr of await reader.listMyMergedPullRequests(SUGGEST_LOOKBACK)) {
     if (pr.author.toLowerCase() !== login) continue;
     if (learned.has(pr.number)) continue;
-    const otherCommits = pr.commitAuthors.filter((a) => a?.toLowerCase() !== login).length;
+    const otherCommits = pr.commitAuthors.filter(
+      (a) => a === void 0 || a.toLowerCase() !== login && !isBotLogin(a)
+    ).length;
     const reviewComments = pr.commentAuthors.filter(
       (a) => a.toLowerCase() !== login && !isBotLogin(a)
     ).length;
@@ -28352,10 +28367,16 @@ function registerBabysit(program2, deps) {
             settings: config2.learn,
             mainRoot
           });
-          knownSignature = (await lessonStore.withSignature(signature)).length > 0;
-          lessons = (await lessonStore.recall({ signature, limit: 3 })).filter(
-            (l) => l.match === "signature"
-          );
+          try {
+            knownSignature = (await lessonStore.withSignature(signature)).length > 0;
+            lessons = (await lessonStore.recall({ signature, limit: 3 })).filter(
+              (l) => l.match === "signature"
+            );
+          } catch (error63) {
+            deps.stderr(
+              `sentinel: lessons could not be read (${error63 instanceof Error ? error63.message : String(error63)}); continuing without them`
+            );
+          }
         }
       }
       let learnable = false;
@@ -28803,6 +28824,20 @@ async function checkLearnVerify(ctx, ghReady) {
     );
   } catch {
     required2 = false;
+  }
+  if (!required2) {
+    const classic = await exec(ctx, "gh", [
+      "api",
+      `repos/{owner}/{repo}/branches/${name}/protection/required_status_checks`
+    ]);
+    if (classic.exitCode === 0) {
+      try {
+        const parsed = JSON.parse(classic.stdout);
+        required2 = (parsed.contexts ?? []).includes("sentinel learn verify") || (parsed.checks ?? []).some((c) => c.context === "sentinel learn verify");
+      } catch {
+        required2 = false;
+      }
+    }
   }
   if (!required2) {
     return {

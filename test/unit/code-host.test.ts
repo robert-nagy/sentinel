@@ -173,8 +173,9 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
         headRefName: 'feat/1',
         commits: [{ authors: [{ login: 'me' }, { login: 'claude' }] }, { authors: [] }],
         reviews: [
-          { author: { login: 'dana' }, body: 'use path.join here' },
-          { author: { login: 'erin' }, body: '' },
+          { author: { login: 'dana' }, body: 'use path.join here', state: 'COMMENTED' },
+          { author: { login: 'erin' }, body: '', state: 'APPROVED' },
+          { author: { login: 'finn' }, body: '', state: 'COMMENTED' },
         ],
         comments: [{ author: null }],
       },
@@ -195,7 +196,10 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
       expect.arrayContaining(['--author', '@me', '--state', 'merged']),
     );
     expect(prs.map((p) => p.number)).toEqual([2, 1]);
-    expect(prs[1]).toMatchObject({ commitAuthors: ['me', undefined], commentAuthors: ['dana'] });
+    expect(prs[1]).toMatchObject({
+      commitAuthors: ['me', undefined],
+      commentAuthors: ['dana', 'finn'],
+    });
   });
 
   it('reads paginated commits as one JSON object per line', async () => {

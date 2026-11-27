@@ -282,6 +282,19 @@ describe('learn-verify check', () => {
     expect(result?.message).toContain('not a required check on main');
   });
 
+  it('passes when classic branch protection requires it', async () => {
+    expect(
+      await status({
+        [lsFiles]: ok('.github/workflows/sentinel-lessons.yml\n'),
+        [branch]: ok('main\n'),
+        [rules]: ok('[]'),
+        'gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks': ok(
+          JSON.stringify({ contexts: ['sentinel learn verify'] }),
+        ),
+      }),
+    ).toMatchObject({ status: 'pass' });
+  });
+
   it('passes when a ruleset requires it', async () => {
     const required = [
       {

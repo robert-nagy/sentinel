@@ -316,6 +316,26 @@ export async function checkLearnVerify(ctx: DoctorContext, ghReady: boolean): Pr
     required = false;
   }
   if (!required) {
+    // Classic branch protection can require the check too.
+    const classic = await exec(ctx, 'gh', [
+      'api',
+      `repos/{owner}/{repo}/branches/${name}/protection/required_status_checks`,
+    ]);
+    if (classic.exitCode === 0) {
+      try {
+        const parsed = JSON.parse(classic.stdout) as {
+          contexts?: string[];
+          checks?: { context?: string }[];
+        };
+        required =
+          (parsed.contexts ?? []).includes('sentinel learn verify') ||
+          (parsed.checks ?? []).some((c) => c.context === 'sentinel learn verify');
+      } catch {
+        required = false;
+      }
+    }
+  }
+  if (!required) {
     return {
       ...base,
       status: 'warn',

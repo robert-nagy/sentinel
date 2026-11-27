@@ -250,6 +250,13 @@ describe('LessonStore and symlinks', () => {
 });
 
 describe('LessonStore index', () => {
+  it('rebuilds a corrupt index instead of failing', async () => {
+    const s = store();
+    await s.add(draft('Rule one'), { store: 'shared' });
+    await writeFile(join(root, '.sentinel', 'state', 'learn-index.json'), '{not json', 'utf8');
+    expect((await s.recall({ paths: ['src/a.ts'] })).map((l) => l.summary)).toEqual(['Rule one']);
+  });
+
   it('reads only files that changed since the last refresh', async () => {
     const s = store();
     await s.add(draft('Rule one'), { store: 'shared' });
