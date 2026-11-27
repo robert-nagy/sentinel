@@ -35,10 +35,20 @@ every unattended first feature keeps making the project's biggest decisions alon
   "decidedAt": "2026-11-27T12:00:00.000Z",
   "adr": "docs/adr/0001-stack-and-architecture.md",
   "layers": [
-    { "name": "backend", "path": "src/backend", "ecosystem": "dotnet", "language": "C#",
-      "frameworks": ["ASP.NET Core"] },
-    { "name": "frontend", "path": "src/web", "ecosystem": "node", "language": "TypeScript",
-      "frameworks": ["React", "Vite"] },
+    {
+      "name": "backend",
+      "path": "src/backend",
+      "ecosystem": "dotnet",
+      "language": "C#",
+      "frameworks": ["ASP.NET Core"]
+    },
+    {
+      "name": "frontend",
+      "path": "src/web",
+      "ecosystem": "node",
+      "language": "TypeScript",
+      "frameworks": ["React", "Vite"]
+    },
     { "name": "database", "language": "SQL", "frameworks": ["PostgreSQL"] }
   ],
   "architecture": {
