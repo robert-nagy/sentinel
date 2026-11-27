@@ -28427,8 +28427,12 @@ async function offerable(host, root, mainRoot, state, pr, deps, settings) {
     await store.markPrs([pr], "offeredAt");
     return true;
   } catch (error63) {
-    if (error63 instanceof LearnError || error63 instanceof ProviderError) return false;
-    throw error63;
+    if (!(error63 instanceof LearnError) && !(error63 instanceof ProviderError)) {
+      deps.stderr(
+        `sentinel: lessons could not be read (${error63 instanceof Error ? error63.message : String(error63)}); not offering this pull request`
+      );
+    }
+    return false;
   }
 }
 

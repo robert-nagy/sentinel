@@ -276,6 +276,16 @@ describe('sentinel babysit', () => {
       expect(JSON.parse(again.out.join('')) as unknown).toMatchObject({ learnable: false });
     });
 
+    it('is false, and babysit still succeeds, when the lesson store is broken', async () => {
+      await mkdir(join(repo, '.sentinel', 'state'), { recursive: true });
+      await writeFile(join(repo, '.sentinel', 'state', 'learn-usage.json'), '{broken', 'utf8');
+      const c = cli(merged('me', byDana));
+      await c.run('babysit', '7', '--once', '--json');
+      const json = c.out.find((line) => line.trim().startsWith('{')) ?? '';
+      expect(JSON.parse(json) as unknown).toMatchObject({ action: 'done', learnable: false });
+      expect(c.codes.at(-1)).toBe(0);
+    });
+
     it("is false for someone else's PR or one with nothing to learn", async () => {
       for (const run of [merged('dana', byDana), merged('me', '')]) {
         const c = cli(run);

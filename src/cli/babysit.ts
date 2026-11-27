@@ -147,8 +147,13 @@ async function offerable(
     await store.markPrs([pr], 'offeredAt');
     return true;
   } catch (error) {
-    // Not the user's PR, or the host could not tell: just do not offer it.
-    if (error instanceof LearnError || error instanceof ProviderError) return false;
-    throw error;
+    // Not the user's PR, the host could not tell, or the store is broken: do not offer it,
+    // and never fail the babysit run over it.
+    if (!(error instanceof LearnError) && !(error instanceof ProviderError)) {
+      deps.stderr(
+        `sentinel: lessons could not be read (${error instanceof Error ? error.message : String(error)}); not offering this pull request`,
+      );
+    }
+    return false;
   }
 }
