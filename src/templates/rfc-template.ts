@@ -11,6 +11,10 @@ TODO: One paragraph: what changes and why.
 
 TODO: The problem, the issue it comes from, and what happens if nothing changes.
 
+## Stack and architecture
+
+TODO: The recorded decision this design follows (\`sentinel architecture show\`), and every departure from it with the reason: a new language, framework, layer or top-level folder, or code that breaks the recorded architecture. Write "Follows the recorded decision" when there is none, or "No decision recorded; none needed".
+
 ## Detailed design
 
 TODO: Architecture and component changes. Name the files, modules and boundaries involved.
