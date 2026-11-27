@@ -157,6 +157,32 @@ describe('sentinel babysit', () => {
     });
   });
 
+  it('counts an archived lesson with the same signature as recurring', async () => {
+    const log = 'ci\tbuild\t2026-01-01T00:00:00Z src/a.ts(1,1): error TS2322: bad';
+    const { signature } = parseFailureLog(log, ['ci']);
+    const lessons = join(repo, '.sentinel', 'learnings');
+    await mkdir(lessons, { recursive: true });
+    const lesson = {
+      id: lessonId('Old fix of a', '2026-03-05'),
+      summary: 'Old fix of a',
+      scope: ['src/**'],
+      tags: [],
+      signature,
+      source: 'ci-signature' as const,
+      created: '2026-03-05',
+      body: 'Declare a as number.',
+    };
+    await writeFile(join(lessons, `${lesson.id}.md`), renderLesson(lesson), 'utf8');
+    await new StateStore(repo).write('learn-usage', {
+      version: 1,
+      lessons: { [`shared:${lesson.id}`]: { recurrences: 0, recalls: 0, archived: '2026-03-01' } },
+      prs: {},
+    });
+    const { run, out } = cli(fakeGh([{ name: 'ci', bucket: 'fail', workflow: 'CI', link }], log));
+    await run('babysit', '7', '--once', '--json');
+    expect(JSON.parse(out.join('')) as unknown).toMatchObject({ recurring: true, lessons: [] });
+  });
+
   it('records the head SHA of the open pull request', async () => {
     const run: CommandRunner = (command, args) => {
       const text = args.join(' ');

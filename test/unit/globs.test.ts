@@ -77,3 +77,20 @@ describe('glob matching stays fast', () => {
     expect(performance.now() - start).toBeLessThan(200);
   });
 });
+
+describe('glob matching cannot be made slow', () => {
+  it.each([
+    ['*a*a*a*a*a*a*a*b', 'a'.repeat(200)],
+    ['{a,a,a,a}*{a,a}*{a,a}*b', 'a'.repeat(200)],
+    ['**/*a*a*a*b/**/x', `${'a'.repeat(100)}/`.repeat(8)],
+  ])('%s stays fast on a long non-matching path', (glob, path) => {
+    expect(validateGlob(glob)).toBeUndefined();
+    const start = performance.now();
+    expect(compileGlob(glob).test(path)).toBe(false);
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
+  it('refuses globs that expand to too many alternatives', () => {
+    expect(validateGlob('{a,b,c,d}{e,f,g,h}{i,j,k}')).toContain('alternatives');
+  });
+});

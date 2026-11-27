@@ -24249,47 +24249,85 @@ function validateGlob(glob) {
     }
   }
   if (depth !== 0) return `"${glob}" has unbalanced braces`;
+  if (expandBraces(g).length > MAX_EXPANSIONS)
+    return `"${glob}" expands to more than ${String(MAX_EXPANSIONS)} alternatives`;
   const wildcards = (collapse(g).match(/\*+|\?/g) ?? []).length;
   if (wildcards > MAX_WILDCARDS)
     return `"${glob}" has more than ${String(MAX_WILDCARDS)} wildcards`;
   return void 0;
 }
-var SPECIAL = /[.+^$()|\\]/;
-function compileGlob(glob) {
-  const g = collapse(normalizePath(glob.trim()));
-  let out = "";
+var MAX_EXPANSIONS = 32;
+var MAX_PATH_LENGTH = 1024;
+function expandBraces(glob) {
+  let results = [""];
   let i = 0;
-  while (i < g.length) {
-    const ch = g[i] ?? "";
-    if (ch === "*") {
-      if (g[i + 1] === "*") {
-        const atStart = i === 0 || g[i - 1] === "/";
-        const slashAfter = g[i + 2] === "/";
-        if (atStart && slashAfter) {
-          out += "(?:[^/]*/)*";
-          i += 3;
-        } else {
-          out += ".*";
-          i += 2;
-        }
-      } else {
-        out += "[^/]*";
-        i += 1;
-      }
-    } else if (ch === "?") {
-      out += "[^/]";
-      i += 1;
-    } else if (ch === "{") {
-      const end = g.indexOf("}", i);
-      const options = g.slice(i + 1, end).split(",");
-      out += `(?:${options.map((o) => o.replace(/[.+^$()|\\*?]/g, (c) => c === "*" ? "[^/]*" : c === "?" ? "[^/]" : `\\${c}`)).join("|")})`;
-      i = end + 1;
+  while (i < glob.length) {
+    const open4 = glob.indexOf("{", i);
+    if (open4 === -1) {
+      results = results.map((r) => r + glob.slice(i));
+      break;
+    }
+    const close = glob.indexOf("}", open4);
+    const prefix = glob.slice(i, open4);
+    const options = [...new Set(glob.slice(open4 + 1, close).split(","))];
+    results = results.flatMap((r) => options.map((o) => r + prefix + o));
+    if (results.length > MAX_EXPANSIONS) return results.slice(0, MAX_EXPANSIONS + 1);
+    i = close + 1;
+  }
+  return [...new Set(results)];
+}
+function matchSegment(pattern, text2) {
+  let p = 0;
+  let t = 0;
+  let star = -1;
+  let mark = 0;
+  while (t < text2.length) {
+    if (p < pattern.length && (pattern[p] === "?" || pattern[p] === text2[t])) {
+      p += 1;
+      t += 1;
+    } else if (p < pattern.length && pattern[p] === "*") {
+      star = p;
+      mark = t;
+      p += 1;
+    } else if (star !== -1) {
+      p = star + 1;
+      mark += 1;
+      t = mark;
     } else {
-      out += SPECIAL.test(ch) ? `\\${ch}` : ch;
-      i += 1;
+      return false;
     }
   }
-  return new RegExp(`^${out}$`);
+  while (p < pattern.length && pattern[p] === "*") p += 1;
+  return p === pattern.length;
+}
+function matchSegments(glob, path) {
+  const memo2 = /* @__PURE__ */ new Map();
+  const go2 = (i, j) => {
+    const k = i * (path.length + 1) + j;
+    const known = memo2.get(k);
+    if (known !== void 0) return known;
+    let result;
+    if (i === glob.length) result = j === path.length;
+    else if (glob[i] === "**") result = go2(i + 1, j) || j < path.length && go2(i, j + 1);
+    else
+      result = j < path.length && matchSegment((glob[i] ?? "").replace(/\*+/g, "*"), path[j] ?? "") && go2(i + 1, j + 1);
+    memo2.set(k, result);
+    return result;
+  };
+  return go2(0, 0);
+}
+function compileGlob(glob) {
+  const alternatives = expandBraces(collapse(normalizePath(glob.trim()))).map(
+    (g) => g.split("/").filter((part) => part !== "")
+  );
+  return {
+    test(path) {
+      const normalized = normalizePath(path);
+      if (normalized.length > MAX_PATH_LENGTH) return false;
+      const parts = normalized.split("/").filter((part) => part !== "");
+      return alternatives.some((segments) => matchSegments(segments, parts));
+    }
+  };
 }
 function globSpecificity(glob) {
   return normalizePath(glob).replace(/\*|\?|\{[^}]*\}/g, "").length;
@@ -28304,6 +28342,7 @@ function registerBabysit(program2, deps) {
       });
       let recurringPrs = [];
       let lessons = [];
+      let knownSignature = false;
       if (result.packet !== void 0 && result.action === "patch") {
         const signature = result.packet.signature;
         recurringPrs = [...await babysatPullRequests(state)].filter(([pr, info]) => pr !== result.pr.number && info.signatures.includes(signature)).map(([pr]) => pr);
@@ -28313,8 +28352,10 @@ function registerBabysit(program2, deps) {
             settings: config2.learn,
             mainRoot
           });
-          lessons = await lessonStore.recall({ signature, limit: 3 });
-          lessons = lessons.filter((l) => l.match === "signature");
+          knownSignature = (await lessonStore.withSignature(signature)).length > 0;
+          lessons = (await lessonStore.recall({ signature, limit: 3 })).filter(
+            (l) => l.match === "signature"
+          );
         }
       }
       let learnable = false;
@@ -28335,7 +28376,7 @@ function registerBabysit(program2, deps) {
         pr: result.pr.url,
         attempts: result.attempts,
         packet: result.packet,
-        recurring: recurringPrs.length > 0 || lessons.length > 0,
+        recurring: recurringPrs.length > 0 || knownSignature,
         recurringPrs,
         lessons: lessons.map(({ id, summary, body, path }) => ({ id, summary, body, path })),
         learnable

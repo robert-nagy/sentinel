@@ -51,6 +51,7 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
         // A failure seen before, on another PR or in a lesson, is worth a lesson once fixed.
         let recurringPrs: number[] = [];
         let lessons: RecalledLesson[] = [];
+        let knownSignature = false;
         if (result.packet !== undefined && result.action === 'patch') {
           const signature = result.packet.signature;
           recurringPrs = [...(await babysatPullRequests(state))]
@@ -62,8 +63,11 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
               settings: config.learn,
               mainRoot,
             });
-            lessons = await lessonStore.recall({ signature, limit: 3 });
-            lessons = lessons.filter((l) => l.match === 'signature');
+            // Archived lessons still make a failure recurring; recall gives the active bodies.
+            knownSignature = (await lessonStore.withSignature(signature)).length > 0;
+            lessons = (await lessonStore.recall({ signature, limit: 3 })).filter(
+              (l) => l.match === 'signature',
+            );
           }
         }
         // A merged PR of the user's own with changes by others is worth offering to
@@ -91,7 +95,7 @@ export function registerBabysit(program: Command, deps: CliDeps): void {
           pr: result.pr.url,
           attempts: result.attempts,
           packet: result.packet,
-          recurring: recurringPrs.length > 0 || lessons.length > 0,
+          recurring: recurringPrs.length > 0 || knownSignature,
           recurringPrs,
           lessons: lessons.map(({ id, summary, body, path }) => ({ id, summary, body, path })),
           learnable,

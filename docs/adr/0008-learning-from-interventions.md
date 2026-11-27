@@ -310,5 +310,10 @@ Where the implementation is more specific than, or departs from, the decisions a
 - **Decay on a new machine** counts from the day this machine first saw a lesson (`firstSeen`
   in the usage state), not from the day it was written, so a fresh clone does not archive the
   team's older lessons before it ever recalls them.
-- **Glob limits.** Repeated `**` collapse before matching and a glob may have at most eight
-  wildcard groups, so a crafted scope cannot make recall backtrack for long.
+- **Glob matching** is a small matcher over path segments (two-pointer `*` and `?` within a
+  segment, memoised `**` across segments, braces expanded to at most 32 alternatives), not a
+  regular expression, so no scope a lesson carries can make recall backtrack. Repeated `**`
+  collapse, a glob has at most eight wildcard groups, and paths over 1,024 characters never
+  match. `**` inside a segment (`a**b`) means `*`.
+- **`recurring`** in babysit counts a lesson with the same signature even when it is archived;
+  only active lessons are returned in `lessons`.
