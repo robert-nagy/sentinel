@@ -369,6 +369,26 @@ describe('sentinel setup', () => {
     expect(tests).toContain('working-directory: src/web');
   });
 
+  it('checks the README answers before writing anything', async () => {
+    await writeJson('decision.json', decision);
+    const { run, codes } = cli();
+    await run('setup', '--architecture', 'decision.json', '--workflows', '--readme');
+    expect(codes).toContain(1);
+    await expect(readFile(join(repo, '.sentinel', 'architecture.json'), 'utf8')).rejects.toThrow();
+    await expect(
+      readFile(join(repo, '.github/workflows/sentinel-tests.yml'), 'utf8'),
+    ).rejects.toThrow();
+  });
+
+  it('warns when --stack overrides the recorded decision', async () => {
+    await writeJson('decision.json', decision);
+    await cli().run('setup', '--architecture', 'decision.json');
+    const { run, json } = cli();
+    await run('setup', '--workflows', '--stack', 'go', '--json');
+    const result = json() as ArchitectureResult & { warnings: string[] };
+    expect(result.warnings.join('\n')).toContain('--stack overrides the layers');
+  });
+
   it('replaces a corrupt recorded decision with --architecture --force', async () => {
     await mkdir(join(repo, '.sentinel'), { recursive: true });
     await writeFile(join(repo, '.sentinel', 'architecture.json'), '{"version":1}', 'utf8');

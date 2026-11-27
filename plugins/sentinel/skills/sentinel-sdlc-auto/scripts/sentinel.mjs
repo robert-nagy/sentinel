@@ -30959,12 +30959,26 @@ var COMMANDS = {
 function tierCommand(project, tier, testing) {
   return testing[tier] ?? COMMANDS[project.ecosystem][tier];
 }
+var LOCKFILES = {
+  npm: "package-lock.json",
+  pnpm: "pnpm-lock.yaml",
+  yarn: "yarn.lock"
+};
 function installStep(project) {
+  const nested = project.path !== ".";
+  const inProject = (file2) => nested ? `${project.path}/${file2}` : file2;
   switch (project.ecosystem) {
     case "node": {
       const pm = project.packageManager ?? "npm";
-      const cache = pm === "bun" ? [] : [`          cache: ${pm}`];
-      const setup = pm === "pnpm" ? ["      - uses: pnpm/action-setup@v4"] : pm === "bun" ? ["      - uses: oven-sh/setup-bun@v2"] : [];
+      const lockfile = LOCKFILES[pm];
+      const cache = pm === "bun" ? [] : [
+        `          cache: ${pm}`,
+        ...nested && lockfile !== void 0 ? [`          cache-dependency-path: ${inProject(lockfile)}`] : []
+      ];
+      const setup = pm === "pnpm" ? [
+        "      - uses: pnpm/action-setup@v4",
+        ...nested ? ["        with:", `          package_json_file: ${inProject("package.json")}`] : []
+      ] : pm === "bun" ? ["      - uses: oven-sh/setup-bun@v2"] : [];
       const install = pm === "pnpm" ? "pnpm install --frozen-lockfile" : pm === "yarn" ? "yarn install --frozen-lockfile" : pm === "bun" ? "bun install --frozen-lockfile" : "npm ci";
       return [
         ...setup,
@@ -30988,7 +31002,7 @@ function installStep(project) {
       return [
         "      - uses: actions/setup-go@v5",
         "        with:",
-        "          go-version-file: go.mod"
+        `          go-version-file: ${inProject("go.mod")}`
       ];
     case "rust":
       return ["      - uses: dtolnay/rust-toolchain@stable"];
@@ -31006,7 +31020,12 @@ function installStep(project) {
         "          dotnet-version: '8.0.x'"
       ];
     case "ruby":
-      return ["      - uses: ruby/setup-ruby@v1", "        with:", "          bundler-cache: true"];
+      return [
+        "      - uses: ruby/setup-ruby@v1",
+        "        with:",
+        "          bundler-cache: true",
+        ...nested ? [`          working-directory: ${project.path}`] : []
+      ];
     case "php":
       return [
         "      - uses: shivammathur/setup-php@v2",
@@ -31031,8 +31050,7 @@ function slug(path) {
   if (path === ".") return "";
   return `-${path.split(/[^a-zA-Z0-9]+/).filter((part) => part !== "").join("-")}`;
 }
-function job(project, tier, command2, single) {
-  const id = `${tier}${single ? "" : slug(project.path)}`;
+function job(project, tier, command2, id, single) {
   const label = single ? tier : `${tier} (${project.path})`;
   const lines = [`  ${id}:`, `    name: ${label}`, "    runs-on: ubuntu-latest"];
   if (tier === "load") lines.push("    timeout-minutes: 30");
@@ -31064,9 +31082,14 @@ function workflow(name, triggers, tiers, projects, config2) {
     "jobs:"
   ];
   const jobs = [];
+  const used = /* @__PURE__ */ new Set();
   for (const tier of tiers) {
     for (const project of projects) {
-      jobs.push(job(project, tier, tierCommand(project, tier, config2.testing), single));
+      const base = `${tier}${single ? "" : slug(project.path)}`;
+      let id = base;
+      for (let n = 2; used.has(id); n += 1) id = `${base}-${String(n)}`;
+      used.add(id);
+      jobs.push(job(project, tier, tierCommand(project, tier, config2.testing), id, single));
     }
   }
   lines.push(...jobs.flatMap((j, index) => index === 0 ? j : ["", ...j]));
@@ -31292,24 +31315,59 @@ function registerSetup(program2, deps) {
           return;
         }
         const adr = decision?.adr ?? nextAdrPath(await deps.files.listDir(join15(root, ADR_DIR)));
-        if (options.force !== true) {
-          const targets = [
-            ARCHITECTURE_FILE,
-            adr,
-            ...options.workflows === true ? [TESTS_WORKFLOW_PATH, LOAD_WORKFLOW_PATH] : [],
-            ...options.readme === true ? ["README.md"] : [],
-            ...options.issueForms === true ? ISSUE_KINDS.map(
-              (kind) => renderIssueForm(kind, config2.issueProvider.labelMap).path
-            ) : [],
-            ...options.learnVerify === true ? [LEARN_VERIFY_WORKFLOW_PATH] : []
-          ];
-          for (const target of targets) await refuseToOverwrite(root, target, deps);
-        }
         decision = buildDecision(checked.decision, deps.now(), adr);
         pendingDecision = decision;
       }
       const changed = Object.keys(incoming).length > 0;
       answers = { ...answers, ...incoming };
+      const warnings = [];
+      const stack = await analyze(root, deps.files);
+      let projects = stack.projects;
+      if (stack.projects.length === 0 && plannedStack !== void 0) {
+        projects = plannedStack.map((entry) => plannedProject(entry.ecosystem, entry.path));
+        if (decision !== void 0) {
+          warnings.push(
+            `--stack overrides the layers in ${ARCHITECTURE_FILE} for the workflows; drop it to follow the decision`
+          );
+        }
+      } else if (decision !== void 0) {
+        const missing = uncoveredLayers(decision, stack.projects);
+        projects = [...stack.projects, ...missing.map((entry) => entry.project)];
+        if (stack.projects.length > 0) {
+          for (const { layer, project } of missing) {
+            warnings.push(
+              `layer "${layer}" (${project.path}) has no code yet; its jobs are planned from ${ARCHITECTURE_FILE}`
+            );
+          }
+        }
+      }
+      if (options.workflows === true && projects.length === 0) {
+        throw new SetupError(
+          stack.empty ? "the repository is empty: record the stack with --architecture <file>, or pass --stack <ecosystem>" : "no recognised project found to build workflows for"
+        );
+      }
+      if (options.readme === true && answers.problem === void 0) {
+        throw new SetupError("answer the core questions first: the README is built from them");
+      }
+      const tracker = config2.issueProvider.tracker;
+      if (options.issueForms === true && tracker !== null && normalizeTracker(tracker) !== "github") {
+        throw new SetupError(
+          `issue forms are for GitHub Issues, but issueProvider.tracker is ${normalizeTracker(tracker)}`
+        );
+      }
+      const forms = ISSUE_KINDS.map(
+        (kind) => renderIssueForm(kind, config2.issueProvider.labelMap)
+      );
+      if (options.force !== true) {
+        const targets = [
+          ...pendingDecision === void 0 ? [] : [ARCHITECTURE_FILE, pendingDecision.adr],
+          ...options.workflows === true ? [TESTS_WORKFLOW_PATH, LOAD_WORKFLOW_PATH] : [],
+          ...options.readme === true ? ["README.md"] : [],
+          ...options.issueForms === true ? forms.map((form) => form.path) : [],
+          ...options.learnVerify === true ? [LEARN_VERIFY_WORKFLOW_PATH] : []
+        ];
+        for (const target of targets) await refuseToOverwrite(root, target, deps);
+      }
       let domainWritten = false;
       if (changed && options.questions !== true) {
         if (!dryRun) {
@@ -31323,32 +31381,8 @@ function registerSetup(program2, deps) {
         }
         domainWritten = true;
       }
-      const warnings = [];
-      const stack = await analyze(root, deps.files);
-      let projects = stack.projects;
-      if (stack.projects.length === 0 && plannedStack !== void 0) {
-        projects = plannedStack.map((entry) => plannedProject(entry.ecosystem, entry.path));
-      } else if (decision !== void 0) {
-        const missing = uncoveredLayers(decision, stack.projects);
-        projects = [...stack.projects, ...missing.map((entry) => entry.project)];
-        if (stack.projects.length > 0) {
-          for (const { layer, project } of missing) {
-            warnings.push(
-              `layer "${layer}" (${project.path}) has no code yet; its jobs are planned from ${ARCHITECTURE_FILE}`
-            );
-          }
-        }
-      }
       if (options.workflows === true) {
-        if (projects.length === 0) {
-          throw new SetupError(
-            stack.empty ? "the repository is empty: record the stack with --architecture <file>, or pass --stack <ecosystem>" : "no recognised project found to build workflows for"
-          );
-        }
         const workflows = renderWorkflows(projects, config2);
-        if (options.force !== true) {
-          for (const workflow2 of workflows) await refuseToOverwrite(root, workflow2.path, deps);
-        }
         for (const workflow2 of workflows) {
           if (!dryRun) {
             await writeNewFile(
@@ -31361,10 +31395,6 @@ function registerSetup(program2, deps) {
         }
       }
       if (options.readme === true) {
-        if (answers.problem === void 0) {
-          throw new SetupError("answer the core questions first: the README is built from them");
-        }
-        if (options.force !== true) await refuseToOverwrite(root, "README.md", deps);
         const content = renderReadme({
           name: options.name ?? basename4(root),
           answers,
@@ -31375,18 +31405,6 @@ function registerSetup(program2, deps) {
         files.push("README.md");
       }
       if (options.issueForms === true) {
-        const tracker = config2.issueProvider.tracker;
-        if (tracker !== null && normalizeTracker(tracker) !== "github") {
-          throw new SetupError(
-            `issue forms are for GitHub Issues, but issueProvider.tracker is ${normalizeTracker(tracker)}`
-          );
-        }
-        const forms = ISSUE_KINDS.map(
-          (kind) => renderIssueForm(kind, config2.issueProvider.labelMap)
-        );
-        if (options.force !== true) {
-          for (const form of forms) await refuseToOverwrite(root, form.path, deps);
-        }
         for (const form of forms) {
           if (!dryRun) {
             await writeNewFile(
@@ -31417,7 +31435,6 @@ function registerSetup(program2, deps) {
       let ruleset;
       if (options.learnVerify === true) {
         const path = LEARN_VERIFY_WORKFLOW_PATH;
-        if (options.force !== true) await refuseToOverwrite(root, path, deps);
         const resolved = await deps.run(
           "gh",
           ["api", `repos/${SENTINEL_REPO}/commits/v${VERSION}`, "--jq", ".sha"],

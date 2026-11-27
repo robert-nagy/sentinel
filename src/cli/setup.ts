@@ -223,30 +223,73 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             return;
           }
           const adr = decision?.adr ?? nextAdrPath(await deps.files.listDir(join(root, ADR_DIR)));
-          if (options.force !== true) {
-            // Check every file this run writes up front, so a refusal leaves nothing half-written.
-            const targets = [
-              ARCHITECTURE_FILE,
-              adr,
-              ...(options.workflows === true ? [TESTS_WORKFLOW_PATH, LOAD_WORKFLOW_PATH] : []),
-              ...(options.readme === true ? ['README.md'] : []),
-              ...(options.issueForms === true
-                ? ISSUE_KINDS.map(
-                    (kind) => renderIssueForm(kind, config.issueProvider.labelMap).path,
-                  )
-                : []),
-              ...(options.learnVerify === true ? [LEARN_VERIFY_WORKFLOW_PATH] : []),
-            ];
-            for (const target of targets) await refuseToOverwrite(root, target, deps);
-          }
-          // Written at the end, once every other step has succeeded; the workflows and the README
-          // are already planned from it (also in a dry run).
+          // Written after the other files; the workflows and the README are planned from it
+          // (also in a dry run).
           decision = buildDecision(checked.decision, deps.now(), adr);
           pendingDecision = decision;
         }
 
         const changed = Object.keys(incoming).length > 0;
         answers = { ...answers, ...incoming };
+
+        const warnings: string[] = [];
+        const stack = await analyze(root, deps.files);
+        let projects: readonly ProjectReport[] = stack.projects;
+        // No code yet (or only docs and config): plan the projects from --stack or the decision.
+        if (stack.projects.length === 0 && plannedStack !== undefined) {
+          projects = plannedStack.map((entry) => plannedProject(entry.ecosystem, entry.path));
+          if (decision !== undefined) {
+            warnings.push(
+              `--stack overrides the layers in ${ARCHITECTURE_FILE} for the workflows; drop it to follow the decision`,
+            );
+          }
+        } else if (decision !== undefined) {
+          // Recorded layers without code yet still get their toolchain and jobs.
+          const missing = uncoveredLayers(decision, stack.projects);
+          projects = [...stack.projects, ...missing.map((entry) => entry.project)];
+          if (stack.projects.length > 0) {
+            for (const { layer, project } of missing) {
+              warnings.push(
+                `layer "${layer}" (${project.path}) has no code yet; its jobs are planned from ${ARCHITECTURE_FILE}`,
+              );
+            }
+          }
+        }
+
+        // Every check runs before the first write, so a refusal leaves nothing half-written.
+        if (options.workflows === true && projects.length === 0) {
+          throw new SetupError(
+            stack.empty
+              ? 'the repository is empty: record the stack with --architecture <file>, or pass --stack <ecosystem>'
+              : 'no recognised project found to build workflows for',
+          );
+        }
+        if (options.readme === true && answers.problem === undefined) {
+          throw new SetupError('answer the core questions first: the README is built from them');
+        }
+        const tracker = config.issueProvider.tracker;
+        if (
+          options.issueForms === true &&
+          tracker !== null &&
+          normalizeTracker(tracker) !== 'github'
+        ) {
+          throw new SetupError(
+            `issue forms are for GitHub Issues, but issueProvider.tracker is ${normalizeTracker(tracker)}`,
+          );
+        }
+        const forms = ISSUE_KINDS.map((kind) =>
+          renderIssueForm(kind, config.issueProvider.labelMap),
+        );
+        if (options.force !== true) {
+          const targets = [
+            ...(pendingDecision === undefined ? [] : [ARCHITECTURE_FILE, pendingDecision.adr]),
+            ...(options.workflows === true ? [TESTS_WORKFLOW_PATH, LOAD_WORKFLOW_PATH] : []),
+            ...(options.readme === true ? ['README.md'] : []),
+            ...(options.issueForms === true ? forms.map((form) => form.path) : []),
+            ...(options.learnVerify === true ? [LEARN_VERIFY_WORKFLOW_PATH] : []),
+          ];
+          for (const target of targets) await refuseToOverwrite(root, target, deps);
+        }
 
         let domainWritten = false;
         if (changed && options.questions !== true) {
@@ -261,37 +304,8 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           domainWritten = true;
         }
 
-        const warnings: string[] = [];
-        const stack = await analyze(root, deps.files);
-        let projects: readonly ProjectReport[] = stack.projects;
-        // No code yet (or only docs and config): plan the projects from --stack or the decision.
-        if (stack.projects.length === 0 && plannedStack !== undefined) {
-          projects = plannedStack.map((entry) => plannedProject(entry.ecosystem, entry.path));
-        } else if (decision !== undefined) {
-          // Recorded layers without code yet still get their toolchain and jobs.
-          const missing = uncoveredLayers(decision, stack.projects);
-          projects = [...stack.projects, ...missing.map((entry) => entry.project)];
-          if (stack.projects.length > 0) {
-            for (const { layer, project } of missing) {
-              warnings.push(
-                `layer "${layer}" (${project.path}) has no code yet; its jobs are planned from ${ARCHITECTURE_FILE}`,
-              );
-            }
-          }
-        }
-
         if (options.workflows === true) {
-          if (projects.length === 0) {
-            throw new SetupError(
-              stack.empty
-                ? 'the repository is empty: record the stack with --architecture <file>, or pass --stack <ecosystem>'
-                : 'no recognised project found to build workflows for',
-            );
-          }
           const workflows = renderWorkflows(projects, config);
-          if (options.force !== true) {
-            for (const workflow of workflows) await refuseToOverwrite(root, workflow.path, deps);
-          }
           for (const workflow of workflows) {
             if (!dryRun) {
               await writeNewFile(
@@ -304,10 +318,6 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           }
         }
         if (options.readme === true) {
-          if (answers.problem === undefined) {
-            throw new SetupError('answer the core questions first: the README is built from them');
-          }
-          if (options.force !== true) await refuseToOverwrite(root, 'README.md', deps);
           const content = renderReadme({
             name: options.name ?? basename(root),
             answers,
@@ -319,18 +329,6 @@ export function registerSetup(program: Command, deps: CliDeps): void {
         }
 
         if (options.issueForms === true) {
-          const tracker = config.issueProvider.tracker;
-          if (tracker !== null && normalizeTracker(tracker) !== 'github') {
-            throw new SetupError(
-              `issue forms are for GitHub Issues, but issueProvider.tracker is ${normalizeTracker(tracker)}`,
-            );
-          }
-          const forms = ISSUE_KINDS.map((kind) =>
-            renderIssueForm(kind, config.issueProvider.labelMap),
-          );
-          if (options.force !== true) {
-            for (const form of forms) await refuseToOverwrite(root, form.path, deps);
-          }
           for (const form of forms) {
             if (!dryRun) {
               await writeNewFile(
@@ -362,7 +360,6 @@ export function registerSetup(program: Command, deps: CliDeps): void {
         let ruleset: string | undefined;
         if (options.learnVerify === true) {
           const path = LEARN_VERIFY_WORKFLOW_PATH;
-          if (options.force !== true) await refuseToOverwrite(root, path, deps);
           // Pin the download to the commit behind the release tag: a tag can be moved.
           const resolved = await deps.run(
             'gh',

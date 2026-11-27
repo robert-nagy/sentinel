@@ -70,14 +70,40 @@ export function tierCommand(
   return testing[tier] ?? COMMANDS[project.ecosystem][tier];
 }
 
+const LOCKFILES: Readonly<Record<string, string>> = {
+  npm: 'package-lock.json',
+  pnpm: 'pnpm-lock.yaml',
+  yarn: 'yarn.lock',
+};
+
+/**
+ * Setup steps for a project's toolchain. `uses:` steps ignore the job's default working
+ * directory, so a project in a subfolder points them at its own files.
+ */
 function installStep(project: ProjectReport): string[] {
+  const nested = project.path !== '.';
+  const inProject = (file: string) => (nested ? `${project.path}/${file}` : file);
   switch (project.ecosystem) {
     case 'node': {
       const pm = project.packageManager ?? 'npm';
-      const cache = pm === 'bun' ? [] : [`          cache: ${pm}`];
+      const lockfile = LOCKFILES[pm];
+      const cache =
+        pm === 'bun'
+          ? []
+          : [
+              `          cache: ${pm}`,
+              ...(nested && lockfile !== undefined
+                ? [`          cache-dependency-path: ${inProject(lockfile)}`]
+                : []),
+            ];
       const setup =
         pm === 'pnpm'
-          ? ['      - uses: pnpm/action-setup@v4']
+          ? [
+              '      - uses: pnpm/action-setup@v4',
+              ...(nested
+                ? ['        with:', `          package_json_file: ${inProject('package.json')}`]
+                : []),
+            ]
           : pm === 'bun'
             ? ['      - uses: oven-sh/setup-bun@v2']
             : [];
@@ -111,7 +137,7 @@ function installStep(project: ProjectReport): string[] {
       return [
         '      - uses: actions/setup-go@v5',
         '        with:',
-        '          go-version-file: go.mod',
+        `          go-version-file: ${inProject('go.mod')}`,
       ];
     case 'rust':
       return ['      - uses: dtolnay/rust-toolchain@stable'];
@@ -129,7 +155,12 @@ function installStep(project: ProjectReport): string[] {
         "          dotnet-version: '8.0.x'",
       ];
     case 'ruby':
-      return ['      - uses: ruby/setup-ruby@v1', '        with:', '          bundler-cache: true'];
+      return [
+        '      - uses: ruby/setup-ruby@v1',
+        '        with:',
+        '          bundler-cache: true',
+        ...(nested ? [`          working-directory: ${project.path}`] : []),
+      ];
     case 'php':
       return [
         '      - uses: shivammathur/setup-php@v2',
@@ -160,8 +191,13 @@ function slug(path: string): string {
     .join('-')}`;
 }
 
-function job(project: ProjectReport, tier: TestTier, command: string, single: boolean): string[] {
-  const id = `${tier}${single ? '' : slug(project.path)}`;
+function job(
+  project: ProjectReport,
+  tier: TestTier,
+  command: string,
+  id: string,
+  single: boolean,
+): string[] {
   const label = single ? tier : `${tier} (${project.path})`;
   const lines = [`  ${id}:`, `    name: ${label}`, '    runs-on: ubuntu-latest'];
   if (tier === 'load') lines.push('    timeout-minutes: 30');
@@ -200,9 +236,15 @@ function workflow(
     'jobs:',
   ];
   const jobs: string[][] = [];
+  const used = new Set<string>();
   for (const tier of tiers) {
     for (const project of projects) {
-      jobs.push(job(project, tier, tierCommand(project, tier, config.testing), single));
+      // Different paths can share a slug (src/web-app, src/web/app): number the repeats.
+      const base = `${tier}${single ? '' : slug(project.path)}`;
+      let id = base;
+      for (let n = 2; used.has(id); n += 1) id = `${base}-${String(n)}`;
+      used.add(id);
+      jobs.push(job(project, tier, tierCommand(project, tier, config.testing), id, single));
     }
   }
   lines.push(...jobs.flatMap((j, index) => (index === 0 ? j : ['', ...j])));

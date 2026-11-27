@@ -55,6 +55,36 @@ describe('renderWorkflows', () => {
     expect(content).toContain('actions/setup-python@v5');
   });
 
+  it('points the toolchain setup steps at a project in a subfolder', () => {
+    const [main] = renderWorkflows(
+      [
+        plannedProject('node', 'src/web', 'pnpm'),
+        plannedProject('go', 'svc'),
+        plannedProject('ruby', 'app'),
+      ],
+      DEFAULT_CONFIG,
+    );
+    const yml = main?.content ?? '';
+    expect(yml).toContain('cache-dependency-path: src/web/pnpm-lock.yaml');
+    expect(yml).toContain('package_json_file: src/web/package.json');
+    expect(yml).toContain('go-version-file: svc/go.mod');
+    expect(yml).toMatch(
+      /ruby\/setup-ruby@v1\n {8}with:\n {10}bundler-cache: true\n {10}working-directory: app/,
+    );
+  });
+
+  it('keeps job ids unique when two paths give the same slug', () => {
+    const [main] = renderWorkflows(
+      [plannedProject('node', 'src/web-app'), plannedProject('go', 'src/web/app')],
+      DEFAULT_CONFIG,
+    );
+    const ids = [
+      ...(main?.content ?? '').matchAll(/^ {2}((?:unit|integration|e2e)[a-z0-9-]*):$/gm),
+    ].map((m) => m[1]);
+    expect(ids.length).toBe(6);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('covers every ecosystem with a setup step and four tier commands', () => {
     for (const ecosystem of ECOSYSTEMS) {
       const [main, loadFile] = renderWorkflows([plannedProject(ecosystem)], DEFAULT_CONFIG);
