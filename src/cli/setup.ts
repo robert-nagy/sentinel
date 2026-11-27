@@ -1,6 +1,18 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { Command } from 'commander';
+import {
+  ADR_DIR,
+  ARCHITECTURE_FILE,
+  buildDecision,
+  nextAdrPath,
+  parseStackOption,
+  plannedProjects,
+  readDecision,
+  renderDecisionAdr,
+  validateDecision,
+  type ArchitectureDecision,
+} from '../core/architecture.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { ISSUE_KINDS, renderIssueForm } from '../core/issue-format.js';
 import { normalizeTracker } from '../core/issue-tracker.js';
@@ -19,11 +31,9 @@ import {
   type Answers,
 } from '../core/socratic-engine.js';
 import {
-  ECOSYSTEMS,
   analyze,
   formatStackReport,
   plannedProject,
-  type Ecosystem,
   type ProjectReport,
 } from '../core/stack-analyzer.js';
 import { StateStore } from '../core/state.js';
@@ -45,6 +55,7 @@ import { guarded } from './safe.js';
 
 interface SetupOptions {
   answers?: string;
+  architecture?: string;
   questions?: boolean;
   stack?: string;
   workflows?: boolean;
@@ -91,10 +102,28 @@ async function askInTerminal(known: Answers, deps: CliDeps): Promise<Answers> {
   return checked.ok ? checked.answers : {};
 }
 
+async function readDecisionFile(path: string, deps: CliDeps): Promise<unknown> {
+  const text = await deps.files.readText(resolve(deps.cwd, path));
+  if (text === undefined) throw new SetupError(`architecture file not found: ${path}`);
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new SetupError(`${path} is not valid JSON`);
+  }
+}
+
 async function refuseToOverwrite(root: string, relPath: string, deps: CliDeps): Promise<void> {
   if (await deps.files.exists(join(root, relPath))) {
     throw new ScaffoldError(`${relPath} already exists (use --force to overwrite)`);
   }
+}
+
+function architectureState(decision: ArchitectureDecision | undefined): {
+  path: string;
+  recorded: boolean;
+  adr: string | null;
+} {
+  return { path: ARCHITECTURE_FILE, recorded: decision !== undefined, adr: decision?.adr ?? null };
 }
 
 export function registerSetup(program: Command, deps: CliDeps): void {
@@ -105,7 +134,14 @@ export function registerSetup(program: Command, deps: CliDeps): void {
     )
     .option('--questions', 'print the open questions and the stack report, change nothing')
     .option('--answers <file>', 'JSON file of question id to answer; merged into the domain file')
-    .option('--stack <ecosystem>', `stack to use in an empty repo: ${ECOSYSTEMS.join(', ')}`)
+    .option(
+      '--architecture <file>',
+      `JSON file of the stack and architecture decision; recorded as ${ARCHITECTURE_FILE} and an ADR`,
+    )
+    .option(
+      '--stack <list>',
+      'stack to plan before there is code: one ecosystem, or <ecosystem>:<path> entries separated by commas',
+    )
     .option('--workflows', 'write the GitHub test workflows')
     .option('--readme', 'write README.md from the domain answers')
     .option(
@@ -127,14 +163,9 @@ export function registerSetup(program: Command, deps: CliDeps): void {
         const dryRun = options.dryRun === true;
         const domainPath = join(root, DOMAIN_FILE);
 
-        if (
-          options.stack !== undefined &&
-          !(ECOSYSTEMS as readonly string[]).includes(options.stack)
-        ) {
-          throw new SetupError(
-            `unknown stack "${options.stack}"; choose one of ${ECOSYSTEMS.join(', ')}`,
-          );
-        }
+        const plannedStack =
+          options.stack === undefined ? undefined : parseStackOption(options.stack);
+        let decision: ArchitectureDecision | undefined = await readDecision(root, deps.files);
 
         const existingText = await deps.files.readText(domainPath);
         const existing =
@@ -150,10 +181,58 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           options.workflows !== true &&
           options.readme !== true &&
           options.issueForms !== true &&
-          options.learnVerify !== true
+          options.learnVerify !== true &&
+          options.architecture === undefined
         ) {
           incoming = await askInTerminal(answers, deps);
         }
+        const files: string[] = [];
+        if (options.architecture !== undefined) {
+          const checked = validateDecision(await readDecisionFile(options.architecture, deps));
+          if (!checked.ok) {
+            const problems = [...checked.problems];
+            if (options.json === true) {
+              deps.stdout(
+                JSON.stringify(
+                  { dryRun, problems, files, architecture: architectureState(decision) },
+                  null,
+                  2,
+                ),
+              );
+            } else {
+              deps.stdout(
+                [
+                  `${options.architecture} is not a valid decision:`,
+                  ...problems.map((p) => `  - ${p}`),
+                ].join('\n'),
+              );
+            }
+            deps.setExitCode(ExitCode.Refine);
+            return;
+          }
+          const adr = decision?.adr ?? nextAdrPath(await deps.files.listDir(join(root, ADR_DIR)));
+          if (options.force !== true) {
+            await refuseToOverwrite(root, ARCHITECTURE_FILE, deps);
+            await refuseToOverwrite(root, adr, deps);
+          }
+          const recorded = buildDecision(checked.decision, deps.now(), adr);
+          if (!dryRun) {
+            await writeNewFile(
+              resolveInside(root, '.', ARCHITECTURE_FILE),
+              `${JSON.stringify(recorded, null, 2)}\n`,
+              options.force === true,
+            );
+            await writeNewFile(
+              resolveInside(root, '.', adr),
+              renderDecisionAdr(recorded),
+              options.force === true,
+            );
+          }
+          files.push(ARCHITECTURE_FILE, adr);
+          // A dry run still plans the workflows and README from the decision it would record.
+          decision = recorded;
+        }
+
         const changed = Object.keys(incoming).length > 0;
         answers = { ...answers, ...incoming };
 
@@ -172,16 +251,18 @@ export function registerSetup(program: Command, deps: CliDeps): void {
 
         const stack = await analyze(root, deps.files);
         let projects: readonly ProjectReport[] = stack.projects;
-        if (stack.empty && options.stack !== undefined) {
-          projects = [plannedProject(options.stack as Ecosystem)];
+        // No code yet (or only docs and config): plan the projects from --stack or the decision.
+        if (stack.projects.length === 0 && plannedStack !== undefined) {
+          projects = plannedStack.map((entry) => plannedProject(entry.ecosystem, entry.path));
+        } else if (stack.projects.length === 0 && decision !== undefined) {
+          projects = plannedProjects(decision);
         }
 
-        const files: string[] = [];
         if (options.workflows === true) {
           if (projects.length === 0) {
             throw new SetupError(
               stack.empty
-                ? 'the repository is empty: confirm a stack with the user and pass --stack <ecosystem>'
+                ? 'the repository is empty: record the stack with --architecture <file>, or pass --stack <ecosystem>'
                 : 'no recognised project found to build workflows for',
             );
           }
@@ -209,6 +290,7 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             name: options.name ?? basename(root),
             answers,
             projects,
+            architecture: decision,
           });
           if (!dryRun) await writeNewFile(join(root, 'README.md'), content, options.force === true);
           files.push('README.md');
@@ -279,8 +361,9 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           stack: {
             empty: stack.empty,
             projects,
-            proposal: stack.empty && options.stack === undefined,
+            proposal: projects.length === 0,
           },
+          architecture: architectureState(dryRun ? await readDecision(root, deps.files) : decision),
           files,
           ruleset,
           warnings,
@@ -294,6 +377,9 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             ...next.map((q) => `  - [${q.branch}] ${q.id}: ${q.prompt}`),
             '',
             formatStackReport(stack),
+            decision === undefined
+              ? `architecture: not recorded (${ARCHITECTURE_FILE})`
+              : `architecture: ${decision.architecture.style} (${ARCHITECTURE_FILE}, ${decision.adr})`,
             ...files.map((f) => `${prefix}wrote ${f}`),
             ...warnings.map((w) => `warning: ${w}`),
             ...(ruleset === undefined

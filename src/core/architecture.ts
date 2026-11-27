@@ -1,4 +1,6 @@
+import { join } from 'node:path';
 import { z } from 'zod';
+import type { FileAccess } from './fs.js';
 import { findSecrets } from './issue-format.js';
 import {
   ECOSYSTEMS,
@@ -234,6 +236,15 @@ export function parseDecision(textValue: string, label: string): ArchitectureDec
     );
   }
   return parsed.data;
+}
+
+/** The decision recorded in a repository, or `undefined` when there is none. */
+export async function readDecision(
+  root: string,
+  files: FileAccess,
+): Promise<ArchitectureDecision | undefined> {
+  const content = await files.readText(join(root, ...ARCHITECTURE_FILE.split('/')));
+  return content === undefined ? undefined : parseDecision(content, ARCHITECTURE_FILE);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { ArchitectureError } from '../core/architecture.js';
 import { BranchNameError } from '../core/branch-namer.js';
 import { ConfigError } from '../core/config.js';
 import { ExitCode } from '../core/exit-codes.js';
@@ -35,6 +36,9 @@ export function guarded<Args extends unknown[]>(
               ? ExitCode.Refine
               : ExitCode.Failure,
         );
+      } else if (error instanceof ArchitectureError) {
+        deps.stderr(`sentinel: ${error.message}`);
+        deps.setExitCode(error.kind === 'invalid-file' ? ExitCode.Config : ExitCode.Failure);
       } else if (error instanceof ConfigError) {
         deps.stderr(`sentinel: ${error.message}`);
         deps.setExitCode(ExitCode.Config);
