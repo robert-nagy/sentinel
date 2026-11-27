@@ -105,4 +105,52 @@ describe('built CLI: learn', () => {
       await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
+  it('records an architecture decision and shows it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sentinel-e2e-architecture-'));
+    try {
+      const init = await runCommand('git', ['init', '-q'], { cwd: dir, timeoutMs: 45_000 });
+      expect(init.exitCode).toBe(0);
+      const run = (...args: string[]) =>
+        runCommand(process.execPath, [bin, ...args], { cwd: dir, timeoutMs: 45_000 });
+      const missing = await run('architecture', 'show', '--json');
+      expect(missing.exitCode).toBe(2);
+      await writeFile(
+        join(dir, 'decision.json'),
+        JSON.stringify({
+          layers: [
+            { name: 'api', path: 'api', ecosystem: 'dotnet', language: 'C#', frameworks: [] },
+            { name: 'web', path: 'web', ecosystem: 'node', language: 'TypeScript', frameworks: [] },
+          ],
+          architecture: {
+            style: 'Modular monolith',
+            ddd: 'strategic',
+            principles: ['SOLID'],
+            rationale: 'Clear module seams without the cost of services.',
+          },
+          alternatives: [{ style: 'Microservices', reason: 'One team, one deploy.' }],
+          folders: [{ path: 'api/Modules', purpose: 'One folder per bounded context' }],
+        }),
+        'utf8',
+      );
+      const recorded = await run(
+        'setup',
+        '--architecture',
+        'decision.json',
+        '--workflows',
+        '--json',
+      );
+      expect(recorded.stderr).toBe('');
+      expect(JSON.parse(recorded.stdout) as unknown).toMatchObject({
+        architecture: { recorded: true, adr: 'docs/adr/0001-stack-and-architecture.md' },
+      });
+      expect(readFileSync(join(dir, '.github/workflows/sentinel-tests.yml'), 'utf8')).toContain(
+        'actions/setup-dotnet',
+      );
+      const shown = await run('architecture', 'show');
+      expect(shown.exitCode, shown.stderr).toBe(0);
+      expect(shown.stdout).toContain('architecture: Modular monolith');
+    } finally {
+      await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  });
 });
