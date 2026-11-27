@@ -217,8 +217,11 @@ function guardPlanned(project: ProjectReport, steps: readonly string[]): string[
     `      - if: hashFiles(${patterns}) == ''`,
     '        working-directory: .',
     `        run: echo "::notice::${where} has no ${project.ecosystem} project yet; skipping its steps"`,
+    // The condition goes on the dash line, so it never lands inside a `run: |` block.
     ...steps.flatMap((line) =>
-      line.startsWith('      - ') ? [line, `        if: ${present}`] : [line],
+      line.startsWith('      - ')
+        ? [`      - if: ${present}`, `        ${line.slice('      - '.length)}`]
+        : [line],
     ),
   ];
 }
