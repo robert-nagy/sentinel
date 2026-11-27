@@ -96,7 +96,9 @@ describe('renderWorkflows', () => {
       const lines = (main?.content ?? '').split('\n');
       lines.forEach((line, index) => {
         if (line.endsWith(': |')) {
-          const indent = line.length - line.trimStart().length;
+          // The key's column: past the `- ` marker when the key opens the step.
+          const dash = line.trimStart().startsWith('- ') ? 2 : 0;
+          const indent = line.length - line.trimStart().length + dash;
           const body = lines[index + 1] ?? '';
           expect(body.length - body.trimStart().length, `${ecosystem}: ${line}`).toBeGreaterThan(
             indent,
