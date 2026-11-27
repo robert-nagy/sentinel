@@ -24226,7 +24226,7 @@ function isBot(login, type) {
 // src/core/learn-store.ts
 import { createHash as createHash2 } from "crypto";
 import { constants } from "fs";
-import { lstat, mkdir as mkdir2, open as open2, readdir as readdir2, rename as rename2, rm as rm2, stat, writeFile as writeFile2 } from "fs/promises";
+import { lstat, mkdir as mkdir2, open as open2, readdir as readdir2, rename as rename2, rm as rm2, writeFile as writeFile2 } from "fs/promises";
 import { join as join4 } from "path";
 
 // src/core/duplicates.ts
@@ -26069,15 +26069,14 @@ var LessonStore = class _LessonStore {
     };
   }
   async ensureIgnored(dir) {
-    const path = join4(dir, ".gitignore");
     try {
-      await stat(path);
-    } catch {
       await writeFile2(
-        path,
+        join4(dir, ".gitignore"),
         "# Personal sentinel lessons: never committed (ADR-0008).\n*\n",
-        "utf8"
+        { encoding: "utf8", flag: "wx" }
       );
+    } catch (error63) {
+      if (error63.code !== "EEXIST") throw error63;
     }
   }
   /**
@@ -27314,7 +27313,7 @@ function applyClaudePointer(existing) {
 
 // src/core/git-worktree-manager.ts
 import { constants as constants2 } from "fs";
-import { appendFile, copyFile, mkdir as mkdir3, readFile as readFile2, realpath, stat as stat2 } from "fs/promises";
+import { appendFile, copyFile, mkdir as mkdir3, readFile as readFile2, realpath, stat } from "fs/promises";
 import { dirname as dirname3, isAbsolute, join as join6, relative, resolve, sep } from "path";
 var WorktreeError = class extends Error {
   constructor(message) {
@@ -27542,7 +27541,7 @@ var GitWorktreeManager = class {
     return result.exitCode === 0;
   }
   async pathExists(path) {
-    return stat2(path).then(
+    return stat(path).then(
       () => true,
       () => false
     );
@@ -28538,7 +28537,7 @@ var runCommand = (command2, args, options = {}) => new Promise((resolve7) => {
 });
 
 // src/core/fs.ts
-import { readdir as readdir3, readFile as readFile4, stat as stat3 } from "fs/promises";
+import { readdir as readdir3, readFile as readFile4, stat as stat2 } from "fs/promises";
 function isNotFound(error63) {
   const code = error63?.code;
   return code === "ENOENT" || code === "ENOTDIR";
@@ -28554,7 +28553,7 @@ var nodeFiles = {
   },
   async exists(path) {
     try {
-      await stat3(path);
+      await stat2(path);
       return true;
     } catch (error63) {
       if (isNotFound(error63)) return false;
@@ -28988,7 +28987,7 @@ function registerGuardrails(program2, deps) {
 }
 
 // src/cli/issue.ts
-import { readFile as readFile6, stat as stat4 } from "fs/promises";
+import { readFile as readFile6, stat as stat3 } from "fs/promises";
 import { isAbsolute as isAbsolute3, join as join10, resolve as resolve3 } from "path";
 
 // src/core/local-tracker.ts
@@ -29541,7 +29540,7 @@ ${renderTemplate(kind)}`
           const path = resolve3(deps.cwd, file2);
           let size;
           try {
-            const info = await stat4(path);
+            const info = await stat3(path);
             if (!info.isFile()) throw new IssueFormatError(`not a file: ${file2}`);
             size = info.size;
           } catch (error63) {

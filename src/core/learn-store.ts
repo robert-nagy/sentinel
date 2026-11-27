@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { titleSimilarity, DUPLICATE_THRESHOLD } from './duplicates.js';
 import { compileGlob, globSpecificity, isGlobalGlob, normalizePath } from './globs.js';
@@ -419,15 +419,15 @@ export class LessonStore {
   }
 
   private async ensureIgnored(dir: string): Promise<void> {
-    const path = join(dir, '.gitignore');
+    // Exclusive create: no check-then-write race, and an existing file is left alone.
     try {
-      await stat(path);
-    } catch {
       await writeFile(
-        path,
+        join(dir, '.gitignore'),
         '# Personal sentinel lessons: never committed (ADR-0008).\n*\n',
-        'utf8',
+        { encoding: 'utf8', flag: 'wx' },
       );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
   }
 

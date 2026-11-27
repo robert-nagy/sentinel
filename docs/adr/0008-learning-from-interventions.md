@@ -275,7 +275,8 @@ Where the implementation is more specific than, or departs from, the decisions a
   offer them.
 - **Measured performance** (Linux, 2,000 lessons): about 170 ms to build the index cold and 25 ms
   for a warm recall. The test asserts the 500 ms and 50 ms targets with headroom for parallel test
-  runs and shared CI runners.
+  runs and shared CI runners on Linux and macOS; on Windows, where file system calls are much
+  slower and nothing was measured, it reports the timings without asserting them.
 - **Gate 2 in sentinel's own repository** runs the bundle from the base branch checkout instead of
   downloading a release. Other repositories download the bundle from the **commit** the release
   tag points to, resolved by `setup --learn-verify` (a tag can be moved, a commit cannot); when
