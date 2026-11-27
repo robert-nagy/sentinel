@@ -246,7 +246,17 @@ export interface VerifyResult {
 }
 
 const SHARED_PREFIX = `${STORE_DIRS.shared}/`;
-const PERSONAL_PREFIX = `${STORE_DIRS.personal}/`;
+const PERSONAL_PREFIX = `${STORE_DIRS.personal}/`.toLowerCase();
+
+/**
+ * Any path that could become, replace or alias a lesson store. Compared without letter case,
+ * since macOS and Windows ignore it, and including `.sentinel` and `.sentinel/learnings`
+ * themselves, which a symlink could replace.
+ */
+function touchesStore(path: string): boolean {
+  const p = path.toLowerCase();
+  return p === '.sentinel' || p.startsWith('.sentinel/learnings');
+}
 
 /**
  * The CI check for shared lessons (ADR-0008, decision 13, gate 2). Reads the PR's changed
@@ -257,11 +267,8 @@ export async function verifyLessonChanges(
   pr: number,
 ): Promise<VerifyResult> {
   const author = await reader.getPullRequestAuthor(pr);
-  const touched = (await reader.listPullRequestFiles(pr)).filter((f) =>
-    [f.path, f.previousPath ?? ''].some(
-      (p) => p.startsWith(SHARED_PREFIX) || p.startsWith(PERSONAL_PREFIX),
-    ),
-  );
+  const listed = await reader.listPullRequestFiles(pr);
+  const touched = listed.filter((f) => touchesStore(f.path) || touchesStore(f.previousPath ?? ''));
   const problems: string[] = [];
   const base = {
     pr,
@@ -269,6 +276,13 @@ export async function verifyLessonChanges(
     association: author.association,
     files: touched.map((f) => f.path),
   };
+  if (author.changedFiles !== undefined && listed.length < author.changedFiles) {
+    // GitHub lists at most 3,000 files; a lesson could hide beyond that, so fail closed.
+    problems.push(
+      `the host listed only ${String(listed.length)} of ${String(author.changedFiles)} changed files, so lesson changes cannot be verified; split the pull request`,
+    );
+    return { ...base, ok: false, problems };
+  }
   if (touched.length === 0) return { ...base, ok: true, problems };
 
   if (!WRITE_ACCESS.has(author.association.toUpperCase()) || author.isBot) {
@@ -277,11 +291,18 @@ export async function verifyLessonChanges(
     );
   }
   for (const file of touched) {
-    if (file.path.startsWith(PERSONAL_PREFIX)) {
+    // Moved out of the store, or deleted: only the write-access rule above applies.
+    if (file.status === 'removed' || !touchesStore(file.path)) continue;
+    if (file.path.toLowerCase().startsWith(PERSONAL_PREFIX)) {
       problems.push(`${file.path}: personal lessons must never be committed`);
       continue;
     }
-    if (file.status === 'removed') continue;
+    if (!file.path.startsWith(SHARED_PREFIX)) {
+      problems.push(
+        `${file.path}: lessons belong in ${STORE_DIRS.shared}/ exactly (a real directory, same letter case)`,
+      );
+      continue;
+    }
     const name = file.path.slice(SHARED_PREFIX.length);
     if (name === '.gitignore' || name === 'README.md') continue;
     if (
@@ -294,11 +315,16 @@ export async function verifyLessonChanges(
       );
       continue;
     }
-    const text = await reader.readFileAtRef(file.path, author.headSha);
-    if (text === undefined) {
+    const entry = await reader.readFileAtRef(file.path, author.headSha);
+    if (entry === undefined) {
       problems.push(`${file.path}: could not be read at ${author.headSha}`);
       continue;
     }
+    if (entry.type !== 'file' || entry.text === undefined) {
+      problems.push(`${file.path}: must be a regular file, not a ${entry.type}`);
+      continue;
+    }
+    const text = entry.text;
     const parsed = parseLesson(text);
     if (parsed.lesson === undefined) {
       problems.push(...parsed.problems.map((p) => `${file.path}: ${p}`));

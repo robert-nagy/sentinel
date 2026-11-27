@@ -255,17 +255,24 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
     expect(comments[0]).toMatchObject({ file: 'a.ts', line: 3 });
   });
 
-  it('reads a file at a commit through the contents API and returns undefined when missing', async () => {
-    const { run, calls } = fakeRun((l) => {
-      if (l.includes('contents/.sentinel/learnings/L-1.md?ref=abcdef1')) return ok('---\n');
+  it('reads a file at a commit through the contents API, with its type, and undefined when missing', async () => {
+    const content = Buffer.from('---\nid: x\n').toString('base64');
+    const { run } = fakeRun((l) => {
+      if (l.includes('contents/.sentinel/learnings/L-1.md?ref=abcdef1'))
+        return ok(JSON.stringify({ type: 'file', encoding: 'base64', content }));
+      if (l.includes('contents/.sentinel/learnings?ref=abcdef1'))
+        return ok(JSON.stringify({ type: 'symlink', encoding: null, content: null }));
+      if (l.includes('contents/docs?ref=abcdef1')) return ok('[{"type":"file"}]');
       if (l.includes('contents/')) return fail('HTTP 404: Not Found');
       return undefined;
     });
     const host = new GitHubCodeHost({ run, cwd: '/r' });
-    expect(await host.readFileAtRef('.sentinel/learnings/L-1.md', 'abcdef1')).toBe('---\n');
-    expect(calls[0]?.args).toEqual(
-      expect.arrayContaining(['-H', 'Accept: application/vnd.github.raw']),
-    );
+    expect(await host.readFileAtRef('.sentinel/learnings/L-1.md', 'abcdef1')).toEqual({
+      type: 'file',
+      text: '---\nid: x\n',
+    });
+    expect(await host.readFileAtRef('.sentinel/learnings', 'abcdef1')).toEqual({ type: 'symlink' });
+    expect(await host.readFileAtRef('docs', 'abcdef1')).toEqual({ type: 'dir' });
     expect(await host.readFileAtRef('nope.md', 'abcdef1')).toBeUndefined();
     await expect(host.readFileAtRef('a.md', 'main; rm -rf /')).rejects.toThrow(ProviderError);
   });

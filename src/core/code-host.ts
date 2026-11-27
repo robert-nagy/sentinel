@@ -52,6 +52,14 @@ export interface PullRequestAuthor {
   readonly association: string;
   readonly headSha: string;
   readonly merged: boolean;
+  /** How many files the PR changes, as the host counts them. */
+  readonly changedFiles?: number | undefined;
+}
+
+/** A path at a commit: `file` with its text, or another git object type (`symlink`, `dir`…). */
+export interface FileAtRef {
+  readonly type: string;
+  readonly text?: string | undefined;
 }
 
 export interface PullRequestSummary {
@@ -107,6 +115,6 @@ export interface PullRequestReader {
   listPullRequestCommits(pr: number): Promise<PullRequestCommit[]>;
   listPullRequestComments(pr: number): Promise<PullRequestComment[]>;
   listPullRequestFiles(pr: number): Promise<PullRequestFile[]>;
-  /** A file's text at a commit, read through the API (never a checkout). */
-  readFileAtRef(path: string, ref: string): Promise<string | undefined>;
+  /** A path at a commit, read through the API (never a checkout); `undefined` when missing. */
+  readFileAtRef(path: string, ref: string): Promise<FileAtRef | undefined>;
 }

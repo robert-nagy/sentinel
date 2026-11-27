@@ -74,7 +74,12 @@ function fakeReader(data: FakeData): PullRequestReader & { calls: string[] } {
     },
     listPullRequestComments: (pr) => Promise.resolve(data.comments?.[pr] ?? []),
     listPullRequestFiles: (pr) => Promise.resolve(data.files?.[pr] ?? []),
-    readFileAtRef: (path, ref) => Promise.resolve(data.contents?.[`${ref}:${path}`]),
+    readFileAtRef: (path, ref) => {
+      const text = data.contents?.[`${ref}:${path}`];
+      if (text === undefined) return Promise.resolve(undefined);
+      if (text.startsWith('symlink:')) return Promise.resolve({ type: 'symlink' });
+      return Promise.resolve({ type: 'file', text });
+    },
   };
 }
 
@@ -339,5 +344,68 @@ describe('verifyLessonChanges', () => {
     expect(all).toMatch(/personal lessons must never be committed/);
     expect(all).toMatch(/111111\.md: the lesson needs front matter/);
     expect(result.problems).toHaveLength(4);
+  });
+
+  it('catches lesson paths that differ only in case, and a store replaced by a symlink', async () => {
+    const { id } = lessonText();
+    const reader = fakeReader({
+      authors: { 63: {} },
+      files: {
+        63: [
+          { path: `.sentinel/Learnings/${id}.md`, status: 'added' },
+          { path: '.sentinel/learnings', status: 'added' },
+          { path: '.sentinel', status: 'added' },
+          { path: `.sentinel/learnings/${id}.md`, status: 'added' },
+        ],
+      },
+      contents: { [`${sha}:.sentinel/learnings/${id}.md`]: 'symlink:../x' },
+    });
+    const result = await verifyLessonChanges(reader, 63);
+    expect(result.ok).toBe(false);
+    expect(result.problems.filter((p) => p.includes('exactly'))).toHaveLength(3);
+    expect(result.problems.join()).toContain('must be a regular file, not a symlink');
+  });
+
+  it('still requires write access for a stranger who only symlinks or renames the store', async () => {
+    const reader = fakeReader({
+      authors: { 64: { login: 'stranger', association: 'NONE' } },
+      files: {
+        64: [
+          {
+            path: 'docs/x',
+            status: 'renamed',
+            previousPath: '.sentinel/learnings/L-20261127-abcdef.md',
+          },
+        ],
+      },
+    });
+    const result = await verifyLessonChanges(reader, 64);
+    expect(result.problems).toEqual([expect.stringMatching(/no write access/)]);
+  });
+
+  it('lets an owner move a lesson out of the store', async () => {
+    const reader = fakeReader({
+      authors: { 65: {} },
+      files: {
+        65: [
+          {
+            path: 'docs/old-lesson.md',
+            status: 'renamed',
+            previousPath: '.sentinel/learnings/L-20261127-abcdef.md',
+          },
+        ],
+      },
+    });
+    expect(await verifyLessonChanges(reader, 65)).toMatchObject({ ok: true });
+  });
+
+  it('fails closed when the host lists fewer files than the PR changes', async () => {
+    const reader = fakeReader({
+      authors: { 66: { changedFiles: 3500 } },
+      files: { 66: [{ path: 'src/a.ts', status: 'modified' }] },
+    });
+    const result = await verifyLessonChanges(reader, 66);
+    expect(result.ok).toBe(false);
+    expect(result.problems.join()).toMatch(/only 1 of 3500/);
   });
 });

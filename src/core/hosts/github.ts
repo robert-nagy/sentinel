@@ -8,6 +8,7 @@ import type {
   PullRequestAuthor,
   PullRequestComment,
   PullRequestCommit,
+  FileAtRef,
   PullRequestFile,
   PullRequestReader,
   PullRequestSummary,
@@ -250,7 +251,7 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
     const n = requirePrNumber(pr);
     const out = await this.api(`pulls/${n}`, `read pull request ${n}`, [
       '--jq',
-      '{number, login: .user.login, type: .user.type, association: .author_association, headSha: .head.sha, merged}',
+      '{number, login: .user.login, type: .user.type, association: .author_association, headSha: .head.sha, merged, changedFiles: .changed_files}',
     ]);
     const raw = this.json(
       z.object({
@@ -260,6 +261,7 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
         association: z.string(),
         headSha: z.string(),
         merged: z.boolean().nullish(),
+        changedFiles: z.number().nullish(),
       }),
       out,
       `read pull request ${n}`,
@@ -271,6 +273,7 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
       association: raw.association,
       headSha: raw.headSha,
       merged: raw.merged === true,
+      changedFiles: raw.changedFiles ?? undefined,
     };
   }
 
@@ -411,24 +414,38 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
     }));
   }
 
-  async readFileAtRef(path: string, ref: string): Promise<string | undefined> {
-    if (!/^[0-9a-f]{7,64}$/i.test(ref))
+  async readFileAtRef(path: string, ref: string): Promise<FileAtRef | undefined> {
+    if (!/^[0-9a-f]{7,64}$/i.test(ref)) {
       throw new ProviderError('failed', `"${ref}" is not a commit SHA`);
+    }
     const encoded = path.split('/').map(encodeURIComponent).join('/');
+    const action = `read ${path} at ${ref}`;
     const result = await this.options.run(
       'gh',
-      [
-        'api',
-        '-H',
-        'Accept: application/vnd.github.raw',
-        this.repoPath(`contents/${encoded}?ref=${ref}`),
-      ],
+      ['api', this.repoPath(`contents/${encoded}?ref=${ref}`), '--jq', '{type, encoding, content}'],
       { cwd: this.options.cwd, timeoutMs: GH_TIMEOUT_MS },
     );
-    if (result.exitCode === 0) return result.stdout;
-    const error = ghError(result, `read ${path} at ${ref}`);
-    if (error.kind === 'not-found') return undefined;
-    throw error;
+    if (result.exitCode !== 0) {
+      const error = ghError(result, action);
+      if (error.kind === 'not-found') return undefined;
+      throw error;
+    }
+    // A directory comes back as an array, which `--jq` cannot shape into one object.
+    if (result.stdout.trim().startsWith('[')) return { type: 'dir' };
+    const raw = this.json(
+      z.object({
+        type: z.string(),
+        encoding: z.string().nullish(),
+        content: z.string().nullish(),
+      }),
+      result.stdout,
+      action,
+    );
+    if (raw.type !== 'file') return { type: raw.type };
+    if (raw.encoding !== 'base64' || raw.content == null) {
+      throw new ProviderError('failed', `could not ${action}: unexpected encoding`);
+    }
+    return { type: 'file', text: Buffer.from(raw.content, 'base64').toString('utf8') };
   }
 }
 

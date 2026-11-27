@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { titleSimilarity, DUPLICATE_THRESHOLD } from './duplicates.js';
 import { compileGlob, globSpecificity, isGlobalGlob, normalizePath } from './globs.js';
@@ -224,6 +224,8 @@ export class LessonStore {
     const previous = await this.readIndex();
     const entries: Record<string, IndexEntry> = {};
     for (const store of ['shared', 'personal'] as const) {
+      // A store reached through a symlink is ignored: it could point anywhere (ADR-0008).
+      if (!(await this.realDirectory(store))) continue;
       let names: string[];
       try {
         names = await readdir(this.dir(store));
@@ -236,7 +238,8 @@ export class LessonStore {
         files.map(async (name) => {
           const path = join(this.dir(store), name);
           try {
-            return { name, path, info: await stat(path) };
+            // lstat: a symlinked lesson file is not a regular file, so it is skipped.
+            return { name, path, info: await lstat(path) };
           } catch {
             return undefined;
           }
@@ -276,6 +279,22 @@ export class LessonStore {
       Object.keys(entries).some((file) => previous.entries[file] === undefined);
     if (changed) await this.state.write(this.indexName, { version: INDEX_VERSION, entries });
     return Object.values(entries);
+  }
+
+  /** Whether every component of the store's directory below its root is a real directory. */
+  private async realDirectory(store: StoreName): Promise<boolean> {
+    let dir = store === 'shared' ? this.root : this.mainRoot;
+    for (const part of STORE_DIRS[store].split('/')) {
+      dir = join(dir, part);
+      try {
+        const info = await lstat(dir);
+        if (info.isSymbolicLink() || !info.isDirectory()) return false;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw error;
+      }
+    }
+    return true;
   }
 
   private async readIndex(): Promise<IndexFile> {

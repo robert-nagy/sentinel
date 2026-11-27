@@ -226,7 +226,14 @@ describe('sentinel learn verify', () => {
     fakeGh((line) => {
       if (line.includes(`pulls/${String(pr)}/files`))
         return ok(JSON.stringify({ filename: file.path, status: 'added' }));
-      if (line.includes(`contents/${file.path}?ref=${sha}`)) return ok(file.text);
+      if (line.includes(`contents/${file.path}?ref=${sha}`))
+        return ok(
+          JSON.stringify({
+            type: 'file',
+            encoding: 'base64',
+            content: Buffer.from(file.text).toString('base64'),
+          }),
+        );
       return undefined;
     });
 
