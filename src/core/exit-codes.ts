@@ -15,6 +15,8 @@ export const ExitCode = {
   Provider: 4,
   /** Invalid or missing configuration. */
   Config: 5,
+  /** Not allowed, and no option changes that (e.g. learning from someone else's PR). */
+  Forbidden: 6,
 } as const;
 
 export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];

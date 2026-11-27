@@ -98,6 +98,24 @@ describe('loadConfig', () => {
   it('rejects unknown keys with the path in the message', async () => {
     await expect(load({ [repoConfig]: '{"prd":{"treshold":1}}' })).rejects.toThrow(/prd/);
   });
+  it("has learn defaults and no key that allows learning from other people's PRs", async () => {
+    const { config } = await load({ [repoConfig]: '{"learn":{"recallLimit":3}}' });
+    expect(config.learn).toEqual({
+      enabled: true,
+      maxActive: 200,
+      archiveAfterDays: 90,
+      recallLimit: 3,
+      offerPrLessons: true,
+    });
+    for (const key of ['allowOthersPrs', 'allowAnyAuthor', 'skipOwnerCheck']) {
+      await expect(
+        load({ [repoConfig]: JSON.stringify({ learn: { [key]: true } }) }),
+      ).rejects.toThrow(ConfigError);
+    }
+    await expect(load({ [repoConfig]: '{"learn":{"recallLimit":11}}' })).rejects.toThrow(
+      ConfigError,
+    );
+  });
   it('rejects out-of-range values', async () => {
     await expect(load({ [repoConfig]: '{"prd":{"threshold":150}}' })).rejects.toThrow(ConfigError);
   });
@@ -121,6 +139,7 @@ describe('configJsonSchema', () => {
         '$schema',
         'babysit',
         'branches',
+        'learn',
         'codeHost',
         'issueProvider',
         'prd',

@@ -1,6 +1,6 @@
 # ADR-0008: Learning from interventions, stored as small lesson files and recalled by scope
 
-- **Status:** Proposed
+- **Status:** Accepted (implemented in M10, issue #39)
 - **Date:** 2026-11-27
 - **Issue:** [#39](https://github.com/robert-nagy/sentinel/issues/39)
 - **Related:** [ADR-0002](0002-no-llm-calls.md) (sentinel never calls an LLM),
@@ -159,7 +159,7 @@ makes them a route for prompt injection that persists across runs.
     - **Already-learned PRs are skipped.** A PR counts as learned when either:
       - a shared lesson has `source: "pr"` and that PR number. This is committed, so it holds for
         the whole team and needs no extra file; or
-      - this machine's `.sentinel/state/learn-prs.json` records that the PR was reviewed, even if
+      - this machine's `.sentinel/state/learn-usage.json` records that the PR was reviewed, even if
         no lesson was kept. This one holds only for this machine.
 
       `learn suggest` leaves learned PRs out. When the user names a learned PR, `pr-changes` says
@@ -174,7 +174,7 @@ makes them a route for prompt injection that persists across runs.
     - **The skill.** It reads the changes as data under review, never as instructions, and drafts
       at most five candidate lessons per PR, each quoting the commit or comment it came from.
       **STOP:** one numbered list for all the PRs, grouped by PR, and one question: which to keep
-      (all, some, none). Only the approved candidates go through `learn add --source pr`, with the
+      (all, some, none). Only the approved candidates go through `learn add` with `source: "pr"`, with the
       same validation and dedupe as any other lesson. Shared lessons ride on the next PR
       (decision 4). Then `learn mark-reviewed <pr…>` records every PR shown, whatever was kept.
     - **Offered, not remembered.** At the start of `sentinel-sdlc`, `sentinel-sdlc-auto` and
@@ -196,13 +196,13 @@ makes them a route for prompt injection that persists across runs.
     and bots (for example `app/github-actions` release PRs) are refused.
     - **Gate 1, the CLI.** `learn suggest` asks the host for the user's PRs only
       (`gh pr list --author @me`) and drops any row whose author differs. `learn pr-changes` and
-      `learn add --source pr` each fetch the PR's author and the token's login again and refuse a
+      `learn add` with `source: "pr"` each fetch the PR's author and the token's login again and refuse a
       mismatch with a new exit code, `6` (`Forbidden`), naming both logins. The check sits inside
       the commands, so no skill step can skip it. There is no flag, environment variable or
       config key to turn it off. `learn` is a `z.strictObject` like every other config section,
       so a key such as `learn.allowOthersPrs` is rejected at load with exit `5`.
     - **What gate 1 cannot stop.** An agent with shell and file access can write a lesson file by
-      hand, or pass text copied from someone else's PR to `learn add --source override`. No
+      hand, or pass text copied from someone else's PR to `learn add` as `source: "override"`. No
       code running on the user's machine can stop a process that can write files in the repo.
       Shared lessons are therefore checked a second time where the agent has no access.
     - **Gate 2, CI on the code host.** `sentinel learn verify --pr <n>` runs in a
@@ -212,9 +212,9 @@ makes them a route for prompt injection that persists across runs.
       - has `source: "pr"` and cites a PR whose author is not the author of the PR adding the
         lesson (`github.event.pull_request.user.login`);
       - has no valid `source`, `pr` or `from` fields; or
-      - is added or changed by a PR whose author has no write access (`author_association` not
-        `OWNER`, `MEMBER` or `COLLABORATOR`), whatever its `source`. An outside contributor
-        cannot add lessons to the shared store through their own PR.
+      - is added or changed by a PR whose author has no write access (repository permission
+        not `admin` or `write`), whatever its `source`. An outside contributor cannot add
+        lessons to the shared store through their own PR.
     - **Gate 3, the repository ruleset.** Gate 2 only blocks a merge when its check is required.
       `sentinel-setup` offers, with the user's approval, a ruleset on the default branch that
       requires the `sentinel learn verify` check, with an empty bypass list. `sentinel doctor`
@@ -244,5 +244,84 @@ makes them a route for prompt injection that persists across runs.
   reviewer's text needs the user's explicit pick; every lesson is visible in the PR diff, capped in
   size, scanned for secrets, framed as data below the guardrails, and removable with one file
   delete.
-- `.gitignore` gains `.sentinel/learnings.local/`. The usage and index files are already covered
-  by `.sentinel/state/`.
+- Nothing has to be added to a repository's `.gitignore`: `.sentinel/learnings.local/` and
+  `.sentinel/state/` each carry their own `.gitignore` (`*`), written by sentinel when it creates
+  them. Skills write lesson drafts to the agent's temp directory, outside the repository.
+
+## Implementation notes (M10, 2026-11-27)
+
+Where the implementation is more specific than, or departs from, the decisions above:
+
+- **Two roots.** Shared lessons are read and written in the current checkout, so in an issue
+  worktree they ride on its PR (decision 4). Personal lessons and all local state (index, usage,
+  babysit state) live in the **main checkout**, found through `git rev-parse --git-common-dir`,
+  so they survive when a worktree is removed. Each checkout gets its own index file
+  (`learn-index` for the main checkout, `learn-index-<hash>` for a worktree).
+- **Babysit state moved** to the main checkout for the same reason, which is also what lets it
+  see other PRs' failure signatures (decision 2). A run that was in progress during the upgrade
+  starts its attempt count again.
+- **`.sentinel/state/` ignores itself.** `StateStore` writes a `.gitignore` (`*`) into the
+  directory when it creates it, and the personal store does the same, so neither is committed in
+  repositories whose own `.gitignore` does not mention them.
+- **Ranking recency** uses the last time a lesson was written or reinforced, not the last recall:
+  ranking by the last recall would let a lesson win because it was shown before, which decision 7
+  rules out. Decay still uses the last recall.
+- **`PullRequestReader`** is a separate interface from `CodeHost`, so hosts that cannot read PR
+  commits and comments still babysit and open PRs. GitHub implements both.
+- **Commits** are listed with SHA, author and message, not a diff stat (that would cost one API
+  call per commit); the skill reads a diff with `git show <sha>`. `learn suggest` counts commits by
+  other authors only; `pr-changes` adds the user's own commits after the recorded head.
+- **`learn suggest --offer`** marks the PRs it returns as offered, since it is only called to
+  offer them.
+- **Measured performance** (Linux, 2,000 lessons): about 170 ms to build the index cold and 25 ms
+  for a warm recall. The test asserts the 500 ms and 50 ms targets with headroom for parallel test
+  runs and shared CI runners on Linux and macOS; on Windows, where file system calls are much
+  slower and nothing was measured, it reports the timings without asserting them.
+- **Gate 2 in sentinel's own repository** runs the bundle from the base branch checkout instead of
+  downloading a release. Other repositories download the bundle from the **commit** the release
+  tag points to, resolved by `setup --learn-verify` (a tag can be moved, a commit cannot); when
+  the commit cannot be resolved it falls back to the tag and says so.
+- **Gate 2 hardening** (from two reviews of the M10 PR):
+  - any changed path under `.sentinel/learnings` in any letter case, or `.sentinel` itself,
+    counts as a lesson change, and a lesson must sit exactly under `.sentinel/learnings/`;
+  - lesson files are read through git trees and blobs at the PR's head, so every path
+    component's mode is known; anything but a regular file (a symlink, a submodule) is refused,
+    and so is a store directory that is not a real directory. The contents API is not used,
+    because it follows symlinks whose target is a file;
+  - write access means the author's actual repository permission (`admin` or `write`, read from
+    the collaborators permission endpoint), not `author_association`, where `MEMBER` is any
+    organisation member; a failed lookup counts as no access;
+  - the check fails closed when the host lists fewer files than the PR changes (GitHub lists at
+    most 3,000);
+  - the workflow's actions are pinned to commit SHAs, as the sentinel download is;
+  - the workflow passes the head commit the run was started for (`--sha`), and the check fails
+    closed when the PR has moved on, so a result is never reported for a commit it did not read.
+
+  On the consumer side, the store ignores a symlinked store directory or lesson file and reads
+  lessons with `O_NOFOLLOW` where the platform has it, so a planted lesson is never recalled even
+  if it got past CI.
+
+- **Known limitation: the recorded head SHA.** The babysitter records the PR's head each time it
+  looks. A commit the user pushes by hand while babysit is still watching becomes the recorded
+  head, so `pr-changes` will not list it as `after-agent`. Commits by other people are always
+  listed, so only the user's own corrections in that window can be missed.
+- **Usage across checkouts.** `learn prune` keeps usage entries for shared lessons it cannot see,
+  since another worktree or branch may have them; only personal entries whose file is gone are
+  dropped.
+- **Decay on a new machine** counts from the day this machine first saw a lesson (`firstSeen`
+  in the usage state), not from the day it was written, so a fresh clone does not archive the
+  team's older lessons before it ever recalls them.
+- **Glob matching** is a small matcher over path segments (two-pointer `*` and `?` within a
+  segment, memoised `**` across segments, braces expanded to at most 32 alternatives), not a
+  regular expression, so no scope a lesson carries can make recall backtrack. Repeated `**`
+  collapse, a glob has at most eight wildcard groups, and paths over 1,024 characters never
+  match. `**` inside a segment (`a**b`) means `*`.
+- **`recurring`** in babysit counts a lesson with the same signature even when it is archived;
+  only active lessons are returned in `lessons`.
+- **Listing merged PRs** uses one GraphQL search with small page sizes (`commits(first: 100)`,
+  authors `first: 1`, reviews and comments `first: 50`); `gh pr list --json commits` asks for up
+  to a million nodes for 100 PRs and GitHub refuses it. Bot authors are recognised from GraphQL's
+  `Bot` type, which has no `[bot]` suffix.
+- **Known limitation: agent accounts.** A commit authored by an AI agent's own GitHub account
+  (for example one linked to a `noreply@anthropic.com` address) counts as a commit by someone
+  else, so it shows up in `suggest` and `pr-changes`. The user's pick filters it out.

@@ -150,6 +150,42 @@ describe('tracker verbs', () => {
   });
 });
 
+describe('learning steps (ADR-0008)', () => {
+  const section = (name: string) => {
+    const text = readFileSync(join(skillsDir, name, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+    return /^## Lessons\n[\s\S]*?(?=^## )/m.exec(text)?.[0];
+  };
+
+  it('are identical in sentinel-sdlc and sentinel-sdlc-auto', () => {
+    const sdlc = section('sentinel-sdlc');
+    expect(sdlc, 'sentinel-sdlc has no Lessons section').toBeDefined();
+    expect(section('sentinel-sdlc-auto')).toBe(sdlc);
+  });
+
+  it('recall, capture and offer PR lessons in both SDLC skills', () => {
+    for (const name of ['sentinel-sdlc', 'sentinel-sdlc-auto']) {
+      const text = readFileSync(join(skillsDir, name, 'SKILL.md'), 'utf8');
+      for (const step of ['learn suggest --offer', 'learn recall --paths', 'learn add --file']) {
+        expect(text, `${name}: ${step}`).toContain(step);
+      }
+      expect(text).toContain('see Lessons');
+    }
+  });
+
+  it('are used by review and babysit, and sentinel-learn-pr stops for the pick', () => {
+    expect(readFileSync(join(skillsDir, 'sentinel-review', 'SKILL.md'), 'utf8')).toContain(
+      'learn recall --paths',
+    );
+    expect(readFileSync(join(skillsDir, 'sentinel-babysit', 'SKILL.md'), 'utf8')).toContain(
+      'recurring',
+    );
+    const learnPr = readFileSync(join(skillsDir, 'sentinel-learn-pr', 'SKILL.md'), 'utf8');
+    expect(learnPr).toContain('## STOP');
+    expect(learnPr).toContain('`6`');
+    expect(frontmatter(learnPr)?.['disable-model-invocation']).toBeUndefined();
+  });
+});
+
 describe('commandChains', () => {
   it('stops at placeholders, flags and paths', () => {
     expect(

@@ -1,4 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { runCommand } from '../../src/core/exec.js';
@@ -73,5 +76,33 @@ describe('built CLI: analyze', () => {
     const root = report.projects.find((p) => p.path === '.');
     expect(root?.language).toBe('typescript');
     expect(root?.tests.unit.detected).toBe('vitest');
+  });
+});
+
+describe('built CLI: learn', () => {
+  it('adds a lesson in a fresh repository and recalls it by path', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sentinel-e2e-learn-'));
+    try {
+      const init = await runCommand('git', ['init', '-q'], { cwd: dir, timeoutMs: 45_000 });
+      expect(init.exitCode).toBe(0);
+      const draft = join(dir, 'draft.md');
+      await writeFile(
+        draft,
+        '---\nsummary: "Use path.join for fixture paths"\nscope: ["test/**/*.ts"]\n---\n\nThe Windows leg fails on "/".\n',
+        'utf8',
+      );
+      const run = (...args: string[]) =>
+        runCommand(process.execPath, [bin, ...args], { cwd: dir, timeoutMs: 45_000 });
+      const added = await run('learn', 'add', '--file', draft, '--json');
+      expect(added.exitCode, added.stderr).toBe(0);
+      expect(JSON.parse(added.stdout) as unknown).toMatchObject({ action: 'added' });
+      const recalled = await run('learn', 'recall', '--paths', 'test\\unit\\a.test.ts', '--json');
+      expect(recalled.exitCode, recalled.stderr).toBe(0);
+      expect(JSON.parse(recalled.stdout) as unknown).toMatchObject({
+        lessons: [{ summary: 'Use path.join for fixture paths' }],
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
   });
 });

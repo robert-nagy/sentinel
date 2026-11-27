@@ -3,6 +3,7 @@ import {
   checkGhAuth,
   checkGit,
   checkGitRepository,
+  checkLearnVerify,
   checkNode,
   checkWorktrees,
   checkWindowsLongPaths,
@@ -49,7 +50,17 @@ export async function runDoctor(ctx: DoctorContext): Promise<DoctorReport> {
     ghChecks(ctx),
     checkWindowsLongPaths(ctx),
   ]);
-  const checks = [checkNode(ctx), ...git, ...gh, longPaths];
+  const ghReady = gh.every((c) => c.status === 'pass');
+  const repoReady = git.some((c) => c.id === 'git-repo' && c.status === 'pass');
+  const learn = repoReady
+    ? await checkLearnVerify(ctx, ghReady)
+    : ({
+        id: 'learn-verify',
+        title: 'Lesson check (own-PR rule)',
+        status: 'skip',
+        message: 'Skipped: not a git repository',
+      } as const);
+  const checks = [checkNode(ctx), ...git, ...gh, longPaths, learn];
 
   return { ok: checks.every((c) => c.status !== 'fail'), checks };
 }

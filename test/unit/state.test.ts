@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -21,7 +21,20 @@ describe('StateStore', () => {
     await store.write('run-1', { attempts: 2 });
     await store.write('run-1', { attempts: 3 });
     expect(await store.read('run-1')).toEqual({ attempts: 3 });
-    expect(await readdir(store.dir)).toEqual(['run-1.json']);
+    expect((await readdir(store.dir)).sort()).toEqual(['.gitignore', 'run-1.json']);
+  });
+  it('lists state names by prefix, sorted, without .json', async () => {
+    const store = new StateStore(root);
+    expect(await store.list('babysit-pr-')).toEqual([]);
+    await store.write('babysit-pr-9', {});
+    await store.write('babysit-pr-10', {});
+    await store.write('learn-usage', {});
+    expect(await store.list('babysit-pr-')).toEqual(['babysit-pr-10', 'babysit-pr-9']);
+  });
+  it('ignores its own directory in git', async () => {
+    const store = new StateStore(root);
+    await store.write('a', 1);
+    expect(await readFile(join(store.dir, '.gitignore'), 'utf8')).toMatch(/^\*$/m);
   });
   it('removes state and tolerates removing twice', async () => {
     const store = new StateStore(root);

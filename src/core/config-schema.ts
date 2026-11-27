@@ -56,6 +56,14 @@ const sections = {
     pollIntervalSec: z.number().int().min(5).max(3600),
     timeoutMin: z.number().int().min(1).max(1440),
   }),
+  /** Lessons learned from interventions (ADR-0008). There is no key to allow other people's PRs. */
+  learn: z.strictObject({
+    enabled: z.boolean(),
+    maxActive: z.number().int().min(1).max(10_000),
+    archiveAfterDays: z.number().int().min(1).max(3650),
+    recallLimit: z.number().int().min(1).max(10),
+    offerPrLessons: z.boolean(),
+  }),
   testing: z.strictObject({
     unit: command,
     integration: command,
@@ -74,6 +82,7 @@ export const configSchema = z
     prd: sections.prd,
     rfc: sections.rfc,
     babysit: sections.babysit,
+    learn: sections.learn,
     testing: sections.testing,
   })
   .superRefine((config, ctx) => {
@@ -98,6 +107,7 @@ export const userConfigSchema = z.strictObject({
   prd: sections.prd.partial().optional(),
   rfc: sections.rfc.partial().optional(),
   babysit: sections.babysit.partial().optional(),
+  learn: sections.learn.partial().optional(),
   testing: sections.testing.partial().optional(),
 });
 
@@ -122,6 +132,13 @@ export const DEFAULT_CONFIG: SentinelConfig = {
   prd: { dir: 'docs/prd', threshold: 85, dimensionFloor: 70, maxRefinements: 3 },
   rfc: { dir: 'docs/rfcs' },
   babysit: { maxAttempts: 5, pollIntervalSec: 30, timeoutMin: 60 },
+  learn: {
+    enabled: true,
+    maxActive: 200,
+    archiveAfterDays: 90,
+    recallLimit: 5,
+    offerPrLessons: true,
+  },
   testing: { unit: null, integration: null, e2e: null, load: null },
 };
 

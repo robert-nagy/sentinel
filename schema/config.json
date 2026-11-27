@@ -164,6 +164,33 @@
       },
       "additionalProperties": false
     },
+    "learn": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "maxActive": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "archiveAfterDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3650
+        },
+        "recallLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "offerPrLessons": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "testing": {
       "type": "object",
       "properties": {

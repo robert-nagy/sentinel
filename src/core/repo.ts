@@ -1,4 +1,5 @@
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import type { CommandRunner } from './exec.js';
 import type { FileAccess } from './fs.js';
 
 /**
@@ -17,4 +18,23 @@ export async function findRepoRoot(
     if (parent === dir) return undefined;
     dir = parent;
   }
+}
+
+/**
+ * The main checkout of the repository containing `cwd`: the parent of git's common
+ * directory. In a linked worktree that is the checkout the worktree was made from; elsewhere
+ * it is the repository root. Falls back to `fallback` when git cannot tell (bare repository,
+ * git missing).
+ */
+export async function findMainRoot(
+  run: CommandRunner,
+  cwd: string,
+  fallback: string,
+): Promise<string> {
+  const result = await run('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    cwd,
+  });
+  const dir = result.exitCode === 0 ? result.stdout.trim() : '';
+  if (dir === '' || basename(dir) !== '.git') return fallback;
+  return dirname(dir);
 }

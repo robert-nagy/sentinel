@@ -1,8 +1,13 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../src/core/config-schema.js';
 import { listItems, mermaidLabel, renderReadme } from '../../src/core/readme-renderer.js';
 import { ECOSYSTEMS, plannedProject } from '../../src/core/stack-analyzer.js';
-import { renderWorkflows, tierCommand } from '../../src/core/workflows.js';
+import {
+  renderLearnVerifyWorkflow,
+  renderWorkflows,
+  tierCommand,
+} from '../../src/core/workflows.js';
 
 const [tests, load] = [0, 1] as const;
 
@@ -110,5 +115,38 @@ describe('README renderer', () => {
     expect(listItems('a, b; c')).toEqual(['a', 'b', 'c']);
     expect(listItems('- one\n* two\n3) three')).toEqual(['one', 'two', 'three']);
     expect(listItems(undefined)).toEqual([]);
+  });
+});
+
+describe('renderLearnVerifyWorkflow', () => {
+  it('runs the base branch copy of sentinel from a checkout, never the PR head', () => {
+    const text = renderLearnVerifyWorkflow('1.2.3', 'checkout');
+    expect(text).toContain('pull_request_target:');
+    expect(text).toMatch(/actions\/checkout@[0-9a-f]{40} # v5/);
+    expect(text).toMatch(/actions\/setup-node@[0-9a-f]{40} # v5/);
+    expect(text).not.toMatch(/uses: [^\s]+@v\d/);
+    expect(text).not.toMatch(/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/);
+    expect(text).toContain('persist-credentials: false');
+    expect(text).toContain('learn verify --pr "$PR" --sha "$HEAD_SHA"');
+    expect(text).toContain('HEAD_SHA: ${{ github.event.pull_request.head.sha }}');
+  });
+
+  it('pins the commit when given one, else the release tag', () => {
+    const sha = 'b'.repeat(40);
+    expect(renderLearnVerifyWorkflow('1.2.3', 'release', sha)).toContain(
+      `/sentinel/${sha}/plugins/`,
+    );
+    expect(renderLearnVerifyWorkflow('1.2.3', 'release')).toContain('/sentinel/v1.2.3/plugins/');
+    expect(() => renderLearnVerifyWorkflow('1.2.3', 'release', 'main')).toThrow(/commit SHA/);
+  });
+});
+
+describe("sentinel's own lesson check", () => {
+  it('is the checkout variant of the generated workflow', async () => {
+    const text = await readFile(
+      new URL('../../.github/workflows/sentinel-lessons.yml', import.meta.url),
+      'utf8',
+    );
+    expect(text.replace(/\r\n/g, '\n')).toBe(renderLearnVerifyWorkflow('', 'checkout'));
   });
 });

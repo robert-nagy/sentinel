@@ -38,10 +38,38 @@ export {
 export { ConfigError, loadConfig, globalConfigPath, type LoadedConfig } from './core/config.js';
 export { StateStore, StateError } from './core/state.js';
 export { nodeFiles, type FileAccess } from './core/fs.js';
-export { findRepoRoot } from './core/repo.js';
+export { findMainRoot, findRepoRoot } from './core/repo.js';
 export { ProviderError, type ProviderErrorKind } from './core/provider-error.js';
 export { DUPLICATE_THRESHOLD, rankDuplicates, titleSimilarity } from './core/duplicates.js';
-export type { CheckRun, CodeHost, NewPullRequest, PullRequest } from './core/code-host.js';
+export type {
+  CheckRun,
+  CodeHost,
+  NewPullRequest,
+  PullRequest,
+  PullRequestReader,
+} from './core/code-host.js';
+export {
+  LESSON_SOURCES,
+  LearnError,
+  lessonId,
+  parseLesson,
+  parseLessonDraft,
+  renderLesson,
+  type Lesson,
+} from './core/learnings.js';
+export {
+  LessonStore,
+  STORE_DIRS,
+  type LearnSettings,
+  type RecallQuery,
+} from './core/learn-store.js';
+export { assertOwnPullRequest, verifyLessonChanges } from './core/learn-pr.js';
+export {
+  LEARN_VERIFY_CHECK,
+  LEARN_VERIFY_WORKFLOW_PATH,
+  learnVerifyRuleset,
+  renderLearnVerifyWorkflow,
+} from './core/workflows.js';
 export { GitHubCodeHost } from './core/hosts/github.js';
 export {
   GitWorktreeManager,

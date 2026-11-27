@@ -5,6 +5,7 @@ import type { StateStore } from './state.js';
 /** A failure that survives this many patches is handed to a human. */
 export const SAME_SIGNATURE_LIMIT = 3;
 const MAX_LOG_RUNS = 3;
+export const BABYSIT_STATE_PREFIX = 'babysit-pr-';
 
 export type BabysitAction = 'wait' | 'done' | 'rerun' | 'patch' | 'give-up';
 
@@ -17,6 +18,8 @@ export interface BabysitState {
   /** A re-run was requested and its outcome has not been looked at yet. */
   readonly afterRerun: boolean;
   readonly gaveUp: boolean;
+  /** Head commit of the open PR when sentinel last looked: later commits are someone else's. */
+  readonly headSha?: string | undefined;
 }
 
 export interface BabysitResult {
@@ -200,14 +203,18 @@ export async function babysit(
   const started = options.now();
   for (;;) {
     const pr = await host.getPullRequest(ref);
-    const name = `babysit-pr-${String(pr.number)}`;
+    const name = `${BABYSIT_STATE_PREFIX}${String(pr.number)}`;
     const result = await babysitStep(
       host,
       pr,
       await store.read<BabysitState>(name),
       options.settings,
     );
-    await store.write(name, result.state);
+    const state: BabysitState =
+      pr.state === 'open' && pr.headSha !== undefined
+        ? { ...result.state, headSha: pr.headSha }
+        : result.state;
+    await store.write(name, state);
     if (options.once || (result.action !== 'wait' && result.action !== 'rerun')) return result;
     options.onProgress?.(`${result.action}: ${result.reason}`);
     if (options.now() - started > options.timeoutMin * 60_000) {
@@ -219,4 +226,24 @@ export async function babysit(
     }
     await options.sleep(options.pollIntervalSec * 1000);
   }
+}
+
+/** Every PR babysat on this machine, with its recorded head SHA and failure signatures. */
+export async function babysatPullRequests(
+  store: StateStore,
+): Promise<Map<number, { headSha?: string | undefined; signatures: readonly string[] }>> {
+  const result = new Map<number, { headSha?: string | undefined; signatures: readonly string[] }>();
+  for (const name of await store.list(BABYSIT_STATE_PREFIX)) {
+    const pr = Number(name.slice(BABYSIT_STATE_PREFIX.length));
+    if (!Number.isInteger(pr) || pr <= 0) continue;
+    let state: BabysitState | undefined;
+    try {
+      state = await store.read<BabysitState>(name);
+    } catch {
+      continue; // a corrupt file only affects its own PR's babysit run
+    }
+    if (state === undefined) continue;
+    result.set(pr, { headSha: state.headSha, signatures: Object.keys(state.signatures) });
+  }
+  return result;
 }

@@ -99,6 +99,7 @@ describe('runDoctor', () => {
       gh: 'pass',
       'gh-auth': 'pass',
       'git-longpaths': 'skip',
+      'learn-verify': 'skip',
     });
   });
 
@@ -205,6 +206,7 @@ describe('runDoctor timeouts and concurrency', () => {
       'gh',
       'gh-auth',
       'git-longpaths',
+      'learn-verify',
     ]);
   });
 });
@@ -216,7 +218,7 @@ describe('formatDoctorReport', () => {
     expect(text).toContain('✔ Node.js: Node.js 22.11.0');
     expect(text).toContain('⚠ GitHub authentication: gh is not authenticated');
     expect(text).toContain('→ Run `gh auth login`.');
-    expect(text).toMatch(/OK: 4 passed, 1 warnings, 0 failed, 2 skipped$/);
+    expect(text).toMatch(/OK: 4 passed, 1 warnings, 0 failed, 3 skipped$/);
   });
 
   it('reports FAILED when any check fails', async () => {
@@ -245,5 +247,67 @@ describe('worktrees check', () => {
     const check = await statusFor(5);
     expect(check?.status).toBe('warn');
     expect(check?.hint).toContain('worktree prune');
+  });
+});
+
+describe('learn-verify check', () => {
+  const lsFiles = 'git ls-files -- .sentinel/learnings .github/workflows/sentinel-lessons.yml';
+  const branch = 'gh repo view --json defaultBranchRef --jq .defaultBranchRef.name';
+  const rules = 'gh api repos/{owner}/{repo}/rules/branches/main';
+  const status = async (responses: Record<string, CommandResult>) =>
+    (await runDoctor(context({ run: fakeRunner({ ...healthy, ...responses }) }))).checks.find(
+      (c) => c.id === 'learn-verify',
+    );
+
+  it('skips a repository without shared lessons', async () => {
+    expect(await status({ [lsFiles]: ok('') })).toMatchObject({ status: 'skip' });
+  });
+
+  it('warns when lessons are committed but nothing verifies them', async () => {
+    expect(
+      await status({ [lsFiles]: ok('.sentinel/learnings/L-20261127-abcdef.md\n') }),
+    ).toMatchObject({
+      status: 'warn',
+      hint: expect.stringContaining('--learn-verify') as unknown,
+    });
+  });
+
+  it('warns when the check exists but is not required', async () => {
+    const result = await status({
+      [lsFiles]: ok('.github/workflows/sentinel-lessons.yml\n'),
+      [branch]: ok('main\n'),
+      [rules]: ok('[]'),
+    });
+    expect(result).toMatchObject({ status: 'warn' });
+    expect(result?.message).toContain('not a required check on main');
+  });
+
+  it('passes when classic branch protection requires it', async () => {
+    expect(
+      await status({
+        [lsFiles]: ok('.github/workflows/sentinel-lessons.yml\n'),
+        [branch]: ok('main\n'),
+        [rules]: ok('[]'),
+        'gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks': ok(
+          JSON.stringify({ contexts: ['sentinel learn verify'] }),
+        ),
+      }),
+    ).toMatchObject({ status: 'pass' });
+  });
+
+  it('passes when a ruleset requires it', async () => {
+    const required = [
+      {
+        type: 'required_status_checks',
+        parameters: { required_status_checks: [{ context: 'sentinel learn verify' }] },
+      },
+    ];
+    expect(
+      await status({
+        [lsFiles]: ok('.github/workflows/sentinel-lessons.yml\n'),
+        [branch]: ok('main\n'),
+        [rules]: ok(JSON.stringify(required)),
+      }),
+    ).toMatchObject({ status: 'pass', message: 'required on main' });
   });
 });

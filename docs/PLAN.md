@@ -1,7 +1,7 @@
 # sentinel — Implementation Plan
 
-> **Status:** v4 — v2 decisions locked after the design-grilling session (2026-11-02); issue trackers revised on 2026-11-04 to use the host agent's own tooling (ADR-0005); distribution revised on 2026-11-09 from an npm package to a plugin marketplace (ADR-0006); issue intake and a standard issue format added on 2026-11-26 (ADR-0007, M9); learning from interventions proposed on 2026-11-27 (ADR-0008, M10). See §11 for the full decision log.
-> **Progress (2026-11-26):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5, M6 and M9 (issue intake, except its manual check) are done; M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
+> **Status:** v4 — v2 decisions locked after the design-grilling session (2026-11-02); issue trackers revised on 2026-11-04 to use the host agent's own tooling (ADR-0005); distribution revised on 2026-11-09 from an npm package to a plugin marketplace (ADR-0006); issue intake and a standard issue format added on 2026-11-26 (ADR-0007, M9); learning from interventions added on 2026-11-27 (ADR-0008, M10). See §11 for the full decision log.
+> **Progress (2026-11-27):** `v0.1.0`–`v0.3.0` are tagged with GitHub Releases (changesets); the plugin is not yet in any public marketplace. M0–M3, M5, M6, M9 (issue intake) and M10 (learning from interventions) are done except their manual checks; M7's smoke test and M8 remain (§9). M4 (MCP) is deferred.
 > Source: _Refined Requirements Specification: `sentinel`_ (PDLC/SDLC platform spec + master generator prompt).
 > Repo at planning time: empty (`README.md` = `# sentinel`), remote `github.com/robert-nagy/sentinel`, branch `main`.
 
@@ -284,7 +284,7 @@ All skills follow the Agent Skills spec: a folder with `SKILL.md`; `name` must m
 | `sentinel-sdlc`      | 2     | `issue resolve` → `get` the issue → dependencies → worktree + `set-status` in progress → RFC `docs/rfcs/issue-<id>.md` → **STOP for RFC approval** → TDD (unit/integration/E2E) → `sentinel-reviewer` → docs sync → PR + `link-pr` → babysit loop.                                                                                                                                                                                                                 | true                             |
 | `sentinel-sdlc-auto` | 2     | Same as `sentinel-sdlc` with no RFC stop; still never merges.                                                                                                                                                                                                                                                                                                                                                                                                      | true                             |
 | `sentinel-babysit`   | 2     | Run `babysit --once` in a loop: read the packet → patch → push → repeat until green or `GIVE_UP`.                                                                                                                                                                                                                                                                                                                                                                  | true                             |
-| `sentinel-learn-pr`  | any   | The user's own PRs only (enforced in code and CI): the PRs the user names (numbers or links), or a pick from `learn suggest` (the user's last 20 merged PRs not learned yet) → `learn pr-changes` → draft at most five lessons per PR, each quoting its commit or comment → **STOP for the user's pick** → `learn add --source pr` → `learn mark-reviewed`. Offered once per PR at the start of sdlc, sdlc-auto and review (ADR-0008, M10c).                       | false (the agent may suggest it) |
+| `sentinel-learn-pr`  | any   | The user's own PRs only (enforced in code and CI): the PRs the user names (numbers or links), or a pick from `learn suggest` (the user's last 20 merged PRs not learned yet) → `learn pr-changes` → draft at most five lessons per PR, each quoting its commit or comment → **STOP for the user's pick** → `learn add` with `source: "pr"` → `learn mark-reviewed`. Offered once per PR at the start of sdlc, sdlc-auto and review (ADR-0008, M10c).               | false (the agent may suggest it) |
 | `sentinel-review`    | any   | Stand-alone review of uncommitted work plus the branch vs its PR target (or a given scope) with `sentinel-reviewer` (inline checklist where there is no sub-agent) → report findings → fix only on request.                                                                                                                                                                                                                                                        | false (the agent may suggest it) |
 
 Shared guardrails (repeated in every skill and in AGENTS.md):
@@ -345,7 +345,7 @@ Not supported in v0.1: OpenCode, the generic `.agents/skills` location and Claud
 
 ```
 sentinel guardrails write [--dry-run]                        # managed block in AGENTS.md (+ CLAUDE.md pointer)
-sentinel setup [--answers answers.json] [--issue-forms]      # Phase 0 (interactive or agent-fed); issue forms: M9
+sentinel setup [--answers answers.json] [--issue-forms] [--learn-verify]   # Phase 0 (interactive or agent-fed); issue forms: M9; lesson check: M10
 sentinel analyze [--json] [--install]
 sentinel branch name --issue <id> [--title] [--label] [--issue-type] [--type feature|bugfix|hotfix|refactor]
 sentinel worktree add <id> [--type] | remove <id> | prune
@@ -362,7 +362,7 @@ sentinel babysit <pr> [--once|--watch]
 sentinel learn add --file <lesson.md> [--local]               # M10: validate, dedupe, store (ADR-0008)
 sentinel learn recall [--paths <files…>] [--tags <tags…>] [--signature <sig>] [--limit 5]
 sentinel learn list | show <id> | prune [--report] | restore <id>
-sentinel learn suggest [--limit 20] [--offer] | pr-changes <pr…> | mark-reviewed <pr…>   # M10c
+sentinel learn suggest [--limit 20] [--offer] | pr-changes <pr…> | mark-reviewed <pr…> | verify --pr <n>   # M10c
 sentinel mine search|draft|create --approved docs/feature-gaps.md
 sentinel mcp                                                   # STDIO MCP server (deferred, M4)
 sentinel doctor                                                # tools, auth, config
@@ -507,23 +507,23 @@ _M9a (core, no skill, can start now). M9b (skill and skill changes) once M9a is 
 _M10a (core, no skill) can start once this ADR is accepted. M10b (skill changes) waits until M10a is in the bundle. M10c (reviewer changes on merged PRs, new skill) follows M10b. Independent of M7–M9._
 
 - [x] Design and grilling: [ADR-0008](adr/0008-learning-from-interventions.md), decisions Q33–Q45.
-- [ ] M10a: move the local tracker's front-matter reader/writer to a shared module (no behaviour change; the local tracker tests stay green).
-- [ ] M10a: `learnings.ts`: lesson schema (zod; summary ≤ 120, body ≤ 800, ≤ 8 scope globs), content-derived id, secret scan with `findSecrets`, rejection of `sentinel:managed` markers.
-- [ ] M10a: glob compiler (`**`, `*`, `?`, `{a,b}`, `/` and `\` separators), with Windows path tests.
-- [ ] M10a: derived index in `.sentinel/state/learn-index.json`, rebuilt by size and mtime only; a test that unchanged lesson files are not read.
-- [ ] M10a: usage state `learn-usage.json` (recurrences, recalls, lastUsed, archived); dedupe on write (same signature, or `titleSimilarity` ≥ `DUPLICATE_THRESHOLD` with a shared scope glob; personal never merges into shared).
-- [ ] M10a: ranking and `learn recall` (`--limit` default 5, hard maximum 10); recall counts never raise rank; archived lessons never returned.
-- [ ] M10a: decay and cap: `learn prune` (archive after `learn.archiveAfterDays`, cap `learn.maxActive`, also run on `add`), `--report`, `restore`; the `learn` config section; `.sentinel/learnings.local/` in `.gitignore` and in the `.gitignore` lines `sentinel-setup` writes.
-- [ ] M10a: babysit packet carries `recurring` and matching `lessons` when its signature is in a lesson or in another PR's local babysit state.
-- [ ] M10a: perf test: 2,000 lessons, warm `recall` under 50 ms and cold index build under 500 ms on CI (with a margin for Windows).
-- [ ] M10b: `sentinel-sdlc` **and** `sentinel-sdlc-auto`: recall before the RFC and before review; capture user overrides; capture or reinforce after a recurring CI signature goes green. A lint test keeps the `learn` steps identical in both skills.
-- [ ] M10b: `sentinel-review` recalls before the reviewer and records a lesson when the user dismisses a finding; `sentinel-babysit` reads `lessons` from the packet and records the lesson after a recurring signature is fixed.
-- [ ] M10b: README section on lessons (where they live, how to delete one, what is never captured).
-- [ ] M10c: `CodeHost.listMergedPullRequests`, `listPullRequestCommits` and `listReviewComments` (GitHub via `gh`, bots skipped); record the agent's last head SHA in the `pr create` and babysit state.
-- [ ] M10c: `learn suggest` (the 20 most recent merged PRs not learned yet, looking back at most 100, with commit and comment counts; `--offer` for sentinel's own, never-offered PRs); learned = a shared lesson with that `pr`, or this machine's `learn-prs.json`; `learn pr-changes <pr…>` (up to 10 PRs, says when a PR was already learned); `learn mark-reviewed`; `learn add --source pr` with `pr` and `from`; `learn.offerPrLessons`.
-- [ ] M10c: `sentinel-learn-pr` SKILL.md (model-invocable; the PRs the user named, or a pick from `learn suggest`; at most five candidates per PR quoting their source; one **STOP** for the user's pick; `learn add`; `mark-reviewed`); the one-line offer at the start of `sentinel-sdlc`, `sentinel-sdlc-auto` (listed in its PR description, no wait) and `sentinel-review`; babysit `done` carries `learnable`; README skills table, §5 table and plugin skill list.
-- [ ] M10c: own-PR rule (ADR-0008 decision 13): author check in `learn suggest` (`--author @me`), `pr-changes` and `add --source pr`; exit code `6` (`Forbidden`) in `exit-codes.ts` and §7; tests that no flag, env var or config key disables it.
-- [ ] M10c: `learn verify --pr <n>` (reads changed lesson files via the API, never runs PR code) and a `pull_request_target` workflow that `sentinel-setup` writes; `sentinel-setup` offers a ruleset requiring the check with no bypass; `doctor` warns when the check is not required.
+- [x] M10a: move the local tracker's front-matter reader/writer to a shared module (no behaviour change; the local tracker tests stay green).
+- [x] M10a: `learnings.ts`: lesson schema (zod; summary ≤ 120, body ≤ 800, ≤ 8 scope globs), content-derived id, secret scan with `findSecrets`, rejection of `sentinel:managed` markers.
+- [x] M10a: glob compiler (`**`, `*`, `?`, `{a,b}`, `/` and `\` separators), with Windows path tests.
+- [x] M10a: derived index in `.sentinel/state/learn-index.json`, rebuilt by size and mtime only; a test that unchanged lesson files are not read.
+- [x] M10a: usage state `learn-usage.json` (recurrences, recalls, lastUsed, archived); dedupe on write (same signature, or `titleSimilarity` ≥ `DUPLICATE_THRESHOLD` with a shared scope glob; personal never merges into shared).
+- [x] M10a: ranking and `learn recall` (`--limit` default 5, hard maximum 10); recall counts never raise rank; archived lessons never returned.
+- [x] M10a: decay and cap: `learn prune` (archive after `learn.archiveAfterDays`, cap `learn.maxActive`, also run on `add`), `--report`, `restore`; the `learn` config section; `.sentinel/learnings.local/` in `.gitignore` and in the `.gitignore` lines `sentinel-setup` writes.
+- [x] M10a: babysit packet carries `recurring` and matching `lessons` when its signature is in a lesson or in another PR's local babysit state.
+- [x] M10a: perf test: 2,000 lessons, warm `recall` under 50 ms and cold index build under 500 ms on CI (with a margin for Windows).
+- [x] M10b: `sentinel-sdlc` **and** `sentinel-sdlc-auto`: recall before the RFC and before review; capture user overrides; capture or reinforce after a recurring CI signature goes green. A lint test keeps the `learn` steps identical in both skills.
+- [x] M10b: `sentinel-review` recalls before the reviewer and records a lesson when the user dismisses a finding; `sentinel-babysit` reads `lessons` from the packet and records the lesson after a recurring signature is fixed.
+- [x] M10b: README section on lessons (where they live, how to delete one, what is never captured).
+- [x] M10c: `CodeHost.listMergedPullRequests`, `listPullRequestCommits` and `listReviewComments` (GitHub via `gh`, bots skipped); record the agent's last head SHA in the `pr create` and babysit state.
+- [x] M10c: `learn suggest` (the 20 most recent merged PRs not learned yet, looking back at most 100, with commit and comment counts; `--offer` for sentinel's own, never-offered PRs); learned = a shared lesson with that `pr`, or this machine's `learn-usage.json`; `learn pr-changes <pr…>` (up to 10 PRs, says when a PR was already learned); `learn mark-reviewed`; `learn add` with `source: "pr"` with `pr` and `from`; `learn.offerPrLessons`.
+- [x] M10c: `sentinel-learn-pr` SKILL.md (model-invocable; the PRs the user named, or a pick from `learn suggest`; at most five candidates per PR quoting their source; one **STOP** for the user's pick; `learn add`; `mark-reviewed`); the one-line offer at the start of `sentinel-sdlc`, `sentinel-sdlc-auto` (listed in its PR description, no wait) and `sentinel-review`; babysit `done` carries `learnable`; README skills table, §5 table and plugin skill list.
+- [x] M10c: own-PR rule (ADR-0008 decision 13): author check in `learn suggest` (`--author @me`), `pr-changes` and `add` of a `source: "pr"` lesson; exit code `6` (`Forbidden`) in `exit-codes.ts` and §7; tests that no flag, env var or config key disables it.
+- [x] M10c: `learn verify --pr <n>` (reads changed lesson files via the API, never runs PR code) and a `pull_request_target` workflow that `sentinel-setup` writes; `sentinel-setup` offers a ruleset requiring the check with no bypass; `doctor` warns when the check is not required.
 - [ ] Manual check: one override on `sentinel-sdlc`, then a second run on an issue touching the same files recalls it; one recurring CI failure across two PRs on `sentinel-sdlc-auto`; a reviewer's fix commit on a merged PR, offered at the next run and kept through `sentinel-learn-pr`.
 
 ### Sequencing: what can run in parallel

@@ -3,6 +3,7 @@ import { ConfigError } from '../core/config.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { GuardrailError } from '../core/guardrails.js';
 import { IssueFormatError } from '../core/issue-format.js';
+import { LearnError } from '../core/learnings.js';
 import { WorktreeError } from '../core/git-worktree-manager.js';
 import { MiningError } from '../core/mining.js';
 import { PrdError } from '../core/prd-state.js';
@@ -25,6 +26,15 @@ export function guarded<Args extends unknown[]>(
       if (error instanceof TrackerError) {
         deps.stderr(`sentinel: ${error.message}`);
         deps.setExitCode(error.kind === 'unavailable' ? ExitCode.Provider : ExitCode.Failure);
+      } else if (error instanceof LearnError) {
+        deps.stderr(`sentinel: ${error.message}`);
+        deps.setExitCode(
+          error.kind === 'forbidden'
+            ? ExitCode.Forbidden
+            : error.kind === 'invalid'
+              ? ExitCode.Refine
+              : ExitCode.Failure,
+        );
       } else if (error instanceof ConfigError) {
         deps.stderr(`sentinel: ${error.message}`);
         deps.setExitCode(ExitCode.Config);

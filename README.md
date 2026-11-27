@@ -82,11 +82,42 @@ support them.
 | `sentinel-mine`      | shipped | Finds feature gaps in comparable projects and files issues on approval                         |
 | `sentinel-review`    | shipped | Reviews a branch, staged or uncommitted work, or a PR, and reports findings                    |
 | `sentinel-intake`    | shipped | Interviews you and files a feature or bug in the [standard issue format](docs/issue-format.md) |
+| `sentinel-learn-pr`  | shipped | Turns reviewers' fixes on your own merged pull requests into lessons you pick                  |
 
 `sentinel-sdlc` and `sentinel-sdlc-auto` hand the pull request to the `sentinel-babysit` loop: the
 agent fixes real CI failures and pushes until the checks are green, or sentinel gives up after
 `babysit.maxAttempts` and leaves a comment for a human. `sentinel-mine` stops for your approval of
 the gap list before it files anything, and `sentinel-intake` for your approval of the issue.
+
+## Lessons
+
+sentinel learns from your corrections ([ADR-0008](docs/adr/0008-learning-from-interventions.md)).
+When you reject or edit an RFC, dismiss a reviewer finding or tell the agent to do something another
+way, the SDLC skills record one short lesson; when the same CI failure comes back on another pull
+request, babysit flags it and the fix becomes a lesson too. Later runs recall the few lessons that
+match the files they touch, before the RFC and before review. Lessons are hints for the agent and
+never override the guardrails or you.
+
+- **Where they live.** Project lessons are one Markdown file each in `.sentinel/learnings/`, committed
+  with the pull request of the run that captured them, so the reviewer sees them. Personal
+  preferences go to `.sentinel/learnings.local/`, which is never committed. Recall counts and the
+  index stay in `.sentinel/state/` on your machine, so recalling a lesson never changes a committed
+  file.
+- **Staying fast.** `sentinel learn recall` reads an index and returns at most 5 lessons (10 at most),
+  however many there are. Near-duplicates are merged when written. A lesson unused for 90 days, or
+  beyond 200 active ones, is archived on your machine (`sentinel learn restore <id>` brings it back);
+  `sentinel learn prune --report` lists shared lessons that may be ready to delete.
+- **Forgetting one.** Delete its file in a pull request.
+- **Reviewers' fixes.** `sentinel-learn-pr` (say "learn from PR 57", or ask what can be learned from
+  recent pull requests) reads what others changed on your merged pull requests and drafts lessons;
+  nothing is stored until you pick which to keep. The SDLC and review skills offer a merged pull
+  request once when it has reviewer changes.
+- **Only your own pull requests.** sentinel refuses, with exit code 6, to learn from a pull request
+  you did not open, and no option changes that. `sentinel setup --learn-verify` adds a CI check that
+  enforces the same rule for committed lessons (it never runs a pull request's code) and a ruleset you
+  can apply to make that check required. Review comments and other people's commits are never
+  turned into lessons unless you pick them.
+- **Turning it off.** Set `"learn": { "enabled": false }` in `sentinel.config.json`.
 
 ## Guardrails
 
@@ -308,6 +339,11 @@ configuration and `sentinel config path` the files that contributed.
 | `babysit.maxAttempts`                           | `5`                          | Fix attempts before giving up                                                     |
 | `babysit.pollIntervalSec`                       | `30`                         | Seconds between CI polls                                                          |
 | `babysit.timeoutMin`                            | `60`                         | Minutes before giving up on a pending run                                         |
+| `learn.enabled`                                 | `true`                       | Record and recall lessons (ADR-0008)                                              |
+| `learn.maxActive`                               | `200`                        | Active lessons kept before the lowest ranked are archived locally                 |
+| `learn.archiveAfterDays`                        | `90`                         | Days without use before a lesson is archived locally                              |
+| `learn.recallLimit`                             | `5`                          | Lessons per recall (at most 10)                                                   |
+| `learn.offerPrLessons`                          | `true`                       | Offer your merged PRs with reviewer changes once, at the start of a run           |
 | `testing.unit`, `.integration`, `.e2e`, `.load` | `null`                       | Command for each test tier                                                        |
 
 Branch templates accept `{issue_id}` (required), `{slug}`, `{type}`, `{user}` and `{date}`.
@@ -316,14 +352,15 @@ Branch templates accept `{issue_id}` (required), `{slug}`, `{type}`, `{user}` an
 
 Every command supports `--json`. Agents branch on the exit code:
 
-| Code | Meaning                                                               |
-| ---- | --------------------------------------------------------------------- |
-| `0`  | Success                                                               |
-| `1`  | Failure (for example a failed `doctor` check)                         |
-| `2`  | Threshold not met: refine and retry (PRD scores, a CI failure to fix) |
-| `3`  | Retry budget exhausted: escalate to a human or a stronger model       |
-| `4`  | Tracker unavailable, or code host / authentication error              |
-| `5`  | Invalid or missing configuration                                      |
+| Code | Meaning                                                                           |
+| ---- | --------------------------------------------------------------------------------- |
+| `0`  | Success                                                                           |
+| `1`  | Failure (for example a failed `doctor` check)                                     |
+| `2`  | Threshold not met: refine and retry (PRD scores, a CI failure to fix)             |
+| `3`  | Retry budget exhausted: escalate to a human or a stronger model                   |
+| `4`  | Tracker unavailable, or code host / authentication error                          |
+| `5`  | Invalid or missing configuration                                                  |
+| `6`  | Forbidden, and no option changes it (for example learning from someone else's PR) |
 
 ## Using the CLI directly
 
@@ -347,6 +384,8 @@ sentinel issue template bug          # empty bug report in the standard issue fo
 sentinel issue lint draft.md --kind bug --title "checkout: total ignores discount code"
 sentinel issue attachments server.log screenshot.png   # inline, upload or pending upload, per file
 sentinel setup --issue-forms         # GitHub issue forms asking for the same sections
+sentinel learn recall --paths src/core/report.ts   # the few lessons that match these files
+sentinel learn suggest               # your merged PRs not learned from yet
 ```
 
 The `setup` command is built, but the skill that drives it is still to come (table above).
