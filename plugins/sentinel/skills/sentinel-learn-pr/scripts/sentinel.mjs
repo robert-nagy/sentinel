@@ -24941,7 +24941,7 @@ var MANAGED_MARKER = /sentinel:managed/i;
 var SEGMENT = /^[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*$/;
 function normalizeRelativePath(value) {
   const trimmed = value.trim().replace(/\/+$/, "");
-  if (trimmed === "" || trimmed.startsWith("/")) return void 0;
+  if (trimmed === "" || trimmed.startsWith("/") || trimmed.startsWith("@")) return void 0;
   const segments = trimmed.split("/");
   if (segments.some((s) => s === "." || s === ".." || !SEGMENT.test(s))) return void 0;
   return segments.join("/");
@@ -25149,6 +25149,16 @@ function plannedProjects(decision) {
     if (layer.ecosystem === void 0) return [];
     const project = plannedProject(layer.ecosystem, layer.path ?? ".");
     return [{ ...project, language: layer.language, frameworks: [...layer.frameworks] }];
+  });
+}
+function uncoveredLayers(decision, detected) {
+  const planned = plannedProjects(decision);
+  const built = decision.layers.filter((layer) => layer.ecosystem !== void 0);
+  return planned.flatMap((project, index) => {
+    const covered = detected.some(
+      (found) => found.ecosystem === project.ecosystem && (project.path === "." || found.path === project.path || found.path.startsWith(`${project.path}/`))
+    );
+    return covered ? [] : [{ layer: built[index]?.name ?? project.path, project }];
   });
 }
 function parseStackOption(value) {
@@ -31257,6 +31267,7 @@ function registerSetup(program2, deps) {
         incoming = await askInTerminal2(answers, deps);
       }
       const files = [];
+      let pendingDecision;
       if (options.architecture !== void 0) {
         const checked = validateDecision(await readDecisionFile(options.architecture, deps));
         if (!checked.ok) {
@@ -31282,25 +31293,20 @@ function registerSetup(program2, deps) {
         }
         const adr = decision?.adr ?? nextAdrPath(await deps.files.listDir(join15(root, ADR_DIR)));
         if (options.force !== true) {
-          await refuseToOverwrite(root, ARCHITECTURE_FILE, deps);
-          await refuseToOverwrite(root, adr, deps);
+          const targets = [
+            ARCHITECTURE_FILE,
+            adr,
+            ...options.workflows === true ? [TESTS_WORKFLOW_PATH, LOAD_WORKFLOW_PATH] : [],
+            ...options.readme === true ? ["README.md"] : [],
+            ...options.issueForms === true ? ISSUE_KINDS.map(
+              (kind) => renderIssueForm(kind, config2.issueProvider.labelMap).path
+            ) : [],
+            ...options.learnVerify === true ? [LEARN_VERIFY_WORKFLOW_PATH] : []
+          ];
+          for (const target of targets) await refuseToOverwrite(root, target, deps);
         }
-        const recorded = buildDecision(checked.decision, deps.now(), adr);
-        if (!dryRun) {
-          await writeNewFile(
-            resolveInside(root, ".", ARCHITECTURE_FILE),
-            `${JSON.stringify(recorded, null, 2)}
-`,
-            options.force === true
-          );
-          await writeNewFile(
-            resolveInside(root, ".", adr),
-            renderDecisionAdr(recorded),
-            options.force === true
-          );
-        }
-        files.push(ARCHITECTURE_FILE, adr);
-        decision = recorded;
+        decision = buildDecision(checked.decision, deps.now(), adr);
+        pendingDecision = decision;
       }
       const changed = Object.keys(incoming).length > 0;
       answers = { ...answers, ...incoming };
@@ -31317,12 +31323,21 @@ function registerSetup(program2, deps) {
         }
         domainWritten = true;
       }
+      const warnings = [];
       const stack = await analyze(root, deps.files);
       let projects = stack.projects;
       if (stack.projects.length === 0 && plannedStack !== void 0) {
         projects = plannedStack.map((entry) => plannedProject(entry.ecosystem, entry.path));
-      } else if (stack.projects.length === 0 && decision !== void 0) {
-        projects = plannedProjects(decision);
+      } else if (decision !== void 0) {
+        const missing = uncoveredLayers(decision, stack.projects);
+        projects = [...stack.projects, ...missing.map((entry) => entry.project)];
+        if (stack.projects.length > 0) {
+          for (const { layer, project } of missing) {
+            warnings.push(
+              `layer "${layer}" (${project.path}) has no code yet; its jobs are planned from ${ARCHITECTURE_FILE}`
+            );
+          }
+        }
       }
       if (options.workflows === true) {
         if (projects.length === 0) {
@@ -31383,8 +31398,23 @@ function registerSetup(program2, deps) {
           files.push(form.path);
         }
       }
+      if (pendingDecision !== void 0) {
+        if (!dryRun) {
+          await writeNewFile(
+            resolveInside(root, ".", ARCHITECTURE_FILE),
+            `${JSON.stringify(pendingDecision, null, 2)}
+`,
+            options.force === true
+          );
+          await writeNewFile(
+            resolveInside(root, ".", pendingDecision.adr),
+            renderDecisionAdr(pendingDecision),
+            options.force === true
+          );
+        }
+        files.unshift(ARCHITECTURE_FILE, pendingDecision.adr);
+      }
       let ruleset;
-      const warnings = [];
       if (options.learnVerify === true) {
         const path = LEARN_VERIFY_WORKFLOW_PATH;
         if (options.force !== true) await refuseToOverwrite(root, path, deps);

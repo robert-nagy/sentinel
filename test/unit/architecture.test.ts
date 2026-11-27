@@ -308,6 +308,7 @@ describe('parseStackOption', () => {
     expect(() => parseStackOption('cobol')).toThrow(/unknown stack "cobol"/);
     expect(() => parseStackOption('node:../x')).toThrow(/path/);
     expect(() => parseStackOption('node:/x')).toThrow(/path/);
+    expect(() => parseStackOption('node:@app')).toThrow(/path/);
     expect(() => parseStackOption('node:web,go:web')).toThrow(/"web" is used twice/);
     expect(() => parseStackOption('node,go')).toThrow(/give each a path/);
     expect(() => parseStackOption('')).toThrow(/empty/);

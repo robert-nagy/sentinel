@@ -8,11 +8,11 @@ import {
   buildDecision,
   nextAdrPath,
   parseStackOption,
-  plannedProjects,
   readDecision,
   renderDecisionAdr,
   validateDecision,
   type ArchitectureDecision,
+  uncoveredLayers,
 } from '../core/architecture.js';
 import { ExitCode } from '../core/exit-codes.js';
 import { ISSUE_KINDS, renderIssueForm } from '../core/issue-format.js';
@@ -41,7 +41,9 @@ import { StateStore } from '../core/state.js';
 import {
   LEARN_VERIFY_CHECK,
   LEARN_VERIFY_WORKFLOW_PATH,
+  LOAD_WORKFLOW_PATH,
   SENTINEL_REPO,
+  TESTS_WORKFLOW_PATH,
   learnVerifyRuleset,
   renderLearnVerifyWorkflow,
   renderWorkflows,
@@ -196,6 +198,7 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           incoming = await askInTerminal(answers, deps);
         }
         const files: string[] = [];
+        let pendingDecision: ArchitectureDecision | undefined;
         if (options.architecture !== undefined) {
           const checked = validateDecision(await readDecisionFile(options.architecture, deps));
           if (!checked.ok) {
@@ -221,25 +224,25 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           }
           const adr = decision?.adr ?? nextAdrPath(await deps.files.listDir(join(root, ADR_DIR)));
           if (options.force !== true) {
-            await refuseToOverwrite(root, ARCHITECTURE_FILE, deps);
-            await refuseToOverwrite(root, adr, deps);
+            // Check every file this run writes up front, so a refusal leaves nothing half-written.
+            const targets = [
+              ARCHITECTURE_FILE,
+              adr,
+              ...(options.workflows === true ? [TESTS_WORKFLOW_PATH, LOAD_WORKFLOW_PATH] : []),
+              ...(options.readme === true ? ['README.md'] : []),
+              ...(options.issueForms === true
+                ? ISSUE_KINDS.map(
+                    (kind) => renderIssueForm(kind, config.issueProvider.labelMap).path,
+                  )
+                : []),
+              ...(options.learnVerify === true ? [LEARN_VERIFY_WORKFLOW_PATH] : []),
+            ];
+            for (const target of targets) await refuseToOverwrite(root, target, deps);
           }
-          const recorded = buildDecision(checked.decision, deps.now(), adr);
-          if (!dryRun) {
-            await writeNewFile(
-              resolveInside(root, '.', ARCHITECTURE_FILE),
-              `${JSON.stringify(recorded, null, 2)}\n`,
-              options.force === true,
-            );
-            await writeNewFile(
-              resolveInside(root, '.', adr),
-              renderDecisionAdr(recorded),
-              options.force === true,
-            );
-          }
-          files.push(ARCHITECTURE_FILE, adr);
-          // A dry run still plans the workflows and README from the decision it would record.
-          decision = recorded;
+          // Written at the end, once every other step has succeeded; the workflows and the README
+          // are already planned from it (also in a dry run).
+          decision = buildDecision(checked.decision, deps.now(), adr);
+          pendingDecision = decision;
         }
 
         const changed = Object.keys(incoming).length > 0;
@@ -258,13 +261,23 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           domainWritten = true;
         }
 
+        const warnings: string[] = [];
         const stack = await analyze(root, deps.files);
         let projects: readonly ProjectReport[] = stack.projects;
         // No code yet (or only docs and config): plan the projects from --stack or the decision.
         if (stack.projects.length === 0 && plannedStack !== undefined) {
           projects = plannedStack.map((entry) => plannedProject(entry.ecosystem, entry.path));
-        } else if (stack.projects.length === 0 && decision !== undefined) {
-          projects = plannedProjects(decision);
+        } else if (decision !== undefined) {
+          // Recorded layers without code yet still get their toolchain and jobs.
+          const missing = uncoveredLayers(decision, stack.projects);
+          projects = [...stack.projects, ...missing.map((entry) => entry.project)];
+          if (stack.projects.length > 0) {
+            for (const { layer, project } of missing) {
+              warnings.push(
+                `layer "${layer}" (${project.path}) has no code yet; its jobs are planned from ${ARCHITECTURE_FILE}`,
+              );
+            }
+          }
         }
 
         if (options.workflows === true) {
@@ -330,8 +343,23 @@ export function registerSetup(program: Command, deps: CliDeps): void {
           }
         }
 
+        if (pendingDecision !== undefined) {
+          if (!dryRun) {
+            await writeNewFile(
+              resolveInside(root, '.', ARCHITECTURE_FILE),
+              `${JSON.stringify(pendingDecision, null, 2)}\n`,
+              options.force === true,
+            );
+            await writeNewFile(
+              resolveInside(root, '.', pendingDecision.adr),
+              renderDecisionAdr(pendingDecision),
+              options.force === true,
+            );
+          }
+          files.unshift(ARCHITECTURE_FILE, pendingDecision.adr);
+        }
+
         let ruleset: string | undefined;
-        const warnings: string[] = [];
         if (options.learnVerify === true) {
           const path = LEARN_VERIFY_WORKFLOW_PATH;
           if (options.force !== true) await refuseToOverwrite(root, path, deps);

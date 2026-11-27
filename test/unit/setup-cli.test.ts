@@ -334,6 +334,41 @@ describe('sentinel setup', () => {
     expect(readme).toContain('- **database**: SQL (PostgreSQL)');
   });
 
+  it('writes nothing when another requested file already exists', async () => {
+    await writeJson('a.json', core);
+    await cli().run('setup', '--answers', 'a.json');
+    await writeFile(join(repo, 'README.md'), '# Mine\n', 'utf8');
+    await writeJson('decision.json', decision);
+    const { run, codes, out } = cli();
+    await run('setup', '--architecture', 'decision.json', '--workflows', '--readme');
+    expect(codes).toContain(1);
+    expect(out.join('\n')).toContain('README.md already exists');
+    await expect(readFile(join(repo, '.sentinel', 'architecture.json'), 'utf8')).rejects.toThrow();
+    await expect(
+      readFile(join(repo, '.github/workflows/sentinel-tests.yml'), 'utf8'),
+    ).rejects.toThrow();
+  });
+
+  it('plans the recorded layers that have no code yet next to the detected ones', async () => {
+    await mkdir(join(repo, 'src', 'backend', 'Api'), { recursive: true });
+    await writeFile(join(repo, 'src/backend/Api/Api.csproj'), '<Project />', 'utf8');
+    await writeJson('decision.json', decision);
+    const { run, json } = cli();
+    await run('setup', '--architecture', 'decision.json', '--workflows', '--json');
+    const result = json() as ArchitectureResult & {
+      stack: { projects: { path: string; ecosystem: string }[] };
+      warnings: string[];
+    };
+    expect(result.stack.projects.map((p) => [p.path, p.ecosystem])).toEqual([
+      ['src/backend/Api', 'dotnet'],
+      ['src/web', 'node'],
+    ]);
+    expect(result.warnings.join('\n')).toContain('layer "frontend" (src/web) has no code yet');
+    const tests = await readFile(join(repo, '.github/workflows/sentinel-tests.yml'), 'utf8');
+    expect(tests).toContain('actions/setup-dotnet');
+    expect(tests).toContain('working-directory: src/web');
+  });
+
   it('replaces a corrupt recorded decision with --architecture --force', async () => {
     await mkdir(join(repo, '.sentinel'), { recursive: true });
     await writeFile(join(repo, '.sentinel', 'architecture.json'), '{"version":1}', 'utf8');

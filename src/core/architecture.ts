@@ -63,7 +63,8 @@ const SEGMENT = /^[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*$/;
 /** A relative path with `/` separators, without `.`/`..` segments; a trailing `/` is dropped. */
 export function normalizeRelativePath(value: string): string | undefined {
   const trimmed = value.trim().replace(/\/+$/, '');
-  if (trimmed === '' || trimmed.startsWith('/')) return undefined;
+  // A leading @ cannot start a plain YAML scalar, and the path goes into workflow YAML.
+  if (trimmed === '' || trimmed.startsWith('/') || trimmed.startsWith('@')) return undefined;
   const segments = trimmed.split('/');
   if (segments.some((s) => s === '.' || s === '..' || !SEGMENT.test(s))) return undefined;
   return segments.join('/');
@@ -341,6 +342,29 @@ export function plannedProjects(decision: ArchitectureDecision): ProjectReport[]
     if (layer.ecosystem === undefined) return [];
     const project = plannedProject(layer.ecosystem, layer.path ?? '.');
     return [{ ...project, language: layer.language, frameworks: [...layer.frameworks] }];
+  });
+}
+
+/**
+ * The decision's layers that no detected project covers yet, planned like {@link plannedProjects}.
+ * A detected project covers a layer when it has the same ecosystem and sits at or under the
+ * layer's path (anywhere, for a layer at the root).
+ */
+export function uncoveredLayers(
+  decision: ArchitectureDecision,
+  detected: readonly ProjectReport[],
+): { layer: string; project: ProjectReport }[] {
+  const planned = plannedProjects(decision);
+  const built = decision.layers.filter((layer) => layer.ecosystem !== undefined);
+  return planned.flatMap((project, index) => {
+    const covered = detected.some(
+      (found) =>
+        found.ecosystem === project.ecosystem &&
+        (project.path === '.' ||
+          found.path === project.path ||
+          found.path.startsWith(`${project.path}/`)),
+    );
+    return covered ? [] : [{ layer: built[index]?.name ?? project.path, project }];
   });
 }
 
