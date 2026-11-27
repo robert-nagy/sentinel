@@ -95,8 +95,10 @@ its `path`), and `formatDecision(decision)` for plain output.
 - `sentinel setup --stack <list>`: `<ecosystem>[:<path>]` separated by commas, for example
   `dotnet:src/backend,node:src/web`. One bare ecosystem still means the root (`node`). Unknown
   ecosystems, duplicate paths, absolute or `..` paths are rejected.
-- In an empty repository without `--stack`, the planned projects come from the recorded decision's
-  layers, so the workflows follow the decision.
+- When no project is detected yet (an empty repository, or one with only docs and config, such as
+  the ADR this command just wrote), `--stack` or, without it, the recorded decision's layers give
+  the planned projects, so the workflows follow the decision. `stack.proposal` is `true` only when
+  nothing is planned.
 - Every `setup --json` result gains `architecture: { path, recorded, adr }`; the plain output
   prints a line for it.
 - `sentinel architecture show [--json]` (new `src/cli/architecture.ts`): prints the decision.
@@ -165,6 +167,12 @@ PR. Repositories that recorded a decision keep two inert files.
   purposes has many false positives; the reviewer checks drift with the decision in hand.
 - Risk: the decision drifts as the project evolves. The RFC section makes departures explicit, and
   re-running setup with `--architecture --force` records a new decision and rewrites the ADR.
+
+## Departures from the first draft
+
+- Planning from `--stack` or the decision applies whenever no project is detected, not only in an
+  "empty" repository: writing the ADR creates `docs/`, which made the repository non-empty for the
+  stack analyser, so `setup --architecture <file> --workflows` would have found nothing to plan.
 
 ## Open questions
 

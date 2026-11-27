@@ -77,7 +77,7 @@ support them.
 | `sentinel-prd`       | shipped | Drafts and validates a PRD                                                                     |
 | `sentinel-sdlc`      | shipped | Issue to pull request, with an RFC approval stop                                               |
 | `sentinel-sdlc-auto` | shipped | Same, without the approval stop                                                                |
-| `sentinel-setup`     | shipped | Bootstraps a repository: domain questions, test tiers, CI workflows                            |
+| `sentinel-setup`     | shipped | Bootstraps a repository: domain, stack and architecture decisions, test tiers, CI workflows    |
 | `sentinel-babysit`   | shipped | Watches a pull request's CI and fixes failures until green                                     |
 | `sentinel-mine`      | shipped | Finds feature gaps in comparable projects and files issues on approval                         |
 | `sentinel-review`    | shipped | Reviews a branch, staged or uncommitted work, or a PR, and reports findings                    |
@@ -88,6 +88,9 @@ support them.
 agent fixes real CI failures and pushes until the checks are green, or sentinel gives up after
 `babysit.maxAttempts` and leaves a comment for a human. `sentinel-mine` stops for your approval of
 the gap list before it files anything, and `sentinel-intake` for your approval of the issue.
+`sentinel-setup` decides the stack, the architecture and the folder layout with you and records
+them ([ADR-0009](docs/adr/0009-stack-and-architecture-decision.md)); both SDLC skills hold their
+RFCs to that decision and stop to ask when an issue needs a choice that is not recorded.
 
 ## Lessons
 
@@ -378,6 +381,9 @@ sentinel rfc new 42                  # docs/rfcs/issue-42.md
 sentinel pr create --issue 42 --title "Add login page"
 sentinel guardrails write            # managed block in AGENTS.md
 sentinel setup --questions --json    # open domain questions and the detected stack
+sentinel setup --architecture decision.json   # record the stack and architecture, and its ADR
+sentinel setup --workflows --stack dotnet:src/backend,node:src/web   # one job per toolchain
+sentinel architecture show           # the recorded decision; exits 2 when none
 sentinel babysit 17 --once --json    # one look at a PR's CI: wait, done, patch or give-up
 sentinel mine search "task tracker"  # popular comparable repositories
 sentinel issue template bug          # empty bug report in the standard issue format
@@ -387,8 +393,6 @@ sentinel setup --issue-forms         # GitHub issue forms asking for the same se
 sentinel learn recall --paths src/core/report.ts   # the few lessons that match these files
 sentinel learn suggest               # your merged PRs not learned from yet
 ```
-
-The `setup` command is built, but the skill that drives it is still to come (table above).
 
 Run `sentinel --help` for the full list.
 

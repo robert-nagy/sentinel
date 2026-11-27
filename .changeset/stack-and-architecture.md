@@ -1,0 +1,5 @@
+---
+'@robert-nagy/sentinel': minor
+---
+
+Decide the stack, architecture and folder layout during setup (issue #44). `sentinel-setup` now proposes a stack per layer, 2 to 3 named architectures with their trade-offs and DDD level, and a folder layout, and stops for the user's choice at each step. `sentinel setup --architecture <file>` checks the decision and records it as `.sentinel/architecture.json` and an ADR under `docs/adr/`. The workflows and the README follow it before any code exists. `--stack` takes several ecosystems with paths (`dotnet:src/backend,node:src/web`), so the generated workflows set up every toolchain. The new `sentinel architecture show` command exits `2` when nothing is recorded. `sentinel-sdlc` and `sentinel-sdlc-auto` read the decision before the RFC and stop to ask when an issue needs a stack or architecture choice that is not recorded, also in unattended runs. The RFC template gains a "Stack and architecture" section, and the reviewer checks for architecture drift.
