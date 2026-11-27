@@ -1,5 +1,0 @@
----
-'@robert-nagy/sentinel': minor
----
-
-Learn from interventions (ADR-0008). sentinel now records short lessons when you correct it during a run, and when a CI failure comes back on another pull request, then recalls the few that match the files a later run touches, before the RFC and before review. Project lessons are committed in `.sentinel/learnings/`, personal ones stay in the git-ignored `.sentinel/learnings.local/`, and counters stay local, so recall never changes a committed file. New `sentinel learn` commands (`add`, `recall`, `list`, `show`, `prune`, `restore`, `suggest`, `pr-changes`, `mark-reviewed`, `verify`), a new `sentinel-learn-pr` skill that turns reviewers' fixes on your own merged pull requests into lessons you pick, a `learn` config section, exit code `6` (forbidden), `sentinel setup --learn-verify` (a CI check and ruleset for committed lessons) and a `doctor` check for it. sentinel only ever learns from your own pull requests; no option changes that. `babysit --json` reports `recurring`, `recurringPrs` and `lessons`, and babysit state now lives in the main checkout. `.sentinel/state/` is git-ignored by itself in every repository.
