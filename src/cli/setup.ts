@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 import {
   ADR_DIR,
   ARCHITECTURE_FILE,
+  ArchitectureError,
   buildDecision,
   nextAdrPath,
   parseStackOption,
@@ -165,7 +166,15 @@ export function registerSetup(program: Command, deps: CliDeps): void {
 
         const plannedStack =
           options.stack === undefined ? undefined : parseStackOption(options.stack);
-        let decision: ArchitectureDecision | undefined = await readDecision(root, deps.files);
+        const recordedBefore = await readDecision(root, deps.files).catch((error: unknown) => {
+          // A broken decision file can be replaced: `--architecture <file> --force` records over it.
+          const replacing = options.architecture !== undefined && options.force === true;
+          if (replacing && error instanceof ArchitectureError && error.kind === 'invalid-file') {
+            return undefined;
+          }
+          throw error;
+        });
+        let decision: ArchitectureDecision | undefined = recordedBefore;
 
         const existingText = await deps.files.readText(domainPath);
         const existing =
@@ -363,7 +372,7 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             projects,
             proposal: projects.length === 0,
           },
-          architecture: architectureState(dryRun ? await readDecision(root, deps.files) : decision),
+          architecture: architectureState(dryRun ? recordedBefore : decision),
           files,
           ruleset,
           warnings,

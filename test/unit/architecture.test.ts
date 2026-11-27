@@ -193,6 +193,22 @@ describe('buildDecision and parseDecision', () => {
     expect(parseDecision(JSON.stringify(decision), ARCHITECTURE_FILE)).toEqual(decision);
   });
 
+  it('rejects a recorded ADR path outside docs/adr and broken cross-field rules', () => {
+    const checked = validateDecision(input);
+    if (!checked.ok) throw new Error('invalid fixture');
+    const decision = buildDecision(checked.decision, now, nextAdrPath(undefined));
+    expect(() =>
+      parseDecision(JSON.stringify({ ...decision, adr: 'README.md' }), ARCHITECTURE_FILE),
+    ).toThrow(/adr/);
+    const pathless = {
+      ...decision,
+      layers: decision.layers.map((layer) => ({ ...layer, path: undefined })),
+    };
+    expect(() => parseDecision(JSON.stringify(pathless), ARCHITECTURE_FILE)).toThrow(
+      /layers\.0\.path: required/,
+    );
+  });
+
   it('throws an ArchitectureError naming the file when it is invalid', () => {
     expect(() => parseDecision('{', ARCHITECTURE_FILE)).toThrow(ArchitectureError);
     expect(() => parseDecision('{"version":1}', ARCHITECTURE_FILE)).toThrow(

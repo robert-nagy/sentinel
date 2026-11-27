@@ -24980,7 +24980,7 @@ var layerSchema = external_exports.strictObject({
   language: text(LIMITS.short),
   frameworks: external_exports.array(text(LIMITS.short)).max(LIMITS.frameworks)
 });
-var inputSchema = external_exports.strictObject({
+var fields = {
   layers: external_exports.array(layerSchema).min(1, "name at least one layer").max(LIMITS.layers),
   architecture: external_exports.strictObject({
     style: text(LIMITS.style),
@@ -24990,7 +24990,8 @@ var inputSchema = external_exports.strictObject({
   }),
   alternatives: external_exports.array(external_exports.strictObject({ style: text(LIMITS.style), reason: text(LIMITS.long) })).min(1, "record at least one architecture that was not chosen, with the reason").max(LIMITS.alternatives),
   folders: external_exports.array(external_exports.strictObject({ path: relativePath, purpose: text(LIMITS.purpose) })).min(1, "name at least one folder").max(LIMITS.folders)
-}).superRefine((value, ctx) => {
+};
+function checkCrossFields(value, ctx) {
   const names = /* @__PURE__ */ new Set();
   for (const layer of value.layers) {
     if (names.has(layer.name)) {
@@ -25037,16 +25038,18 @@ var inputSchema = external_exports.strictObject({
     }
     folders.add(folder.path);
   }
-});
+}
+var inputSchema = external_exports.strictObject(fields).superRefine(checkCrossFields);
+var adrPathSchema = relativePath.refine(
+  (value) => new RegExp(`^${ADR_DIR}/\\d{4}-[A-Za-z0-9._-]+\\.md$`).test(value),
+  `must be a file in ${ADR_DIR}/ named NNNN-<slug>.md`
+);
 var decisionSchema = external_exports.strictObject({
   version: external_exports.literal(1),
   decidedAt: external_exports.iso.datetime(),
-  adr: relativePath,
-  layers: external_exports.array(layerSchema),
-  architecture: inputSchema.shape.architecture,
-  alternatives: inputSchema.shape.alternatives,
-  folders: inputSchema.shape.folders
-});
+  adr: adrPathSchema,
+  ...fields
+}).superRefine(checkCrossFields);
 function formatIssues(issues) {
   return issues.map((issue2) => {
     const path = issue2.path.map(String).join(".");
@@ -25647,16 +25650,16 @@ function parseFrontMatter(text3) {
   const normalized = text3.replace(/\r\n/g, "\n");
   const match = /^---\n([\s\S]*?)\n---\n?/.exec(normalized);
   if (!match) return void 0;
-  const fields = /* @__PURE__ */ new Map();
+  const fields2 = /* @__PURE__ */ new Map();
   for (const line of (match[1] ?? "").split("\n")) {
     const kv = /^([A-Za-z][\w-]*):(.*)$/.exec(line);
-    if (kv) fields.set(kv[1] ?? "", parseScalar(kv[2] ?? ""));
+    if (kv) fields2.set(kv[1] ?? "", parseScalar(kv[2] ?? ""));
   }
-  return { fields, rest: normalized.slice(match[0].length) };
+  return { fields: fields2, rest: normalized.slice(match[0].length) };
 }
-function renderFrontMatter(fields) {
+function renderFrontMatter(fields2) {
   const lines = ["---"];
-  for (const [key2, value] of fields) {
+  for (const [key2, value] of fields2) {
     if (value === void 0) continue;
     lines.push(`${key2}: ${typeof value === "number" ? String(value) : JSON.stringify(value)}`);
   }
@@ -25825,12 +25828,12 @@ function optionalString(value) {
   const text3 = String(value).trim();
   return text3 === "" ? void 0 : text3;
 }
-function check2({ fields, body }, id, created, stored = false) {
+function check2({ fields: fields2, body }, id, created, stored = false) {
   const problems = [];
-  if (stored && optionalString(fields.get("source")) === void 0) {
+  if (stored && optionalString(fields2.get("source")) === void 0) {
     problems.push("source is required in a stored lesson");
   }
-  const summary = optionalString(fields.get("summary"));
+  const summary = optionalString(fields2.get("summary"));
   if (summary === void 0) problems.push("summary is required");
   else if (summary.includes("\n")) problems.push("summary must be one line");
   else if (summary.length > LIMITS2.summary)
@@ -25838,7 +25841,7 @@ function check2({ fields, body }, id, created, stored = false) {
   if (body === "") problems.push("the body (what went wrong and what to do instead) is empty");
   else if (body.length > LIMITS2.body)
     problems.push(`the body is longer than ${String(LIMITS2.body)} characters`);
-  const rawScope = stringList(fields.get("scope"));
+  const rawScope = stringList(fields2.get("scope"));
   const scope = rawScope === void 0 ? void 0 : rawScope.length === 0 ? ["**"] : rawScope.map(normalizePath);
   if (scope === void 0) problems.push("scope must be a list of globs");
   else {
@@ -25851,7 +25854,7 @@ function check2({ fields, body }, id, created, stored = false) {
     if (scope.length > 1 && scope.some(isGlobalGlob))
       problems.push('scope "**" (global) cannot be combined with other globs');
   }
-  const tags = stringList(fields.get("tags"));
+  const tags = stringList(fields2.get("tags"));
   if (tags === void 0) problems.push("tags must be a list");
   else {
     if (tags.length > LIMITS2.tags) problems.push(`more than ${String(LIMITS2.tags)} tags`);
@@ -25860,15 +25863,15 @@ function check2({ fields, body }, id, created, stored = false) {
         problems.push(`tag "${tag.slice(0, 40)}" must be lower-case letters, digits, . _ / -`);
     }
   }
-  const signature = optionalString(fields.get("signature"));
+  const signature = optionalString(fields2.get("signature"));
   if (signature !== void 0 && signature.length > LIMITS2.signature)
     problems.push(`signature is longer than ${String(LIMITS2.signature)} characters`);
-  const source = optionalString(fields.get("source")) ?? "override";
+  const source = optionalString(fields2.get("source")) ?? "override";
   if (!LESSON_SOURCES.includes(source))
     problems.push(`source must be one of ${LESSON_SOURCES.join(", ")}`);
-  const rawPr = optionalString(fields.get("pr"));
+  const rawPr = optionalString(fields2.get("pr"));
   const pr = rawPr === void 0 ? void 0 : Number(rawPr.replace(/^#/, ""));
-  const from = optionalString(fields.get("from"));
+  const from = optionalString(fields2.get("from"));
   if (source === "pr") {
     if (pr === void 0 || !Number.isInteger(pr) || pr <= 0)
       problems.push('a lesson with source "pr" needs pr: the pull request number');
@@ -29340,16 +29343,16 @@ function parseComments(section2) {
   return comments;
 }
 function parseLocalIssue(text3, path) {
-  const { fields, rest } = splitFrontMatter(text3, path);
-  const id = Number(fields.get("id"));
-  const title = fields.get("title");
+  const { fields: fields2, rest } = splitFrontMatter(text3, path);
+  const id = Number(fields2.get("id"));
+  const title = fields2.get("title");
   if (!Number.isInteger(id) || id <= 0 || typeof title !== "string" || title.trim() === "") {
     throw new TrackerError(`${path} needs a numeric id and a title in its front matter`);
   }
-  const status = fields.get("status") === "closed" ? "closed" : "open";
-  const rawLabels = fields.get("labels");
+  const status = fields2.get("status") === "closed" ? "closed" : "open";
+  const rawLabels = fields2.get("labels");
   const labels = Array.isArray(rawLabels) ? rawLabels.map(String) : [];
-  const rawCreated = fields.get("created");
+  const rawCreated = fields2.get("created");
   const created = typeof rawCreated === "string" ? rawCreated : "";
   const lines = rest.split("\n");
   const headingIndex = lines.findIndex((l) => l.trim() === COMMENTS_HEADING);
@@ -31236,7 +31239,14 @@ function registerSetup(program2, deps) {
       const dryRun = options.dryRun === true;
       const domainPath = join15(root, DOMAIN_FILE);
       const plannedStack = options.stack === void 0 ? void 0 : parseStackOption(options.stack);
-      let decision = await readDecision(root, deps.files);
+      const recordedBefore = await readDecision(root, deps.files).catch((error63) => {
+        const replacing = options.architecture !== void 0 && options.force === true;
+        if (replacing && error63 instanceof ArchitectureError && error63.kind === "invalid-file") {
+          return void 0;
+        }
+        throw error63;
+      });
+      let decision = recordedBefore;
       const existingText = await deps.files.readText(domainPath);
       const existing = existingText === void 0 ? void 0 : parseDomain(existingText, DOMAIN_FILE);
       let answers = existing?.answers ?? {};
@@ -31412,7 +31422,7 @@ function registerSetup(program2, deps) {
           projects,
           proposal: projects.length === 0
         },
-        architecture: architectureState(dryRun ? await readDecision(root, deps.files) : decision),
+        architecture: architectureState(dryRun ? recordedBefore : decision),
         files,
         ruleset,
         warnings

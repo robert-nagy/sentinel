@@ -334,6 +334,19 @@ describe('sentinel setup', () => {
     expect(readme).toContain('- **database**: SQL (PostgreSQL)');
   });
 
+  it('replaces a corrupt recorded decision with --architecture --force', async () => {
+    await mkdir(join(repo, '.sentinel'), { recursive: true });
+    await writeFile(join(repo, '.sentinel', 'architecture.json'), '{"version":1}', 'utf8');
+    await writeJson('decision.json', decision);
+    const refused = cli();
+    await refused.run('setup', '--architecture', 'decision.json');
+    expect(refused.codes).toContain(5);
+    const { run, json, codes } = cli();
+    await run('setup', '--architecture', 'decision.json', '--force', '--json');
+    expect(codes).not.toContain(5);
+    expect((json() as ArchitectureResult).architecture.recorded).toBe(true);
+  });
+
   it('fails with exit 5 when the recorded decision is corrupt', async () => {
     await mkdir(join(repo, '.sentinel'), { recursive: true });
     await writeFile(join(repo, '.sentinel', 'architecture.json'), '{"version":1}', 'utf8');

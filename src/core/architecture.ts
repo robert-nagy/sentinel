@@ -114,86 +114,99 @@ const layerSchema = z.strictObject({
   frameworks: z.array(text(LIMITS.short)).max(LIMITS.frameworks),
 });
 
-const inputSchema = z
-  .strictObject({
-    layers: z.array(layerSchema).min(1, 'name at least one layer').max(LIMITS.layers),
-    architecture: z.strictObject({
-      style: text(LIMITS.style),
-      ddd: z.enum(DDD_LEVELS),
-      principles: z.array(text(LIMITS.short)).max(LIMITS.principles),
-      rationale: text(LIMITS.long, { singleLine: false }),
-    }),
-    alternatives: z
-      .array(z.strictObject({ style: text(LIMITS.style), reason: text(LIMITS.long) }))
-      .min(1, 'record at least one architecture that was not chosen, with the reason')
-      .max(LIMITS.alternatives),
-    folders: z
-      .array(z.strictObject({ path: relativePath, purpose: text(LIMITS.purpose) }))
-      .min(1, 'name at least one folder')
-      .max(LIMITS.folders),
-  })
-  .superRefine((value, ctx) => {
-    const names = new Set<string>();
-    for (const layer of value.layers) {
-      if (names.has(layer.name)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['layers'],
-          message: `duplicate name "${layer.name}"`,
-        });
-      }
-      names.add(layer.name);
+const fields = {
+  layers: z.array(layerSchema).min(1, 'name at least one layer').max(LIMITS.layers),
+  architecture: z.strictObject({
+    style: text(LIMITS.style),
+    ddd: z.enum(DDD_LEVELS),
+    principles: z.array(text(LIMITS.short)).max(LIMITS.principles),
+    rationale: text(LIMITS.long, { singleLine: false }),
+  }),
+  alternatives: z
+    .array(z.strictObject({ style: text(LIMITS.style), reason: text(LIMITS.long) }))
+    .min(1, 'record at least one architecture that was not chosen, with the reason')
+    .max(LIMITS.alternatives),
+  folders: z
+    .array(z.strictObject({ path: relativePath, purpose: text(LIMITS.purpose) }))
+    .min(1, 'name at least one folder')
+    .max(LIMITS.folders),
+};
+
+interface CrossFields {
+  readonly layers: readonly z.output<typeof layerSchema>[];
+  readonly folders: readonly { readonly path: string }[];
+}
+
+/** Rules across entries: unique names and paths, and a path per built layer when there are several. */
+function checkCrossFields(value: CrossFields, ctx: z.core.$RefinementCtx<CrossFields>): void {
+  const names = new Set<string>();
+  for (const layer of value.layers) {
+    if (names.has(layer.name)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['layers'],
+        message: `duplicate name "${layer.name}"`,
+      });
     }
-    const built = value.layers.filter((layer) => layer.ecosystem !== undefined);
-    const owners = new Map<string, string>();
-    value.layers.forEach((layer, index) => {
-      if (layer.ecosystem === undefined) return;
-      if (layer.path === undefined) {
-        if (built.length > 1) {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['layers', index, 'path'],
-            message:
-              'required when more than one layer has an ecosystem (the workflows need a working directory for each)',
-          });
-        }
-        return;
-      }
-      const owner = owners.get(layer.path);
-      if (owner !== undefined) {
+    names.add(layer.name);
+  }
+  const built = value.layers.filter((layer) => layer.ecosystem !== undefined);
+  const owners = new Map<string, string>();
+  value.layers.forEach((layer, index) => {
+    if (layer.ecosystem === undefined) return;
+    if (layer.path === undefined) {
+      if (built.length > 1) {
         ctx.addIssue({
           code: 'custom',
           path: ['layers', index, 'path'],
-          message: `"${layer.path}" is already used by layer "${owner}"`,
+          message:
+            'required when more than one layer has an ecosystem (the workflows need a working directory for each)',
         });
       }
-      owners.set(layer.path, layer.name);
-    });
-    const folders = new Set<string>();
-    for (const folder of value.folders) {
-      if (folders.has(folder.path)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['folders'],
-          message: `duplicate path "${folder.path}"`,
-        });
-      }
-      folders.add(folder.path);
+      return;
     }
+    const owner = owners.get(layer.path);
+    if (owner !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['layers', index, 'path'],
+        message: `"${layer.path}" is already used by layer "${owner}"`,
+      });
+    }
+    owners.set(layer.path, layer.name);
   });
+  const folders = new Set<string>();
+  for (const folder of value.folders) {
+    if (folders.has(folder.path)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['folders'],
+        message: `duplicate path "${folder.path}"`,
+      });
+    }
+    folders.add(folder.path);
+  }
+}
+
+const inputSchema = z.strictObject(fields).superRefine(checkCrossFields);
 
 export type DecisionInput = z.output<typeof inputSchema>;
 export type Layer = DecisionInput['layers'][number];
 
-const decisionSchema = z.strictObject({
-  version: z.literal(1),
-  decidedAt: z.iso.datetime(),
-  adr: relativePath,
-  layers: z.array(layerSchema),
-  architecture: inputSchema.shape.architecture,
-  alternatives: inputSchema.shape.alternatives,
-  folders: inputSchema.shape.folders,
-});
+/** The ADR lives in `docs/adr/`, so a hand-edited file cannot point a rewrite at another file. */
+const adrPathSchema = relativePath.refine(
+  (value) => new RegExp(`^${ADR_DIR}/\\d{4}-[A-Za-z0-9._-]+\\.md$`).test(value),
+  `must be a file in ${ADR_DIR}/ named NNNN-<slug>.md`,
+);
+
+const decisionSchema = z
+  .strictObject({
+    version: z.literal(1),
+    decidedAt: z.iso.datetime(),
+    adr: adrPathSchema,
+    ...fields,
+  })
+  .superRefine(checkCrossFields);
 
 export type ArchitectureDecision = z.output<typeof decisionSchema>;
 
