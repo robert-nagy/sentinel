@@ -2,9 +2,11 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { ARCHITECTURE_FILE } from '../../src/core/architecture.js';
 import { runCommand } from '../../src/core/exec.js';
 import { GUARDRAIL_RULES } from '../../src/core/guardrails.js';
 import { TRACKER_VERBS } from '../../src/core/issue-tracker.js';
+import { RFC_TEMPLATE } from '../../src/templates/rfc-template.js';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const pluginDir = join(root, 'plugins', 'sentinel');
@@ -183,6 +185,44 @@ describe('learning steps (ADR-0008)', () => {
     expect(learnPr).toContain('## STOP');
     expect(learnPr).toContain('`6`');
     expect(frontmatter(learnPr)?.['disable-model-invocation']).toBeUndefined();
+  });
+});
+
+describe('stack and architecture decision (issue 44)', () => {
+  const read = (name: string) =>
+    readFileSync(join(skillsDir, name, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+  const section = (text: string, heading: string) =>
+    new RegExp(`^## ${heading}\\n[\\s\\S]*?(?=^## )`, 'm').exec(text)?.[0];
+
+  it('is decided with the user in sentinel-setup, with a STOP for each choice', () => {
+    const decide = section(read('sentinel-setup'), 'Decide the stack and architecture');
+    expect(decide, 'sentinel-setup has no decision section').toBeDefined();
+    expect(decide?.match(/\*\*STOP\.\*\*/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+    for (const step of ['2 to 3', 'setup --architecture', 'architecture show', 'ddd']) {
+      expect(decide, step).toContain(step);
+    }
+    expect(read('sentinel-setup')).not.toContain('## Confirm the stack');
+  });
+
+  it('is checked before the RFC in both SDLC skills, identically, with a STOP', () => {
+    const sdlc = section(read('sentinel-sdlc'), 'Stack and architecture');
+    expect(sdlc, 'sentinel-sdlc has no Stack and architecture section').toBeDefined();
+    expect(section(read('sentinel-sdlc-auto'), 'Stack and architecture')).toBe(sdlc);
+    expect(sdlc).toContain('architecture show --json');
+    expect(sdlc).toContain('**STOP.**');
+    expect(sdlc).toContain('sentinel-sdlc-auto');
+    for (const name of ['sentinel-sdlc', 'sentinel-sdlc-auto']) {
+      expect(read(name), name).toContain('see Stack and architecture');
+    }
+  });
+
+  it('is named in the RFC template and checked by the reviewers', () => {
+    expect(RFC_TEMPLATE).toContain('## Stack and architecture');
+    const reviewer = readFileSync(join(agentsDir, 'sentinel-reviewer.md'), 'utf8');
+    for (const text of [reviewer, read('sentinel-review')]) {
+      expect(text).toContain(ARCHITECTURE_FILE);
+      expect(text).toContain('`architecture`');
+    }
   });
 });
 

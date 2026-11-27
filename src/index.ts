@@ -166,6 +166,22 @@ export {
   type Answers,
   type DomainFile,
 } from './core/socratic-engine.js';
+export {
+  ARCHITECTURE_FILE,
+  ArchitectureError,
+  DDD_LEVELS,
+  buildDecision,
+  nextAdrPath,
+  parseDecision,
+  parseStackOption,
+  plannedProjects,
+  readDecision,
+  renderDecisionAdr,
+  validateDecision,
+  type ArchitectureDecision,
+  type DecisionInput,
+  type Layer,
+} from './core/architecture.js';
 export { renderWorkflows, type GeneratedWorkflow } from './core/workflows.js';
 export { renderReadme } from './core/readme-renderer.js';
 export {

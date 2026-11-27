@@ -1,3 +1,4 @@
+import type { ArchitectureDecision } from './architecture.js';
 import { isPiiLikely, isSubstantive, type Answers } from './socratic-engine.js';
 import type { ProjectReport } from './stack-analyzer.js';
 
@@ -70,11 +71,35 @@ export interface ReadmeInput {
   readonly answers: Answers;
   /** The detected or planned projects; empty before a stack is chosen. */
   readonly projects: readonly ProjectReport[];
+  /** The recorded stack and architecture decision, if any. */
+  readonly architecture?: ArchitectureDecision | undefined;
+}
+
+function decisionSection(decision: ArchitectureDecision | undefined): string[] {
+  if (decision === undefined) return [];
+  const { architecture } = decision;
+  const principles =
+    architecture.principles.length > 0 ? ` Principles: ${architecture.principles.join(', ')}.` : '';
+  const number = /(\d{4})-[^/]*$/.exec(decision.adr)?.[1] ?? '';
+  return [
+    '### Stack and architecture',
+    '',
+    `**${architecture.style}**, with domain-driven design: ${architecture.ddd}.${principles}`,
+    '',
+    ...decision.layers.map((layer) => {
+      const frameworks = layer.frameworks.length > 0 ? ` (${layer.frameworks.join(', ')})` : '';
+      const path = layer.path === undefined ? '' : `, \`${layer.path}\``;
+      return `- **${layer.name}**: ${layer.language}${frameworks}${path}`;
+    }),
+    '',
+    `Decided with the project owner during setup: see [ADR-${number}](${decision.adr}).`,
+    '',
+  ];
 }
 
 /** Renders a README from the domain answers, with Mermaid context and container diagrams. */
 export function renderReadme(input: ReadmeInput): string {
-  const { name, answers, projects } = input;
+  const { name, answers, projects, architecture } = input;
   const compliance = isPiiLikely(answers)
     ? [answers.regulations, answers.retention].filter((v) => v !== undefined).join('\n\n')
     : undefined;
@@ -105,6 +130,7 @@ export function renderReadme(input: ReadmeInput): string {
     ...section('Compliance', compliance),
     '## Architecture',
     '',
+    ...decisionSection(architecture),
     '### System context',
     '',
     '```mermaid',

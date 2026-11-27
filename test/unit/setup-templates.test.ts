@@ -11,6 +11,12 @@ import {
 
 const [tests, load] = [0, 1] as const;
 
+/** A project that exists in the repository: its steps are not guarded like a planned one's. */
+const existing = (...args: Parameters<typeof plannedProject>) => ({
+  ...plannedProject(...args),
+  planned: false,
+});
+
 describe('renderWorkflows', () => {
   it('puts unit, integration and e2e on push and PR, and load on its own schedule', () => {
     const files = renderWorkflows([plannedProject('node', '.', 'pnpm')], DEFAULT_CONFIG);
@@ -35,7 +41,7 @@ describe('renderWorkflows', () => {
       ...DEFAULT_CONFIG,
       testing: { ...DEFAULT_CONFIG.testing, unit: 'make unit', load: null },
     };
-    const project = plannedProject('go');
+    const project = existing('go');
     expect(tierCommand(project, 'unit', config.testing)).toBe('make unit');
     expect(tierCommand(project, 'integration', config.testing)).toBe(
       'go test -tags=integration ./...',
@@ -55,9 +61,70 @@ describe('renderWorkflows', () => {
     expect(content).toContain('actions/setup-python@v5');
   });
 
+  it('points the toolchain setup steps at a project in a subfolder', () => {
+    const [main] = renderWorkflows(
+      [existing('node', 'src/web', 'pnpm'), existing('go', 'svc'), existing('ruby', 'app')],
+      DEFAULT_CONFIG,
+    );
+    const yml = main?.content ?? '';
+    expect(yml).toContain('cache-dependency-path: src/web/pnpm-lock.yaml');
+    expect(yml).toContain('package_json_file: src/web/package.json');
+    expect(yml).toContain('go-version-file: svc/go.mod');
+    expect(yml).toMatch(
+      /ruby\/setup-ruby@v1\n {8}with:\n {10}bundler-cache: true\n {10}working-directory: app/,
+    );
+  });
+
+  it('runs the steps of a planned project only once its manifest exists', () => {
+    const [main] = renderWorkflows([plannedProject('dotnet', 'src/backend')], DEFAULT_CONFIG);
+    const yml = main?.content ?? '';
+    const present = "if: hashFiles('src/backend/**/*.csproj', 'src/backend/**/*.sln') != ''";
+    expect(yml).toContain(
+      "- if: hashFiles('src/backend/**/*.csproj', 'src/backend/**/*.sln') == ''",
+    );
+    expect(yml).toMatch(/- if: hashFiles[^\n]*\n {8}uses: actions\/setup-dotnet@v4/);
+    expect(yml.split(present).length - 1).toBe(6);
+    expect(yml).toContain('      - uses: actions/checkout@v5\n');
+
+    const detected = { ...plannedProject('dotnet', 'src/backend'), planned: false };
+    expect(renderWorkflows([detected], DEFAULT_CONFIG)[0]?.content).not.toContain('hashFiles');
+  });
+
+  it("keeps a planned step's block scalar intact under the guard", () => {
+    for (const ecosystem of ECOSYSTEMS) {
+      const [main] = renderWorkflows([plannedProject(ecosystem, 'app')], DEFAULT_CONFIG);
+      const lines = (main?.content ?? '').split('\n');
+      lines.forEach((line, index) => {
+        if (line.endsWith(': |')) {
+          // The key's column: past the `- ` marker when the key opens the step.
+          const dash = line.trimStart().startsWith('- ') ? 2 : 0;
+          const indent = line.length - line.trimStart().length + dash;
+          const body = lines[index + 1] ?? '';
+          expect(body.length - body.trimStart().length, `${ecosystem}: ${line}`).toBeGreaterThan(
+            indent,
+          );
+        }
+        // A step's keys sit two columns past its dash; an if: never stands on its own there.
+        if (line.startsWith('        if:')) expect.fail(`${ecosystem}: stray if: after a step`);
+      });
+    }
+  });
+
+  it('keeps job ids unique when two paths give the same slug', () => {
+    const [main] = renderWorkflows(
+      [plannedProject('node', 'src/web-app'), plannedProject('go', 'src/web/app')],
+      DEFAULT_CONFIG,
+    );
+    const ids = [
+      ...(main?.content ?? '').matchAll(/^ {2}((?:unit|integration|e2e)[a-z0-9-]*):$/gm),
+    ].map((m) => m[1]);
+    expect(ids.length).toBe(6);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it('covers every ecosystem with a setup step and four tier commands', () => {
     for (const ecosystem of ECOSYSTEMS) {
-      const [main, loadFile] = renderWorkflows([plannedProject(ecosystem)], DEFAULT_CONFIG);
+      const [main, loadFile] = renderWorkflows([existing(ecosystem)], DEFAULT_CONFIG);
       expect(main?.content, ecosystem).toContain('actions/checkout@v5');
       expect(main?.content.split('      - run:').length, ecosystem).toBeGreaterThanOrEqual(4);
       expect(loadFile?.content, ecosystem).toContain('load:');
