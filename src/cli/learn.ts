@@ -317,12 +317,16 @@ export function registerLearn(program: Command, deps: CliDeps): void {
       'CI check: lesson changes in a pull request follow the own-PR rule (never runs PR code)',
     )
     .requiredOption('--pr <n>', 'the pull request to check')
+    .option('--sha <sha>', 'the head commit the CI run is for; fails if the PR has moved on')
     .option('--json', 'output machine-readable JSON')
     .action(
-      guarded(deps, async (options: { pr: string; json?: boolean }) => {
+      guarded(deps, async (options: { pr: string; sha?: string; json?: boolean }) => {
         const host = new GitHubCodeHost({ run: deps.run, cwd: deps.cwd });
         const pr = parsePullRequestRef(options.pr);
-        const result = await verifyLessonChanges(host, pr);
+        if (options.sha !== undefined && !/^[0-9a-f]{40}$/i.test(options.sha)) {
+          throw new LearnError(`--sha must be a full commit SHA, not "${options.sha}"`, 'invalid');
+        }
+        const result = await verifyLessonChanges(host, pr, options.sha);
         print(
           deps,
           options.json,

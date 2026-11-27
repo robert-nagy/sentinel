@@ -291,8 +291,18 @@ Where the implementation is more specific than, or departs from, the decisions a
     organisation member; a failed lookup counts as no access;
   - the check fails closed when the host lists fewer files than the PR changes (GitHub lists at
     most 3,000);
-  - the workflow's actions are pinned to commit SHAs, as the sentinel download is.
+  - the workflow's actions are pinned to commit SHAs, as the sentinel download is;
+  - the workflow passes the head commit the run was started for (`--sha`), and the check fails
+    closed when the PR has moved on, so a result is never reported for a commit it did not read.
 
   On the consumer side, the store ignores a symlinked store directory or lesson file and reads
   lessons with `O_NOFOLLOW` where the platform has it, so a planted lesson is never recalled even
   if it got past CI.
+
+- **Known limitation: the recorded head SHA.** The babysitter records the PR's head each time it
+  looks. A commit the user pushes by hand while babysit is still watching becomes the recorded
+  head, so `pr-changes` will not list it as `after-agent`. Commits by other people are always
+  listed, so only the user's own corrections in that window can be missed.
+- **Usage across checkouts.** `learn prune` keeps usage entries for shared lessons it cannot see,
+  since another worktree or branch may have them; only personal entries whose file is gone are
+  dropped.

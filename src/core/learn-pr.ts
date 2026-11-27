@@ -269,8 +269,22 @@ function touchesStore(path: string): boolean {
 export async function verifyLessonChanges(
   reader: PullRequestReader,
   pr: number,
+  /** The head commit the CI run was started for; the check fails if the PR moved since. */
+  expectedSha?: string,
 ): Promise<VerifyResult> {
   const author = await reader.getPullRequestAuthor(pr);
+  if (expectedSha !== undefined && author.headSha.toLowerCase() !== expectedSha.toLowerCase()) {
+    return {
+      pr,
+      author: author.login,
+      association: author.association,
+      files: [],
+      ok: false,
+      problems: [
+        `the pull request's head is ${author.headSha}, not ${expectedSha}: it moved while this check ran, so the run for the newer commit decides`,
+      ],
+    };
+  }
   const listed = await reader.listPullRequestFiles(pr);
   const touched = listed.filter((f) => touchesStore(f.path) || touchesStore(f.previousPath ?? ''));
   const problems: string[] = [];

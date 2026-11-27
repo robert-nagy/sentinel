@@ -26079,7 +26079,9 @@ var LessonStore = class _LessonStore {
     const usage = await this.readUsage();
     const today = this.today();
     const known = new Set(entries.map((e) => key(e.store, e.meta.id)));
-    const lessons = Object.fromEntries(Object.entries(usage.lessons).filter(([k]) => known.has(k)));
+    const lessons = Object.fromEntries(
+      Object.entries(usage.lessons).filter(([k]) => known.has(k) || k.startsWith("shared:"))
+    );
     Object.assign(usage, { lessons });
     const archivedNow = [];
     const active = [];
@@ -29403,8 +29405,20 @@ function touchesStore(path) {
   const p = path.toLowerCase();
   return p === ".sentinel" || p.startsWith(".sentinel/learnings");
 }
-async function verifyLessonChanges(reader, pr) {
+async function verifyLessonChanges(reader, pr, expectedSha) {
   const author = await reader.getPullRequestAuthor(pr);
+  if (expectedSha !== void 0 && author.headSha.toLowerCase() !== expectedSha.toLowerCase()) {
+    return {
+      pr,
+      author: author.login,
+      association: author.association,
+      files: [],
+      ok: false,
+      problems: [
+        `the pull request's head is ${author.headSha}, not ${expectedSha}: it moved while this check ran, so the run for the newer commit decides`
+      ]
+    };
+  }
   const listed = await reader.listPullRequestFiles(pr);
   const touched = listed.filter((f) => touchesStore(f.path) || touchesStore(f.previousPath ?? ""));
   const problems = [];
@@ -29703,11 +29717,14 @@ ${lesson.body}`);
   );
   learn.command("verify").description(
     "CI check: lesson changes in a pull request follow the own-PR rule (never runs PR code)"
-  ).requiredOption("--pr <n>", "the pull request to check").option("--json", "output machine-readable JSON").action(
+  ).requiredOption("--pr <n>", "the pull request to check").option("--sha <sha>", "the head commit the CI run is for; fails if the PR has moved on").option("--json", "output machine-readable JSON").action(
     guarded(deps, async (options) => {
       const host = new GitHubCodeHost({ run: deps.run, cwd: deps.cwd });
       const pr = parsePullRequestRef(options.pr);
-      const result = await verifyLessonChanges(host, pr);
+      if (options.sha !== void 0 && !/^[0-9a-f]{40}$/i.test(options.sha)) {
+        throw new LearnError(`--sha must be a full commit SHA, not "${options.sha}"`, "invalid");
+      }
+      const result = await verifyLessonChanges(host, pr, options.sha);
       print(
         deps,
         options.json,
@@ -30621,7 +30638,8 @@ function renderLearnVerifyWorkflow(version2, source, commit) {
     "          GH_TOKEN: ${{ github.token }}",
     "          GH_REPO: ${{ github.repository }}",
     "          PR: ${{ github.event.pull_request.number }}",
-    '        run: node "$RUNNER_TEMP/sentinel.mjs" learn verify --pr "$PR"',
+    "          HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+    '        run: node "$RUNNER_TEMP/sentinel.mjs" learn verify --pr "$PR" --sha "$HEAD_SHA"',
     ""
   ].join("\n");
 }

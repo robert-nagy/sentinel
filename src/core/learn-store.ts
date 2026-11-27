@@ -523,7 +523,11 @@ export class LessonStore {
     const usage = await this.readUsage();
     const today = this.today();
     const known = new Set(entries.map((e) => key(e.store, e.meta.id)));
-    const lessons = Object.fromEntries(Object.entries(usage.lessons).filter(([k]) => known.has(k)));
+    // Usage is shared by every checkout, but each has its own shared lessons, so only personal
+    // entries (one store for all checkouts) can be known to be gone.
+    const lessons = Object.fromEntries(
+      Object.entries(usage.lessons).filter(([k]) => known.has(k) || k.startsWith('shared:')),
+    );
     Object.assign(usage, { lessons });
 
     const archivedNow: string[] = [];

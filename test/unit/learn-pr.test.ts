@@ -458,4 +458,13 @@ describe('verifyLessonChanges', () => {
       expect.stringMatching(/must be a real directory, not mode 120000/),
     ]);
   });
+
+  it('fails closed when the PR moved on from the commit the run is for', async () => {
+    const reader = fakeReader({ authors: { 69: { headSha: 'b'.repeat(40) } } });
+    const result = await verifyLessonChanges(reader, 69, 'a'.repeat(40));
+    expect(result.ok).toBe(false);
+    expect(result.problems.join()).toMatch(/moved while this check ran/);
+    const same = fakeReader({ authors: { 69: { headSha: 'a'.repeat(40) } } });
+    expect(await verifyLessonChanges(same, 69, 'A'.repeat(40))).toMatchObject({ ok: true });
+  });
 });

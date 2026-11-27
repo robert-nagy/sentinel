@@ -317,7 +317,8 @@ export function renderLearnVerifyWorkflow(
     '          GH_TOKEN: ${{ github.token }}',
     '          GH_REPO: ${{ github.repository }}',
     '          PR: ${{ github.event.pull_request.number }}',
-    '        run: node "$RUNNER_TEMP/sentinel.mjs" learn verify --pr "$PR"',
+    '          HEAD_SHA: ${{ github.event.pull_request.head.sha }}',
+    '        run: node "$RUNNER_TEMP/sentinel.mjs" learn verify --pr "$PR" --sha "$HEAD_SHA"',
     '',
   ].join('\n');
 }

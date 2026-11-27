@@ -254,6 +254,12 @@ describe('sentinel learn verify', () => {
     expect(c.code()).toBe(0);
   });
 
+  it('rejects a --sha that is not a full commit SHA', async () => {
+    const c = cli(ghFor(60, lesson(57)));
+    await c.run('learn', 'verify', '--pr', '60', '--sha', 'main');
+    expect(c.code()).toBe(2);
+  });
+
   it("exits 2 for a lesson learned from someone else's PR", async () => {
     const c = cli(ghFor(60, lesson(36)));
     await c.run('learn', 'verify', '--pr', '60', '--json');

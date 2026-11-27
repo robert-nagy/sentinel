@@ -127,7 +127,8 @@ describe('renderLearnVerifyWorkflow', () => {
     expect(text).not.toMatch(/uses: [^\s]+@v\d/);
     expect(text).not.toMatch(/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/);
     expect(text).toContain('persist-credentials: false');
-    expect(text).toContain('learn verify --pr "$PR"');
+    expect(text).toContain('learn verify --pr "$PR" --sha "$HEAD_SHA"');
+    expect(text).toContain('HEAD_SHA: ${{ github.event.pull_request.head.sha }}');
   });
 
   it('pins the commit when given one, else the release tag', () => {

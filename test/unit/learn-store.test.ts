@@ -211,6 +211,10 @@ describe('LessonStore in a worktree', () => {
     // The main checkout does not see the worktree's new shared lesson until it is merged.
     const main = new LessonStore(root, { now: () => now, settings });
     expect((await main.recall({ paths: ['src/a.ts'] })).map((h) => h.store)).toEqual([]);
+    // Pruning in the main checkout keeps the usage of a lesson only the worktree has.
+    await s.add(draft('Shared rule'), { store: 'shared' }); // reinforce once
+    await main.prune();
+    expect((await s.readUsage()).lessons[`shared:${shared.id}`]?.recurrences).toBe(1);
   });
 });
 
