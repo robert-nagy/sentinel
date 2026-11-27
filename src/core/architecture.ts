@@ -62,7 +62,9 @@ const SEGMENT = /^[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*$/;
 
 /** A relative path with `/` separators, without `.`/`..` segments; a trailing `/` is dropped. */
 export function normalizeRelativePath(value: string): string | undefined {
-  const trimmed = value.trim().replace(/\/+$/, '');
+  // A loop, not /\/+$/: that regex backtracks polynomially on long runs of `/`.
+  let trimmed = value.trim();
+  while (trimmed.endsWith('/')) trimmed = trimmed.slice(0, -1);
   // A leading @ cannot start a plain YAML scalar, and the path goes into workflow YAML.
   if (trimmed === '' || trimmed.startsWith('/') || trimmed.startsWith('@')) return undefined;
   const segments = trimmed.split('/');
@@ -276,7 +278,7 @@ export function nextAdrPath(names: readonly string[] | undefined): string {
 }
 
 function cell(value: string): string {
-  return value === '' ? '—' : value.replace(/\|/g, '\\|');
+  return value === '' ? '—' : value.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 }
 
 /** The ADR for people; `.sentinel/architecture.json` stays the source sentinel reads. */

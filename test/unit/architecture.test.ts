@@ -265,6 +265,15 @@ describe('renderDecisionAdr', () => {
     if (!checked.ok) throw new Error('invalid fixture');
     const adr = renderDecisionAdr(buildDecision(checked.decision, now, nextAdrPath(undefined)));
     expect(adr).toContain('A\\|B');
+    const slashed = validateDecision(
+      withChange((c) => {
+        c.layers[2] = { ...c.layers[2], frameworks: ['A\\|B'] } as FixtureLayer;
+      }),
+    );
+    if (!slashed.ok) throw new Error('invalid fixture');
+    expect(
+      renderDecisionAdr(buildDecision(slashed.decision, now, nextAdrPath(undefined))),
+    ).toContain('A\\\\\\|B');
   });
 });
 

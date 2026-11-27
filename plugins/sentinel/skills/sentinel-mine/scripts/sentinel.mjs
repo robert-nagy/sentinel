@@ -24948,7 +24948,8 @@ var ArchitectureError = class extends Error {
 var MANAGED_MARKER = /sentinel:managed/i;
 var SEGMENT = /^[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*$/;
 function normalizeRelativePath(value) {
-  const trimmed = value.trim().replace(/\/+$/, "");
+  let trimmed = value.trim();
+  while (trimmed.endsWith("/")) trimmed = trimmed.slice(0, -1);
   if (trimmed === "" || trimmed.startsWith("/") || trimmed.startsWith("@")) return void 0;
   const segments = trimmed.split("/");
   if (segments.some((s) => s === "." || s === ".." || !SEGMENT.test(s))) return void 0;
@@ -25100,7 +25101,7 @@ function nextAdrPath(names) {
   return `${ADR_DIR}/${String(highest + 1).padStart(4, "0")}-${ADR_SLUG}.md`;
 }
 function cell(value) {
-  return value === "" ? "\u2014" : value.replace(/\|/g, "\\|");
+  return value === "" ? "\u2014" : value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 }
 function renderDecisionAdr(decision) {
   const number4 = /(\d{4})-[^/]*$/.exec(decision.adr)?.[1] ?? "0001";
