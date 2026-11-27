@@ -69,8 +69,23 @@ describe('renderWorkflows', () => {
     expect(yml).toContain('package_json_file: src/web/package.json');
     expect(yml).toContain('go-version-file: svc/go.mod');
     expect(yml).toMatch(
-      /ruby\/setup-ruby@v1\n {8}with:\n {10}bundler-cache: true\n {10}working-directory: app/,
+      /ruby\/setup-ruby@v1\n(?: {8}if: .*\n)? {8}with:\n {10}bundler-cache: true\n {10}working-directory: app/,
     );
+  });
+
+  it('runs the steps of a planned project only once its manifest exists', () => {
+    const [main] = renderWorkflows([plannedProject('dotnet', 'src/backend')], DEFAULT_CONFIG);
+    const yml = main?.content ?? '';
+    const present = "if: hashFiles('src/backend/**/*.csproj', 'src/backend/**/*.sln') != ''";
+    expect(yml).toContain(
+      "- if: hashFiles('src/backend/**/*.csproj', 'src/backend/**/*.sln') == ''",
+    );
+    expect(yml).toMatch(/uses: actions\/setup-dotnet@v4\n {8}if: hashFiles/);
+    expect(yml.split(present).length - 1).toBe(6);
+    expect(yml).not.toMatch(/actions\/checkout@v5\n {8}if:/);
+
+    const detected = { ...plannedProject('dotnet', 'src/backend'), planned: false };
+    expect(renderWorkflows([detected], DEFAULT_CONFIG)[0]?.content).not.toContain('hashFiles');
   });
 
   it('keeps job ids unique when two paths give the same slug', () => {

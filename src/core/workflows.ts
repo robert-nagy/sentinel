@@ -191,6 +191,38 @@ function slug(path: string): string {
     .join('-')}`;
 }
 
+/** Files whose presence means a planned project has code; globs as `hashFiles` takes them. */
+const MANIFESTS: Readonly<Record<Ecosystem, readonly string[]>> = {
+  node: ['package.json'],
+  python: ['pyproject.toml', 'setup.py', 'requirements*.txt'],
+  go: ['go.mod'],
+  rust: ['Cargo.toml'],
+  java: ['pom.xml', 'build.gradle', 'build.gradle.kts'],
+  dotnet: ['**/*.csproj', '**/*.sln'],
+  ruby: ['Gemfile'],
+  php: ['composer.json'],
+};
+
+/**
+ * A planned project has no code yet, so its steps run only once its manifest exists: the
+ * bootstrap pull request stays green instead of failing on a missing lockfile or go.mod.
+ */
+function guardPlanned(project: ProjectReport, steps: readonly string[]): string[] {
+  if (project.planned !== true) return [...steps];
+  const prefix = project.path === '.' ? '' : `${project.path}/`;
+  const patterns = MANIFESTS[project.ecosystem].map((p) => `'${prefix}${p}'`).join(', ');
+  const present = `hashFiles(${patterns}) != ''`;
+  const where = project.path === '.' ? 'the repository' : project.path;
+  return [
+    `      - if: hashFiles(${patterns}) == ''`,
+    '        working-directory: .',
+    `        run: echo "::notice::${where} has no ${project.ecosystem} project yet; skipping its steps"`,
+    ...steps.flatMap((line) =>
+      line.startsWith('      - ') ? [line, `        if: ${present}`] : [line],
+    ),
+  ];
+}
+
 function job(
   project: ProjectReport,
   tier: TestTier,
@@ -207,9 +239,11 @@ function job(
   lines.push(
     '    steps:',
     '      - uses: actions/checkout@v5',
-    ...installStep(project),
-    ...extraSteps(project, tier, command),
-    `      - run: ${command}`,
+    ...guardPlanned(project, [
+      ...installStep(project),
+      ...extraSteps(project, tier, command),
+      `      - run: ${command}`,
+    ]),
   );
   return lines;
 }

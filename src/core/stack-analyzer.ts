@@ -23,6 +23,8 @@ export interface ProjectReport {
   readonly packageManager: string | null;
   readonly frameworks: readonly string[];
   readonly tests: Readonly<Record<TestTier, TierReport>>;
+  /** True for a project that is planned (a confirmed stack or a recorded layer) but has no code yet. */
+  readonly planned?: boolean;
 }
 
 export type StackReport =
@@ -603,5 +605,13 @@ export function plannedProject(
       } satisfies TierReport,
     ]),
   ) as Record<TestTier, TierReport>;
-  return { path, ecosystem, language: spec.language, packageManager, frameworks: [], tests };
+  return {
+    path,
+    ecosystem,
+    language: spec.language,
+    packageManager,
+    frameworks: [],
+    tests,
+    planned: true,
+  };
 }

@@ -174,6 +174,23 @@ PR. Repositories that recorded a decision keep two inert files.
   "empty" repository: writing the ADR creates `docs/`, which made the repository non-empty for the
   stack analyser, so `setup --architecture <file> --workflows` would have found nothing to plan.
 
+- Found in review and added:
+  - `setup` runs every check before the first write: overwrites of every target, the README's
+    core answers, the issue-forms tracker, and a missing project for `--workflows`. The decision
+    is written after the other files, so a refused run leaves nothing half-written.
+  - Recorded layers that no detected project covers yet are planned next to the detected ones,
+    with a warning. The steps of planned projects run only once their manifest exists (a
+    `hashFiles` guard with a notice), so the bootstrap PR stays green and no agent scaffolds a
+    layer to make CI pass.
+  - `uses:` toolchain steps point at a project in a subfolder (`cache-dependency-path`,
+    `package_json_file`, `go-version-file`, the setup-ruby `working-directory`). Job ids stay
+    unique when two paths share a slug, and paths that start with `@` are rejected because they
+    break the YAML.
+  - A recorded `adr` must be a file in `docs/adr/`, and a recorded file gets the same cross-field
+    checks as new input. A corrupt decision can be replaced with `--architecture --force`.
+    `--questions` refuses `--architecture`, and `--stack` warns when it overrides a recorded
+    decision.
+
 ## Open questions
 
 None.

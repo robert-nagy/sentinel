@@ -166,6 +166,9 @@ export function registerSetup(program: Command, deps: CliDeps): void {
         const dryRun = options.dryRun === true;
         const domainPath = join(root, DOMAIN_FILE);
 
+        if (options.questions === true && options.architecture !== undefined) {
+          throw new SetupError('--questions changes nothing: run --architecture without it');
+        }
         const plannedStack =
           options.stack === undefined ? undefined : parseStackOption(options.stack);
         const recordedBefore = await readDecision(root, deps.files).catch((error: unknown) => {
@@ -411,9 +414,11 @@ export function registerSetup(program: Command, deps: CliDeps): void {
             ...next.map((q) => `  - [${q.branch}] ${q.id}: ${q.prompt}`),
             '',
             formatStackReport(stack),
-            decision === undefined
-              ? `architecture: not recorded (${ARCHITECTURE_FILE})`
-              : `architecture: ${decision.architecture.style} (${ARCHITECTURE_FILE}, ${decision.adr})`,
+            pendingDecision !== undefined
+              ? `${prefix}architecture: ${pendingDecision.architecture.style} (recorded in ${ARCHITECTURE_FILE} and ${pendingDecision.adr})`
+              : decision === undefined
+                ? `architecture: not recorded (${ARCHITECTURE_FILE})`
+                : `architecture: ${decision.architecture.style} (${ARCHITECTURE_FILE}, ${decision.adr})`,
             ...files.map((f) => `${prefix}wrote ${f}`),
             ...warnings.map((w) => `warning: ${w}`),
             ...(ruleset === undefined

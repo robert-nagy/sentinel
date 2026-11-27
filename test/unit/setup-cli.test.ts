@@ -292,6 +292,17 @@ describe('sentinel setup', () => {
     await run('setup', '--architecture', 'decision.json', '--dry-run', '--json');
     expect(json().files).toContain('.sentinel/architecture.json');
     await expect(readFile(join(repo, '.sentinel', 'architecture.json'), 'utf8')).rejects.toThrow();
+    const plain = cli();
+    await plain.run('setup', '--architecture', 'decision.json', '--dry-run');
+    expect(plain.out.join('\n')).toContain('(dry run) architecture: Vertical slices');
+  });
+
+  it('refuses --architecture together with --questions', async () => {
+    await writeJson('decision.json', decision);
+    const { run, codes } = cli();
+    await run('setup', '--questions', '--architecture', 'decision.json');
+    expect(codes).toContain(1);
+    await expect(readFile(join(repo, '.sentinel', 'architecture.json'), 'utf8')).rejects.toThrow();
   });
 
   it('writes workflows for several ecosystems from --stack', async () => {

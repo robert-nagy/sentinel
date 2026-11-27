@@ -3983,7 +3983,15 @@ function plannedProject(ecosystem, path = ".", packageManager = null) {
       }
     ])
   );
-  return { path, ecosystem, language: spec.language, packageManager, frameworks: [], tests };
+  return {
+    path,
+    ecosystem,
+    language: spec.language,
+    packageManager,
+    frameworks: [],
+    tests,
+    planned: true
+  };
 }
 
 // src/core/repo.ts
@@ -31050,6 +31058,31 @@ function slug(path) {
   if (path === ".") return "";
   return `-${path.split(/[^a-zA-Z0-9]+/).filter((part) => part !== "").join("-")}`;
 }
+var MANIFESTS = {
+  node: ["package.json"],
+  python: ["pyproject.toml", "setup.py", "requirements*.txt"],
+  go: ["go.mod"],
+  rust: ["Cargo.toml"],
+  java: ["pom.xml", "build.gradle", "build.gradle.kts"],
+  dotnet: ["**/*.csproj", "**/*.sln"],
+  ruby: ["Gemfile"],
+  php: ["composer.json"]
+};
+function guardPlanned(project, steps) {
+  if (project.planned !== true) return [...steps];
+  const prefix = project.path === "." ? "" : `${project.path}/`;
+  const patterns = MANIFESTS[project.ecosystem].map((p) => `'${prefix}${p}'`).join(", ");
+  const present = `hashFiles(${patterns}) != ''`;
+  const where = project.path === "." ? "the repository" : project.path;
+  return [
+    `      - if: hashFiles(${patterns}) == ''`,
+    "        working-directory: .",
+    `        run: echo "::notice::${where} has no ${project.ecosystem} project yet; skipping its steps"`,
+    ...steps.flatMap(
+      (line) => line.startsWith("      - ") ? [line, `        if: ${present}`] : [line]
+    )
+  ];
+}
 function job(project, tier, command2, id, single) {
   const label = single ? tier : `${tier} (${project.path})`;
   const lines = [`  ${id}:`, `    name: ${label}`, "    runs-on: ubuntu-latest"];
@@ -31060,9 +31093,11 @@ function job(project, tier, command2, id, single) {
   lines.push(
     "    steps:",
     "      - uses: actions/checkout@v5",
-    ...installStep(project),
-    ...extraSteps(project, tier, command2),
-    `      - run: ${command2}`
+    ...guardPlanned(project, [
+      ...installStep(project),
+      ...extraSteps(project, tier, command2),
+      `      - run: ${command2}`
+    ])
   );
   return lines;
 }
@@ -31271,6 +31306,9 @@ function registerSetup(program2, deps) {
       const { config: config2 } = await loadCliConfig(deps);
       const dryRun = options.dryRun === true;
       const domainPath = join15(root, DOMAIN_FILE);
+      if (options.questions === true && options.architecture !== void 0) {
+        throw new SetupError("--questions changes nothing: run --architecture without it");
+      }
       const plannedStack = options.stack === void 0 ? void 0 : parseStackOption(options.stack);
       const recordedBefore = await readDecision(root, deps.files).catch((error63) => {
         const replacing = options.architecture !== void 0 && options.force === true;
@@ -31483,7 +31521,7 @@ function registerSetup(program2, deps) {
           ...next.map((q) => `  - [${q.branch}] ${q.id}: ${q.prompt}`),
           "",
           formatStackReport(stack),
-          decision === void 0 ? `architecture: not recorded (${ARCHITECTURE_FILE})` : `architecture: ${decision.architecture.style} (${ARCHITECTURE_FILE}, ${decision.adr})`,
+          pendingDecision !== void 0 ? `${prefix}architecture: ${pendingDecision.architecture.style} (recorded in ${ARCHITECTURE_FILE} and ${pendingDecision.adr})` : decision === void 0 ? `architecture: not recorded (${ARCHITECTURE_FILE})` : `architecture: ${decision.architecture.style} (${ARCHITECTURE_FILE}, ${decision.adr})`,
           ...files.map((f) => `${prefix}wrote ${f}`),
           ...warnings.map((w) => `warning: ${w}`),
           ...ruleset === void 0 ? [] : [
