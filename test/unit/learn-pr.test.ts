@@ -44,7 +44,12 @@ interface FakeData {
   commits?: Record<number, PullRequestCommit[]>;
   comments?: Record<number, PullRequestComment[]>;
   files?: Record<number, PullRequestFile[]>;
+  /** `<sha>:<path>` → text; a text starting with `symlink:` is stored as mode 120000. */
   contents?: Record<string, string>;
+  /** Login → repository permission; defaults to admin for `me`, read for anyone else. */
+  permissions?: Record<string, string>;
+  /** The store directory itself is not a directory at the head (for example a symlink). */
+  storeMode?: string;
 }
 
 function fakeReader(data: FakeData): PullRequestReader & { calls: string[] } {
@@ -74,12 +79,23 @@ function fakeReader(data: FakeData): PullRequestReader & { calls: string[] } {
     },
     listPullRequestComments: (pr) => Promise.resolve(data.comments?.[pr] ?? []),
     listPullRequestFiles: (pr) => Promise.resolve(data.files?.[pr] ?? []),
-    readFileAtRef: (path, ref) => {
-      const text = data.contents?.[`${ref}:${path}`];
-      if (text === undefined) return Promise.resolve(undefined);
-      if (text.startsWith('symlink:')) return Promise.resolve({ type: 'symlink' });
-      return Promise.resolve({ type: 'file', text });
+    listTreeAt: (commit, dir) => {
+      if (data.storeMode !== undefined)
+        return Promise.resolve({ kind: 'not-a-directory', path: dir, mode: data.storeMode });
+      const prefix = `${commit}:${dir}/`;
+      const entries = Object.entries(data.contents ?? {})
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, text]) => ({
+          name: key.slice(prefix.length),
+          mode: text.startsWith('symlink:') ? '120000' : '100644',
+          type: 'blob',
+          sha: `blob:${key}`,
+        }));
+      return Promise.resolve({ kind: 'entries', entries });
     },
+    readBlob: (sha) => Promise.resolve(data.contents?.[sha.slice('blob:'.length)] ?? ''),
+    getPermission: (login) =>
+      Promise.resolve(data.permissions?.[login] ?? (login === 'me' ? 'admin' : 'read')),
   };
 }
 
@@ -363,7 +379,7 @@ describe('verifyLessonChanges', () => {
     const result = await verifyLessonChanges(reader, 63);
     expect(result.ok).toBe(false);
     expect(result.problems.filter((p) => p.includes('exactly'))).toHaveLength(3);
-    expect(result.problems.join()).toContain('must be a regular file, not a symlink');
+    expect(result.problems.join()).toContain('must be a regular file, not mode 120000');
   });
 
   it('still requires write access for a stranger who only symlinks or renames the store', async () => {
@@ -407,5 +423,39 @@ describe('verifyLessonChanges', () => {
     const result = await verifyLessonChanges(reader, 66);
     expect(result.ok).toBe(false);
     expect(result.problems.join()).toMatch(/only 1 of 3500/);
+  });
+
+  it('refuses an organisation member or collaborator without write permission', async () => {
+    const { id, text } = lessonText();
+    const path = `.sentinel/learnings/${id}.md`;
+    for (const [association, permission] of [
+      ['MEMBER', 'read'],
+      ['COLLABORATOR', 'triage'],
+      ['OWNER', 'unknown'],
+    ] as const) {
+      const reader = fakeReader({
+        authors: { 67: { login: 'dana', association } },
+        files: { 67: [{ path, status: 'added' }] },
+        contents: { [`${sha}:${path}`]: text },
+        permissions: { dana: permission },
+      });
+      const result = await verifyLessonChanges(reader, 67);
+      expect(result.ok, association).toBe(false);
+      expect(result.problems.join()).toMatch(/no write access/);
+    }
+  });
+
+  it('refuses lessons when the store directory itself is a symlink at the head', async () => {
+    const { id } = lessonText();
+    const reader = fakeReader({
+      authors: { 68: {} },
+      files: { 68: [{ path: `.sentinel/learnings/${id}.md`, status: 'added' }] },
+      storeMode: '120000',
+    });
+    const result = await verifyLessonChanges(reader, 68);
+    expect(result.ok).toBe(false);
+    expect(result.problems).toEqual([
+      expect.stringMatching(/must be a real directory, not mode 120000/),
+    ]);
   });
 });

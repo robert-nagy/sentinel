@@ -56,11 +56,19 @@ export interface PullRequestAuthor {
   readonly changedFiles?: number | undefined;
 }
 
-/** A path at a commit: `file` with its text, or another git object type (`symlink`, `dir`…). */
-export interface FileAtRef {
+/** One entry of a git tree: `mode` is git's (100644 file, 100755 executable, 120000 symlink…). */
+export interface TreeEntry {
+  readonly name: string;
+  readonly mode: string;
   readonly type: string;
-  readonly text?: string | undefined;
+  readonly sha: string;
 }
+
+/** A directory at a commit: its entries, or why it is not a plain directory there. */
+export type TreeListing =
+  | { readonly kind: 'entries'; readonly entries: readonly TreeEntry[] }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'not-a-directory'; readonly path: string; readonly mode: string };
 
 export interface PullRequestSummary {
   readonly number: number;
@@ -115,6 +123,13 @@ export interface PullRequestReader {
   listPullRequestCommits(pr: number): Promise<PullRequestCommit[]>;
   listPullRequestComments(pr: number): Promise<PullRequestComment[]>;
   listPullRequestFiles(pr: number): Promise<PullRequestFile[]>;
-  /** A path at a commit, read through the API (never a checkout); `undefined` when missing. */
-  readFileAtRef(path: string, ref: string): Promise<FileAtRef | undefined>;
+  /**
+   * The entries of a directory at a commit, walked through git trees so every component's
+   * mode is known (a symlink is never followed). Never a checkout.
+   */
+  listTreeAt(commit: string, dir: string): Promise<TreeListing>;
+  /** A blob's text by its SHA. */
+  readBlob(sha: string): Promise<string>;
+  /** The user's permission on the repository: `admin`, `write`, `read` or `none`. */
+  getPermission(login: string): Promise<string>;
 }

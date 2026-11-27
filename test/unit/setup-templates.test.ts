@@ -122,7 +122,9 @@ describe('renderLearnVerifyWorkflow', () => {
   it('runs the base branch copy of sentinel from a checkout, never the PR head', () => {
     const text = renderLearnVerifyWorkflow('1.2.3', 'checkout');
     expect(text).toContain('pull_request_target:');
-    expect(text).toContain('actions/checkout@v5');
+    expect(text).toMatch(/actions\/checkout@[0-9a-f]{40} # v5/);
+    expect(text).toMatch(/actions\/setup-node@[0-9a-f]{40} # v5/);
+    expect(text).not.toMatch(/uses: [^\s]+@v\d/);
     expect(text).not.toMatch(/ref:\s*\$\{\{\s*github\.event\.pull_request\.head/);
     expect(text).toContain('persist-credentials: false');
     expect(text).toContain('learn verify --pr "$PR"');

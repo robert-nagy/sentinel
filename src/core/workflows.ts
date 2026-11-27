@@ -248,6 +248,14 @@ export const LEARN_VERIFY_CHECK = 'sentinel learn verify';
 export const GITHUB_ACTIONS_APP_ID = 15368;
 export const SENTINEL_REPO = 'robert-nagy/sentinel';
 const BUNDLE_PATH = 'plugins/sentinel/skills/sentinel-sdlc/scripts/sentinel.mjs';
+/**
+ * Actions pinned to full commit SHAs: the job runs with a token on pull requests from forks,
+ * so a moved tag must not change what it runs. Bump them deliberately.
+ */
+const PINNED_ACTIONS = {
+  checkout: 'actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5',
+  setupNode: 'actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5',
+} as const;
 
 /**
  * Gate 2 of the own-PR rule (ADR-0008, decision 13). `pull_request_target` runs the copy of
@@ -276,7 +284,7 @@ export function renderLearnVerifyWorkflow(
         ]
       : [
           '      # The base branch, never the pull request: pull_request_target checks out the base.',
-          '      - uses: actions/checkout@v5',
+          `      - uses: ${PINNED_ACTIONS.checkout}`,
           '        with:',
           '          persist-credentials: false',
           `      - run: cp ${BUNDLE_PATH} "$RUNNER_TEMP/sentinel.mjs"`,
@@ -300,7 +308,7 @@ export function renderLearnVerifyWorkflow(
     `    name: ${LEARN_VERIFY_CHECK}`,
     '    runs-on: ubuntu-latest',
     '    steps:',
-    '      - uses: actions/setup-node@v5',
+    `      - uses: ${PINNED_ACTIONS.setupNode}`,
     '        with:',
     '          node-version: 22',
     ...fetch,

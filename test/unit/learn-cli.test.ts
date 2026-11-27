@@ -226,14 +226,24 @@ describe('sentinel learn verify', () => {
     fakeGh((line) => {
       if (line.includes(`pulls/${String(pr)}/files`))
         return ok(JSON.stringify({ filename: file.path, status: 'added' }));
-      if (line.includes(`contents/${file.path}?ref=${sha}`))
+      const tree = (entries: object[]) => ok(entries.map((e) => JSON.stringify(e)).join('\n'));
+      if (line.includes(`git/commits/${sha}`)) return ok('aaaaaaa\n');
+      if (line.includes('git/trees/aaaaaaa'))
+        return tree([{ name: '.sentinel', mode: '040000', type: 'tree', sha: 'bbbbbbb' }]);
+      if (line.includes('git/trees/bbbbbbb'))
+        return tree([{ name: 'learnings', mode: '040000', type: 'tree', sha: 'ccccccc' }]);
+      if (line.includes('git/trees/ccccccc'))
+        return tree([
+          { name: file.path.split('/').at(-1), mode: '100644', type: 'blob', sha: 'ddddddd' },
+        ]);
+      if (line.includes('git/blobs/ddddddd'))
         return ok(
           JSON.stringify({
-            type: 'file',
             encoding: 'base64',
             content: Buffer.from(file.text).toString('base64'),
           }),
         );
+      if (line.includes('collaborators/me/permission')) return ok('admin\n');
       return undefined;
     });
 

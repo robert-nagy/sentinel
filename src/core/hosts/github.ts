@@ -8,10 +8,11 @@ import type {
   PullRequestAuthor,
   PullRequestComment,
   PullRequestCommit,
-  FileAtRef,
   PullRequestFile,
   PullRequestReader,
   PullRequestSummary,
+  TreeEntry,
+  TreeListing,
 } from '../code-host.js';
 import type { CommandRunner } from '../exec.js';
 import { ProviderError } from '../provider-error.js';
@@ -414,38 +415,65 @@ export class GitHubCodeHost implements CodeHost, PullRequestReader {
     }));
   }
 
-  async readFileAtRef(path: string, ref: string): Promise<FileAtRef | undefined> {
-    if (!/^[0-9a-f]{7,64}$/i.test(ref)) {
-      throw new ProviderError('failed', `"${ref}" is not a commit SHA`);
+  async listTreeAt(commit: string, dir: string): Promise<TreeListing> {
+    const sha = requireSha(commit);
+    const action = `read ${dir} at ${sha}`;
+    let tree = (await this.api(`git/commits/${sha}`, action, ['--jq', '.tree.sha'])).trim();
+    let walked = '';
+    for (const part of dir.split('/').filter((p) => p !== '')) {
+      const entries = await this.treeEntries(tree, action);
+      const entry = entries.find((e) => e.name === part);
+      walked = walked === '' ? part : `${walked}/${part}`;
+      if (entry === undefined) return { kind: 'missing' };
+      if (entry.mode !== '040000' || entry.type !== 'tree') {
+        return { kind: 'not-a-directory', path: walked, mode: entry.mode };
+      }
+      tree = entry.sha;
     }
-    const encoded = path.split('/').map(encodeURIComponent).join('/');
-    const action = `read ${path} at ${ref}`;
-    const result = await this.options.run(
-      'gh',
-      ['api', this.repoPath(`contents/${encoded}?ref=${ref}`), '--jq', '{type, encoding, content}'],
-      { cwd: this.options.cwd, timeoutMs: GH_TIMEOUT_MS },
-    );
-    if (result.exitCode !== 0) {
-      const error = ghError(result, action);
-      if (error.kind === 'not-found') return undefined;
-      throw error;
-    }
-    // A directory comes back as an array, which `--jq` cannot shape into one object.
-    if (result.stdout.trim().startsWith('[')) return { type: 'dir' };
+    return { kind: 'entries', entries: await this.treeEntries(tree, action) };
+  }
+
+  private async treeEntries(tree: string, action: string): Promise<TreeEntry[]> {
+    const out = await this.api(`git/trees/${requireSha(tree)}`, action, [
+      '--jq',
+      '.tree[] | {name: .path, mode, type, sha}',
+    ]);
+    const entry = z.object({
+      name: z.string(),
+      mode: z.string(),
+      type: z.string(),
+      sha: z.string(),
+    });
+    return out
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .map((line) => this.json(entry, line, action));
+  }
+
+  async readBlob(sha: string): Promise<string> {
+    const id = requireSha(sha);
+    const action = `read blob ${id}`;
     const raw = this.json(
-      z.object({
-        type: z.string(),
-        encoding: z.string().nullish(),
-        content: z.string().nullish(),
-      }),
-      result.stdout,
+      z.object({ encoding: z.string(), content: z.string() }),
+      await this.api(`git/blobs/${id}`, action, ['--jq', '{encoding, content}']),
       action,
     );
-    if (raw.type !== 'file') return { type: raw.type };
-    if (raw.encoding !== 'base64' || raw.content == null) {
+    if (raw.encoding !== 'base64') {
       throw new ProviderError('failed', `could not ${action}: unexpected encoding`);
     }
-    return { type: 'file', text: Buffer.from(raw.content, 'base64').toString('utf8') };
+    return Buffer.from(raw.content, 'base64').toString('utf8');
+  }
+
+  async getPermission(login: string): Promise<string> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}(?:\[bot\])?$/.test(login)) {
+      throw new ProviderError('failed', `"${login}" is not a GitHub login`);
+    }
+    const out = await this.api(
+      `collaborators/${encodeURIComponent(login)}/permission`,
+      `read the permission of ${login}`,
+      ['--jq', '.permission'],
+    );
+    return out.trim().toLowerCase();
   }
 }
 
@@ -454,6 +482,13 @@ function requireRunId(value: string): string {
   if (id === undefined)
     throw new ProviderError('failed', `"${value}" is not a workflow run id or run URL`);
   return id;
+}
+
+function requireSha(value: string): string {
+  if (!/^[0-9a-f]{7,64}$/i.test(value)) {
+    throw new ProviderError('failed', `"${value}" is not a git object SHA`);
+  }
+  return value;
 }
 
 function requirePrNumber(pr: number): string {

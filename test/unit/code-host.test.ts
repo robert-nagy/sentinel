@@ -255,26 +255,47 @@ describe('GitHubCodeHost as a PullRequestReader', () => {
     expect(comments[0]).toMatchObject({ file: 'a.ts', line: 3 });
   });
 
-  it('reads a file at a commit through the contents API, with its type, and undefined when missing', async () => {
-    const content = Buffer.from('---\nid: x\n').toString('base64');
+  it('walks git trees to a directory, reporting a symlinked component, and reads blobs', async () => {
+    const tree = (entries: object[]) => ok(entries.map((e) => JSON.stringify(e)).join('\n'));
     const { run } = fakeRun((l) => {
-      if (l.includes('contents/.sentinel/learnings/L-1.md?ref=abcdef1'))
-        return ok(JSON.stringify({ type: 'file', encoding: 'base64', content }));
-      if (l.includes('contents/.sentinel/learnings?ref=abcdef1'))
-        return ok(JSON.stringify({ type: 'symlink', encoding: null, content: null }));
-      if (l.includes('contents/docs?ref=abcdef1')) return ok('[{"type":"file"}]');
-      if (l.includes('contents/')) return fail('HTTP 404: Not Found');
+      if (l.includes('git/commits/abcdef1')) return ok('aaaaaaa\n');
+      if (l.includes('git/trees/aaaaaaa'))
+        return tree([{ name: '.sentinel', mode: '040000', type: 'tree', sha: 'bbbbbbb' }]);
+      if (l.includes('git/trees/bbbbbbb'))
+        return tree([{ name: 'learnings', mode: '040000', type: 'tree', sha: 'ccccccc' }]);
+      if (l.includes('git/trees/ccccccc'))
+        return tree([{ name: 'L-1.md', mode: '120000', type: 'blob', sha: 'ddddddd' }]);
+      if (l.includes('git/blobs/ddddddd'))
+        return ok(
+          JSON.stringify({ encoding: 'base64', content: Buffer.from('x\n').toString('base64') }),
+        );
+      if (l.includes('git/commits/eeeeeee')) return ok('fffffff\n');
+      if (l.includes('git/trees/fffffff'))
+        return tree([{ name: '.sentinel', mode: '120000', type: 'blob', sha: '1111111' }]);
       return undefined;
     });
     const host = new GitHubCodeHost({ run, cwd: '/r' });
-    expect(await host.readFileAtRef('.sentinel/learnings/L-1.md', 'abcdef1')).toEqual({
-      type: 'file',
-      text: '---\nid: x\n',
+    expect(await host.listTreeAt('abcdef1', '.sentinel/learnings')).toEqual({
+      kind: 'entries',
+      entries: [{ name: 'L-1.md', mode: '120000', type: 'blob', sha: 'ddddddd' }],
     });
-    expect(await host.readFileAtRef('.sentinel/learnings', 'abcdef1')).toEqual({ type: 'symlink' });
-    expect(await host.readFileAtRef('docs', 'abcdef1')).toEqual({ type: 'dir' });
-    expect(await host.readFileAtRef('nope.md', 'abcdef1')).toBeUndefined();
-    await expect(host.readFileAtRef('a.md', 'main; rm -rf /')).rejects.toThrow(ProviderError);
+    expect(await host.listTreeAt('eeeeeee', '.sentinel/learnings')).toEqual({
+      kind: 'not-a-directory',
+      path: '.sentinel',
+      mode: '120000',
+    });
+    expect(await host.readBlob('ddddddd')).toBe('x\n');
+    await expect(host.listTreeAt('main; rm -rf /', '.sentinel')).rejects.toThrow(ProviderError);
+  });
+
+  it("reads a user's permission and rejects a login that is not one", async () => {
+    const { run, calls } = fakeRun((l) =>
+      l.includes('collaborators/dana/permission') ? ok('write\n') : undefined,
+    );
+    const host = new GitHubCodeHost({ run, cwd: '/r' });
+    expect(await host.getPermission('dana')).toBe('write');
+    expect(calls[0]?.args).toContain('repos/{owner}/{repo}/collaborators/dana/permission');
+    await expect(host.getPermission('../../x')).rejects.toThrow(ProviderError);
   });
 
   it('turns an authentication failure into a ProviderError', async () => {

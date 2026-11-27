@@ -212,9 +212,9 @@ makes them a route for prompt injection that persists across runs.
       - has `source: "pr"` and cites a PR whose author is not the author of the PR adding the
         lesson (`github.event.pull_request.user.login`);
       - has no valid `source`, `pr` or `from` fields; or
-      - is added or changed by a PR whose author has no write access (`author_association` not
-        `OWNER`, `MEMBER` or `COLLABORATOR`), whatever its `source`. An outside contributor
-        cannot add lessons to the shared store through their own PR.
+      - is added or changed by a PR whose author has no write access (repository permission
+        not `admin` or `write`), whatever its `source`. An outside contributor cannot add
+        lessons to the shared store through their own PR.
     - **Gate 3, the repository ruleset.** Gate 2 only blocks a merge when its check is required.
       `sentinel-setup` offers, with the user's approval, a ruleset on the default branch that
       requires the `sentinel learn verify` check, with an empty bypass list. `sentinel doctor`
@@ -279,8 +279,20 @@ Where the implementation is more specific than, or departs from, the decisions a
   downloading a release. Other repositories download the bundle from the **commit** the release
   tag points to, resolved by `setup --learn-verify` (a tag can be moved, a commit cannot); when
   the commit cannot be resolved it falls back to the tag and says so.
-- **Gate 2 hardening** (from the review of the M10 PR): any changed path under
-  `.sentinel/learnings` in any letter case, or `.sentinel` itself, counts as a lesson change; a
-  lesson must be a regular file exactly under `.sentinel/learnings/`; and the check fails closed
-  when the host lists fewer files than the PR changes (GitHub lists at most 3,000). The store
-  also ignores a symlinked store directory or lesson file, so a planted lesson is never recalled.
+- **Gate 2 hardening** (from two reviews of the M10 PR):
+  - any changed path under `.sentinel/learnings` in any letter case, or `.sentinel` itself,
+    counts as a lesson change, and a lesson must sit exactly under `.sentinel/learnings/`;
+  - lesson files are read through git trees and blobs at the PR's head, so every path
+    component's mode is known; anything but a regular file (a symlink, a submodule) is refused,
+    and so is a store directory that is not a real directory. The contents API is not used,
+    because it follows symlinks whose target is a file;
+  - write access means the author's actual repository permission (`admin` or `write`, read from
+    the collaborators permission endpoint), not `author_association`, where `MEMBER` is any
+    organisation member; a failed lookup counts as no access;
+  - the check fails closed when the host lists fewer files than the PR changes (GitHub lists at
+    most 3,000);
+  - the workflow's actions are pinned to commit SHAs, as the sentinel download is.
+
+  On the consumer side, the store ignores a symlinked store directory or lesson file and reads
+  lessons with `O_NOFOLLOW` where the platform has it, so a planted lesson is never recalled even
+  if it got past CI.

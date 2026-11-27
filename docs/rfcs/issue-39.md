@@ -61,8 +61,9 @@ New core modules:
     review bodies and conversation comments (bots and the PR author's own comments skipped).
   - `verify`: CI check for a PR (see below).
 - `src/core/hosts/github.ts` + `code-host.ts`: `currentLogin`, `getPullRequestAuthor`
-  (login, type, `author_association`, head SHA), `listMergedPullRequests`,
-  `listPullRequestCommits`, `listPullRequestComments`, `listPullRequestFiles`, `readFileAtRef`.
+  (login, type, head SHA, changed-file count), `getPermission`, `listTreeAt`, `readBlob`,
+  `listMergedPullRequests`,
+  `listPullRequestCommits`, `listPullRequestComments`, `listPullRequestFiles`.
 - `src/core/pr-babysitter.ts`: the state records the open PR's head SHA (`headSha`); the CLI adds
   `recurring`, `recurringPrs` and `lessons` to the output when a packet's signature is in a lesson
   or in another PR's local babysit state.
@@ -91,10 +92,10 @@ sentinel learn verify --pr <n> [--json]
 ```
 
 `learn verify` fails (exit 2) when the PR changes anything under `.sentinel/learnings/` and its
-author has no write access (`author_association` not `OWNER`, `MEMBER` or `COLLABORATOR`), when a
-changed lesson is invalid or its file name differs from its id, or when a `source: "pr"` lesson
-cites a PR whose author is not this PR's author. It reads files with the contents API at the PR's
-head SHA and never checks out or runs PR code.
+author has no write access (repository permission not `admin` or `write`), when a changed lesson
+is invalid, is not a regular file or its file name differs from its id, or when a `source: "pr"`
+lesson cites a PR whose author is not this PR's author. It reads files through git trees and blobs
+at the PR's head SHA and never checks out or runs PR code.
 
 Skills: new `sentinel-learn-pr`; `learn` steps in `sentinel-sdlc` and `sentinel-sdlc-auto`
 (identical, checked by a test), `sentinel-review`, `sentinel-babysit`; `sentinel-setup` offers the

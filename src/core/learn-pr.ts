@@ -21,7 +21,10 @@ export const SUGGEST_LOOKBACK = 100;
 export const MAX_PRS_PER_CALL = 10;
 const MAX_ITEMS = 50;
 const MAX_TEXT = 2000;
-const WRITE_ACCESS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+/** Repository permissions that allow changing shared lessons (maintain counts as write). */
+const WRITE_PERMISSIONS = new Set(['admin', 'write']);
+/** Regular files in git: anything else (symlink 120000, submodule 160000) is refused. */
+const REGULAR_FILE_MODES = new Set(['100644', '100755']);
 
 /** `57`, `#57` or a pull request URL of the current repository. */
 export function parsePullRequestRef(ref: string, repository?: string): number {
@@ -241,6 +244,7 @@ export interface VerifyResult {
   readonly pr: number;
   readonly author: string;
   readonly association: string;
+  readonly permission?: string | undefined;
   readonly files: readonly string[];
   readonly problems: readonly string[];
 }
@@ -285,11 +289,27 @@ export async function verifyLessonChanges(
   }
   if (touched.length === 0) return { ...base, ok: true, problems };
 
-  if (!WRITE_ACCESS.has(author.association.toUpperCase()) || author.isBot) {
+  // `author_association` is not write access (MEMBER is any org member), so ask for the
+  // author's actual permission on this repository; any failure counts as no access.
+  let permission = 'none';
+  if (!author.isBot) {
+    try {
+      permission = await reader.getPermission(author.login);
+    } catch (error) {
+      if (!(error instanceof ProviderError)) throw error;
+      permission = 'unknown';
+    }
+  }
+  if (!WRITE_PERMISSIONS.has(permission)) {
     problems.push(
-      `${author.login} (${author.association}) has no write access, so this pull request may not change lessons`,
+      `${author.login} (permission: ${permission}) has no write access, so this pull request may not change lessons`,
     );
   }
+  const store = await reader.listTreeAt(author.headSha, STORE_DIRS.shared);
+  if (store.kind === 'not-a-directory') {
+    problems.push(`${store.path} must be a real directory, not mode ${store.mode}`);
+  }
+  const atHead = new Map((store.kind === 'entries' ? store.entries : []).map((e) => [e.name, e]));
   for (const file of touched) {
     // Moved out of the store, or deleted: only the write-access rule above applies.
     if (file.status === 'removed' || !touchesStore(file.path)) continue;
@@ -315,16 +335,17 @@ export async function verifyLessonChanges(
       );
       continue;
     }
-    const entry = await reader.readFileAtRef(file.path, author.headSha);
+    if (store.kind === 'not-a-directory') continue;
+    const entry = atHead.get(name);
     if (entry === undefined) {
-      problems.push(`${file.path}: could not be read at ${author.headSha}`);
+      problems.push(`${file.path}: not found at ${author.headSha}`);
       continue;
     }
-    if (entry.type !== 'file' || entry.text === undefined) {
-      problems.push(`${file.path}: must be a regular file, not a ${entry.type}`);
+    if (!REGULAR_FILE_MODES.has(entry.mode) || entry.type !== 'blob') {
+      problems.push(`${file.path}: must be a regular file, not mode ${entry.mode}`);
       continue;
     }
-    const text = entry.text;
+    const text = await reader.readBlob(entry.sha);
     const parsed = parseLesson(text);
     if (parsed.lesson === undefined) {
       problems.push(...parsed.problems.map((p) => `${file.path}: ${p}`));
@@ -349,5 +370,5 @@ export async function verifyLessonChanges(
       }
     }
   }
-  return { ...base, ok: problems.length === 0, problems };
+  return { ...base, permission, ok: problems.length === 0, problems };
 }

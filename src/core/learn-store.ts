@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { titleSimilarity, DUPLICATE_THRESHOLD } from './duplicates.js';
 import { compileGlob, globSpecificity, isGlobalGlob, normalizePath } from './globs.js';
@@ -112,6 +113,23 @@ export interface InvalidLesson {
 
 const EMPTY_USAGE: UsageEntry = { recurrences: 0, recalls: 0 };
 const READ_BATCH = 64;
+/** `O_NOFOLLOW` is missing on Windows, where `lstat` in `refresh` is the only guard. */
+const NO_FOLLOW: number = (constants as Partial<typeof constants>).O_NOFOLLOW ?? 0;
+
+/**
+ * Reads a lesson file without following a symlink at the last path component (`O_NOFOLLOW`,
+ * where the platform has it) and only if it is a regular file, so a file swapped for a symlink
+ * after `refresh` checked it is still refused.
+ */
+async function readLessonFile(path: string): Promise<string> {
+  const handle = await open(path, constants.O_RDONLY | NO_FOLLOW);
+  try {
+    if (!(await handle.stat()).isFile()) throw new LearnError(`${path} is not a regular file`);
+    return await handle.readFile('utf8');
+  } finally {
+    await handle.close();
+  }
+}
 
 function indexEntry(
   store: StoreName,
@@ -266,7 +284,9 @@ export class LessonStore {
       // Read changed files a batch at a time: fast on a cold index, bounded open files.
       for (let i = 0; i < stale.length; i += READ_BATCH) {
         const batch = stale.slice(i, i + READ_BATCH);
-        const texts = await Promise.all(batch.map((item) => readFile(item.path, 'utf8')));
+        const texts = await Promise.all(
+          batch.map((item) => readLessonFile(item.path).catch(() => '')),
+        );
         batch.forEach((item, j) => {
           this.filesRead += 1;
           entries[item.file] = indexEntry(store, item, texts[j] ?? '');
@@ -472,7 +492,7 @@ export class LessonStore {
       if (results.length >= limit) break;
       let text: string;
       try {
-        text = await readFile(this.pathOf(entry), 'utf8');
+        text = await readLessonFile(this.pathOf(entry));
       } catch {
         continue;
       }
@@ -564,7 +584,7 @@ export class LessonStore {
 
   async show(id: string): Promise<RecalledLesson & { usage: UsageEntry }> {
     const entry = await this.find(id);
-    const text = await readFile(this.pathOf(entry), 'utf8');
+    const text = await readLessonFile(this.pathOf(entry));
     const parsed = parseLesson(text);
     if (parsed.lesson === undefined) throw new LearnError(`${entry.file} is not a valid lesson`);
     const usage = await this.readUsage();

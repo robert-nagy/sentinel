@@ -16,11 +16,11 @@ jobs:
     name: sentinel learn verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
       # The base branch, never the pull request: pull_request_target checks out the base.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
       - run: cp plugins/sentinel/skills/sentinel-sdlc/scripts/sentinel.mjs "$RUNNER_TEMP/sentinel.mjs"

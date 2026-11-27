@@ -24112,37 +24112,59 @@ ${out.slice(-MAX_LOG_CHARS)}` : out;
       previousPath: r.previous ?? void 0
     }));
   }
-  async readFileAtRef(path, ref) {
-    if (!/^[0-9a-f]{7,64}$/i.test(ref)) {
-      throw new ProviderError("failed", `"${ref}" is not a commit SHA`);
+  async listTreeAt(commit, dir) {
+    const sha = requireSha(commit);
+    const action = `read ${dir} at ${sha}`;
+    let tree = (await this.api(`git/commits/${sha}`, action, ["--jq", ".tree.sha"])).trim();
+    let walked = "";
+    for (const part of dir.split("/").filter((p) => p !== "")) {
+      const entries = await this.treeEntries(tree, action);
+      const entry = entries.find((e) => e.name === part);
+      walked = walked === "" ? part : `${walked}/${part}`;
+      if (entry === void 0) return { kind: "missing" };
+      if (entry.mode !== "040000" || entry.type !== "tree") {
+        return { kind: "not-a-directory", path: walked, mode: entry.mode };
+      }
+      tree = entry.sha;
     }
-    const encoded = path.split("/").map(encodeURIComponent).join("/");
-    const action = `read ${path} at ${ref}`;
-    const result = await this.options.run(
-      "gh",
-      ["api", this.repoPath(`contents/${encoded}?ref=${ref}`), "--jq", "{type, encoding, content}"],
-      { cwd: this.options.cwd, timeoutMs: GH_TIMEOUT_MS }
-    );
-    if (result.exitCode !== 0) {
-      const error63 = ghError(result, action);
-      if (error63.kind === "not-found") return void 0;
-      throw error63;
-    }
-    if (result.stdout.trim().startsWith("[")) return { type: "dir" };
+    return { kind: "entries", entries: await this.treeEntries(tree, action) };
+  }
+  async treeEntries(tree, action) {
+    const out = await this.api(`git/trees/${requireSha(tree)}`, action, [
+      "--jq",
+      ".tree[] | {name: .path, mode, type, sha}"
+    ]);
+    const entry = external_exports.object({
+      name: external_exports.string(),
+      mode: external_exports.string(),
+      type: external_exports.string(),
+      sha: external_exports.string()
+    });
+    return out.split("\n").filter((line) => line.trim() !== "").map((line) => this.json(entry, line, action));
+  }
+  async readBlob(sha) {
+    const id = requireSha(sha);
+    const action = `read blob ${id}`;
     const raw = this.json(
-      external_exports.object({
-        type: external_exports.string(),
-        encoding: external_exports.string().nullish(),
-        content: external_exports.string().nullish()
-      }),
-      result.stdout,
+      external_exports.object({ encoding: external_exports.string(), content: external_exports.string() }),
+      await this.api(`git/blobs/${id}`, action, ["--jq", "{encoding, content}"]),
       action
     );
-    if (raw.type !== "file") return { type: raw.type };
-    if (raw.encoding !== "base64" || raw.content == null) {
+    if (raw.encoding !== "base64") {
       throw new ProviderError("failed", `could not ${action}: unexpected encoding`);
     }
-    return { type: "file", text: Buffer.from(raw.content, "base64").toString("utf8") };
+    return Buffer.from(raw.content, "base64").toString("utf8");
+  }
+  async getPermission(login) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9-]{0,38}(?:\[bot\])?$/.test(login)) {
+      throw new ProviderError("failed", `"${login}" is not a GitHub login`);
+    }
+    const out = await this.api(
+      `collaborators/${encodeURIComponent(login)}/permission`,
+      `read the permission of ${login}`,
+      ["--jq", ".permission"]
+    );
+    return out.trim().toLowerCase();
   }
 };
 function requireRunId(value) {
@@ -24150,6 +24172,12 @@ function requireRunId(value) {
   if (id === void 0)
     throw new ProviderError("failed", `"${value}" is not a workflow run id or run URL`);
   return id;
+}
+function requireSha(value) {
+  if (!/^[0-9a-f]{7,64}$/i.test(value)) {
+    throw new ProviderError("failed", `"${value}" is not a git object SHA`);
+  }
+  return value;
 }
 function requirePrNumber(pr) {
   if (!Number.isInteger(pr) || pr <= 0)
@@ -24162,7 +24190,8 @@ function isBot(login, type) {
 
 // src/core/learn-store.ts
 import { createHash as createHash2 } from "crypto";
-import { lstat, mkdir as mkdir2, readdir as readdir2, readFile as readFile2, rename as rename2, rm as rm2, stat, writeFile as writeFile2 } from "fs/promises";
+import { constants } from "fs";
+import { lstat, mkdir as mkdir2, open as open2, readdir as readdir2, rename as rename2, rm as rm2, stat, writeFile as writeFile2 } from "fs/promises";
 import { join as join4 } from "path";
 
 // src/core/duplicates.ts
@@ -25058,29 +25087,29 @@ function lintAcceptanceCriteria(section2, problems) {
   });
 }
 function lintDetailsBlocks(body, problems) {
-  let open3;
+  let open4;
   const lines = body.split("\n");
   const fenced = fencedLines(lines);
   lines.forEach((text2, index) => {
     const state = fenced[index];
-    if (open3 === void 0) {
-      if (state === "prose" && /<details\b/i.test(text2)) open3 = { line: index + 1, count: 0 };
+    if (open4 === void 0) {
+      if (state === "prose" && /<details\b/i.test(text2)) open4 = { line: index + 1, count: 0 };
       return;
     }
     if (state === "fence") return;
     if (state === "prose" && /<\/details>/i.test(text2)) {
-      if (open3.count > INLINE_WHOLE_LINES) {
+      if (open4.count > INLINE_WHOLE_LINES) {
         problems.push({
           code: "inline-too-long",
           section: "attachments",
-          line: open3.line,
-          message: `An inlined attachment has ${String(open3.count)} lines; keep at most ${String(INLINE_WHOLE_LINES)} (let \`sentinel issue attachments\` trim it).`
+          line: open4.line,
+          message: `An inlined attachment has ${String(open4.count)} lines; keep at most ${String(INLINE_WHOLE_LINES)} (let \`sentinel issue attachments\` trim it).`
         });
       }
-      open3 = void 0;
+      open4 = void 0;
       return;
     }
-    if (state === "code" || text2.trim() !== "" && !/<\/?summary\b/i.test(text2)) open3.count += 1;
+    if (state === "code" || text2.trim() !== "" && !/<\/?summary\b/i.test(text2)) open4.count += 1;
   });
 }
 function fencedLines(lines) {
@@ -25701,6 +25730,16 @@ var INDEX_VERSION = 1;
 var DAY_MS = 864e5;
 var EMPTY_USAGE = { recurrences: 0, recalls: 0 };
 var READ_BATCH = 64;
+var NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
+async function readLessonFile(path) {
+  const handle = await open2(path, constants.O_RDONLY | NO_FOLLOW);
+  try {
+    if (!(await handle.stat()).isFile()) throw new LearnError(`${path} is not a regular file`);
+    return await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
+}
 function indexEntry(store, item, text2) {
   const parsed = parseLesson(text2);
   const problems = [...parsed.problems];
@@ -25824,7 +25863,9 @@ var LessonStore = class _LessonStore {
       }
       for (let i = 0; i < stale.length; i += READ_BATCH) {
         const batch = stale.slice(i, i + READ_BATCH);
-        const texts = await Promise.all(batch.map((item) => readFile2(item.path, "utf8")));
+        const texts = await Promise.all(
+          batch.map((item) => readLessonFile(item.path).catch(() => ""))
+        );
         batch.forEach((item, j) => {
           this.filesRead += 1;
           entries[item.file] = indexEntry(store, item, texts[j] ?? "");
@@ -26009,7 +26050,7 @@ var LessonStore = class _LessonStore {
       if (results.length >= limit) break;
       let text2;
       try {
-        text2 = await readFile2(this.pathOf(entry), "utf8");
+        text2 = await readLessonFile(this.pathOf(entry));
       } catch {
         continue;
       }
@@ -26090,7 +26131,7 @@ var LessonStore = class _LessonStore {
   }
   async show(id) {
     const entry = await this.find(id);
-    const text2 = await readFile2(this.pathOf(entry), "utf8");
+    const text2 = await readLessonFile(this.pathOf(entry));
     const parsed = parseLesson(text2);
     if (parsed.lesson === void 0) throw new LearnError(`${entry.file} is not a valid lesson`);
     const usage = await this.readUsage();
@@ -26915,8 +26956,8 @@ function applyClaudePointer(existing) {
 }
 
 // src/core/git-worktree-manager.ts
-import { constants } from "fs";
-import { appendFile, copyFile, mkdir as mkdir3, readFile as readFile3, realpath, stat as stat2 } from "fs/promises";
+import { constants as constants2 } from "fs";
+import { appendFile, copyFile, mkdir as mkdir3, readFile as readFile2, realpath, stat as stat2 } from "fs/promises";
 import { dirname as dirname3, isAbsolute, join as join6, relative, resolve, sep } from "path";
 var WorktreeError = class extends Error {
   constructor(message) {
@@ -27160,7 +27201,7 @@ var GitWorktreeManager = class {
       }
       try {
         await mkdir3(dirname3(target), { recursive: true });
-        await copyFile(source, target, constants.COPYFILE_EXCL);
+        await copyFile(source, target, constants2.COPYFILE_EXCL);
         copied.push(file2);
       } catch (error63) {
         const code = error63.code;
@@ -27181,7 +27222,7 @@ var GitWorktreeManager = class {
     const gitignore = join6(this.repoRoot, ".gitignore");
     let current = "";
     try {
-      current = await readFile3(gitignore, "utf8");
+      current = await readFile2(gitignore, "utf8");
     } catch (error63) {
       if (error63.code !== "ENOENT") throw error63;
     }
@@ -27360,7 +27401,7 @@ function recordEvaluation(state, slug2, hash2, report, now) {
 }
 
 // src/core/issue-tracker.ts
-import { readFile as readFile4, writeFile as writeFile3 } from "fs/promises";
+import { readFile as readFile3, writeFile as writeFile3 } from "fs/promises";
 import { join as join7 } from "path";
 var LOCAL_TRACKER = "local";
 var TrackerError = class extends Error {
@@ -27591,7 +27632,7 @@ async function saveTrackerChoice(cwd, repoRoot, files, choice) {
   let existing = {};
   let text2;
   try {
-    text2 = await readFile4(path, "utf8");
+    text2 = await readFile3(path, "utf8");
   } catch (error63) {
     if (error63.code !== "ENOENT") throw error63;
   }
@@ -28097,7 +28138,7 @@ var runCommand = (command2, args, options = {}) => new Promise((resolve7) => {
 });
 
 // src/core/fs.ts
-import { readdir as readdir3, readFile as readFile5, stat as stat3 } from "fs/promises";
+import { readdir as readdir3, readFile as readFile4, stat as stat3 } from "fs/promises";
 function isNotFound(error63) {
   const code = error63?.code;
   return code === "ENOENT" || code === "ENOTDIR";
@@ -28105,7 +28146,7 @@ function isNotFound(error63) {
 var nodeFiles = {
   async readText(path) {
     try {
-      return await readFile5(path, "utf8");
+      return await readFile4(path, "utf8");
     } catch (error63) {
       if (isNotFound(error63)) return void 0;
       throw error63;
@@ -28533,15 +28574,15 @@ function registerGuardrails(program2, deps) {
 }
 
 // src/cli/issue.ts
-import { readFile as readFile7, stat as stat4 } from "fs/promises";
+import { readFile as readFile6, stat as stat4 } from "fs/promises";
 import { isAbsolute as isAbsolute3, join as join10, resolve as resolve3 } from "path";
 
 // src/core/local-tracker.ts
 import {
   mkdir as mkdir6,
-  open as open2,
+  open as open3,
   readdir as readdir4,
-  readFile as readFile6,
+  readFile as readFile5,
   unlink,
   writeFile as writeFile6
 } from "fs/promises";
@@ -28635,7 +28676,7 @@ var LocalTracker = class {
   }
   async get(id) {
     const path = await this.pathOf(id);
-    return parseLocalIssue(await readFile6(path, "utf8"), path);
+    return parseLocalIssue(await readFile5(path, "utf8"), path);
   }
   async list(query = {}) {
     const status = query.status ?? "open";
@@ -28643,7 +28684,7 @@ var LocalTracker = class {
     const issues = await Promise.all(
       (await this.entries()).map(async ({ file: file2 }) => {
         const path = join9(this.dir, file2);
-        return parseLocalIssue(await readFile6(path, "utf8"), path);
+        return parseLocalIssue(await readFile5(path, "utf8"), path);
       })
     );
     return issues.filter(
@@ -28738,7 +28779,7 @@ var LocalTracker = class {
     let bytes;
     let handle;
     try {
-      handle = await open2(source, "r");
+      handle = await open3(source, "r");
     } catch (error63) {
       if (error63.code === "ENOENT") {
         throw new TrackerError(`cannot attach "${source}": file not found`, "not-found");
@@ -29004,13 +29045,13 @@ function registerIssue(program2, deps) {
       let candidates;
       if (options.candidates !== void 0) {
         candidates = parseCandidates(
-          await readFile7(resolve3(deps.cwd, options.candidates), "utf8"),
+          await readFile6(resolve3(deps.cwd, options.candidates), "utf8"),
           options.candidates
         );
       } else {
         const { config: config2 } = await loadCliConfig(deps);
-        const open3 = await (await localTracker(deps, config2)).list({ status: "open" });
-        candidates = open3.map((i) => ({ id: String(i.id), title: i.title }));
+        const open4 = await (await localTracker(deps, config2)).list({ status: "open" });
+        candidates = open4.map((i) => ({ id: String(i.id), title: i.title }));
       }
       const ranked = rankDuplicates(title, candidates);
       deps.stdout(
@@ -29097,7 +29138,7 @@ ${renderTemplate(kind)}`
           }
           plans.push(
             await planAttachment(
-              { path: file2, bytes: size, read: () => readFile7(path) },
+              { path: file2, bytes: size, read: () => readFile6(path) },
               { trackerUploads: options.trackerUploads === true }
             )
           );
@@ -29222,7 +29263,8 @@ var SUGGEST_LOOKBACK = 100;
 var MAX_PRS_PER_CALL = 10;
 var MAX_ITEMS = 50;
 var MAX_TEXT = 2e3;
-var WRITE_ACCESS = /* @__PURE__ */ new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+var WRITE_PERMISSIONS = /* @__PURE__ */ new Set(["admin", "write"]);
+var REGULAR_FILE_MODES = /* @__PURE__ */ new Set(["100644", "100755"]);
 function parsePullRequestRef(ref, repository) {
   const text2 = ref.trim();
   const plain2 = /^#?(\d{1,9})$/.exec(text2);
@@ -29379,11 +29421,25 @@ async function verifyLessonChanges(reader, pr) {
     return { ...base, ok: false, problems };
   }
   if (touched.length === 0) return { ...base, ok: true, problems };
-  if (!WRITE_ACCESS.has(author.association.toUpperCase()) || author.isBot) {
+  let permission = "none";
+  if (!author.isBot) {
+    try {
+      permission = await reader.getPermission(author.login);
+    } catch (error63) {
+      if (!(error63 instanceof ProviderError)) throw error63;
+      permission = "unknown";
+    }
+  }
+  if (!WRITE_PERMISSIONS.has(permission)) {
     problems.push(
-      `${author.login} (${author.association}) has no write access, so this pull request may not change lessons`
+      `${author.login} (permission: ${permission}) has no write access, so this pull request may not change lessons`
     );
   }
+  const store = await reader.listTreeAt(author.headSha, STORE_DIRS.shared);
+  if (store.kind === "not-a-directory") {
+    problems.push(`${store.path} must be a real directory, not mode ${store.mode}`);
+  }
+  const atHead = new Map((store.kind === "entries" ? store.entries : []).map((e) => [e.name, e]));
   for (const file2 of touched) {
     if (file2.status === "removed" || !touchesStore(file2.path)) continue;
     if (file2.path.toLowerCase().startsWith(PERSONAL_PREFIX)) {
@@ -29404,16 +29460,17 @@ async function verifyLessonChanges(reader, pr) {
       );
       continue;
     }
-    const entry = await reader.readFileAtRef(file2.path, author.headSha);
+    if (store.kind === "not-a-directory") continue;
+    const entry = atHead.get(name);
     if (entry === void 0) {
-      problems.push(`${file2.path}: could not be read at ${author.headSha}`);
+      problems.push(`${file2.path}: not found at ${author.headSha}`);
       continue;
     }
-    if (entry.type !== "file" || entry.text === void 0) {
-      problems.push(`${file2.path}: must be a regular file, not a ${entry.type}`);
+    if (!REGULAR_FILE_MODES.has(entry.mode) || entry.type !== "blob") {
+      problems.push(`${file2.path}: must be a regular file, not mode ${entry.mode}`);
       continue;
     }
-    const text2 = entry.text;
+    const text2 = await reader.readBlob(entry.sha);
     const parsed = parseLesson(text2);
     if (parsed.lesson === void 0) {
       problems.push(...parsed.problems.map((p) => `${file2.path}: ${p}`));
@@ -29438,7 +29495,7 @@ async function verifyLessonChanges(reader, pr) {
       }
     }
   }
-  return { ...base, ok: problems.length === 0, problems };
+  return { ...base, permission, ok: problems.length === 0, problems };
 }
 
 // src/cli/learn.ts
@@ -29664,7 +29721,7 @@ ${lesson.body}`);
 }
 
 // src/cli/mine.ts
-import { readFile as readFile8, writeFile as writeFile7 } from "fs/promises";
+import { readFile as readFile7, writeFile as writeFile7 } from "fs/promises";
 import { isAbsolute as isAbsolute5, join as join12, resolve as resolve4 } from "path";
 var DEFAULT_OUT = "docs/feature-gaps.md";
 var GH_TIMEOUT_MS2 = 6e4;
@@ -29713,7 +29770,7 @@ function registerMine(program2, deps) {
       async (options) => {
         let json2;
         try {
-          json2 = JSON.parse(await readFile8(resolve4(deps.cwd, options.findings), "utf8"));
+          json2 = JSON.parse(await readFile7(resolve4(deps.cwd, options.findings), "utf8"));
         } catch {
           throw new MiningError(`${options.findings} is missing or not valid JSON`);
         }
@@ -29753,7 +29810,7 @@ ${String(findings.length)} gaps written; tick the ones to file, then run mine cr
       let candidates = [];
       if (options.candidates !== void 0) {
         candidates = parseCandidates(
-          await readFile8(resolve4(deps.cwd, options.candidates), "utf8"),
+          await readFile7(resolve4(deps.cwd, options.candidates), "utf8"),
           options.candidates
         );
       } else if (local !== void 0) {
@@ -30517,6 +30574,10 @@ var LEARN_VERIFY_CHECK = "sentinel learn verify";
 var GITHUB_ACTIONS_APP_ID = 15368;
 var SENTINEL_REPO = "robert-nagy/sentinel";
 var BUNDLE_PATH = "plugins/sentinel/skills/sentinel-sdlc/scripts/sentinel.mjs";
+var PINNED_ACTIONS = {
+  checkout: "actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5",
+  setupNode: "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5"
+};
 function renderLearnVerifyWorkflow(version2, source, commit) {
   if (commit !== void 0 && !/^[0-9a-f]{40}$/.test(commit)) {
     throw new Error(`"${commit}" is not a full commit SHA`);
@@ -30527,7 +30588,7 @@ function renderLearnVerifyWorkflow(version2, source, commit) {
     `        run: curl -fsSL --retry 3 -o "$RUNNER_TEMP/sentinel.mjs" "https://raw.githubusercontent.com/${SENTINEL_REPO}/${ref}/${BUNDLE_PATH}"`
   ] : [
     "      # The base branch, never the pull request: pull_request_target checks out the base.",
-    "      - uses: actions/checkout@v5",
+    `      - uses: ${PINNED_ACTIONS.checkout}`,
     "        with:",
     "          persist-credentials: false",
     `      - run: cp ${BUNDLE_PATH} "$RUNNER_TEMP/sentinel.mjs"`
@@ -30551,7 +30612,7 @@ function renderLearnVerifyWorkflow(version2, source, commit) {
     `    name: ${LEARN_VERIFY_CHECK}`,
     "    runs-on: ubuntu-latest",
     "    steps:",
-    "      - uses: actions/setup-node@v5",
+    `      - uses: ${PINNED_ACTIONS.setupNode}`,
     "        with:",
     "          node-version: 22",
     ...fetch,
@@ -30607,9 +30668,9 @@ async function askInTerminal2(known, deps) {
   const collected = {};
   const asked = /* @__PURE__ */ new Set();
   for (; ; ) {
-    const open3 = nextQuestions({ ...known, ...collected }).filter((q) => !asked.has(q.id));
-    if (open3.length === 0) break;
-    for (const question of open3) {
+    const open4 = nextQuestions({ ...known, ...collected }).filter((q) => !asked.has(q.id));
+    if (open4.length === 0) break;
+    for (const question of open4) {
       asked.add(question.id);
       const hint = question.hint === void 0 ? "" : ` (${question.hint})`;
       const reply = await ask(`${question.prompt}${hint}
